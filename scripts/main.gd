@@ -5,8 +5,6 @@ class_name Main extends Node3D
 const MATCH_TIME := 300.0        # 5分钟
 const GRACE_TIME := 30.0         # 打烊宽限
 const CLOSING_WARN := 120.0      # 剩2分钟进入打烊冲刺
-const CAM_SENS := 0.003          # 鼠标灵敏度
-const CAM_DIST := 5.2            # 第三人称跟随距离
 
 static var instance: Main
 
@@ -23,14 +21,15 @@ var net: Net
 var player: Player               # 本机操控的玩家
 var players: Array[Player] = []  # 全部玩家(联机=2,单机=1),两端顺序一致
 var local_idx := 0               # 本机玩家在players中的下标(主机0/客户端1)
-var camera: Camera3D
-var cam_pivot: Node3D
-var cam_spring: SpringArm3D
-var cam_yaw := 0.0
-var cam_pitch := -0.38
-var cam_shake := 0.0
+var cam_rig: CameraRig
+## 镜头水平朝向:player.gd 与 net.gd 直接读取,故在 Main 上保留代理属性
+var cam_yaw: float:
+	get:
+		return cam_rig.yaw if cam_rig != null else 0.0
+	set(value):
+		if cam_rig != null:
+			cam_rig.yaw = value
 var mouse_captured := true
-
 var grid: AStarGrid2D
 var checkouts: Array[Checkout] = []
 var grannies: Array[Granny] = []
@@ -111,7 +110,8 @@ func _start_match(tut: bool) -> void:
 	hud.hide_menu()
 	_set_mouse_captured(true)
 	if tut:
-		_setup_tutorial()
+		tutorial_guide = TutorialGuide.new(self)
+		tutorial_guide.setup()
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
 func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int) -> void:
@@ -362,78 +362,8 @@ func _make_client_puppets() -> void:
 
 # ---------- 教学关 ----------
 
-var tut_step := 0
-var _tut_origin := Vector3.ZERO
-var _tut_dist := 0.0
-var _tut_last_cart := Vector3.ZERO
-var _tut_sprint := 0.0
-var _tut_marks := {}
-
-func _setup_tutorial() -> void:
-	var c := Cart.create(Color(0.6, 0.6, 0.6), "无主购物车(练手)")
-	add_child(c)
-	c.global_position = Vector3(11, 0.2, 17.0)
-	var normals := Catalog.ids_of_cat(Catalog.CAT_NORMAL)
-	for i in 2:
-		var it := Item.create(normals.pick_random())
-		add_child(it)
-		it.set_free_at(Vector3(11, 1.2 + i * 0.5, 17.0))
-		all_items.append(it)
-	tut_step = 0
-	_tut_origin = player.global_position
-
-func _tick_tutorial(delta: float) -> void:
-	match tut_step:
-		0:
-			hud.set_tutorial_text("① 移动:WASD 走两步,动动鼠标转转视角")
-			if player.global_position.distance_to(_tut_origin) > 5.0:
-				tut_step = 1
-		1:
-			hud.set_tutorial_text("② 靠近你的购物车,按 F 抓住车把")
-			if player.attached and is_instance_valid(player.cart):
-				tut_step = 2
-				_tut_last_cart = player.cart.global_position
-				_tut_dist = 0.0
-		2:
-			hud.set_tutorial_text("③ 驾驶:W 前进 · A/D 转向 · S 刹车/倒车(推着逛10米)")
-			if player.attached:
-				_tut_dist += player.cart.global_position.distance_to(_tut_last_cart)
-				_tut_last_cart = player.cart.global_position
-				if _tut_dist > 10.0:
-					tut_step = 3
-		3:
-			hud.set_tutorial_text("④ 按住 Shift 冲刺1秒——撞翻对手全靠它")
-			if player.attached and is_instance_valid(player.cart) and player.cart.sprinting:
-				_tut_sprint += delta
-				if _tut_sprint > 1.0:
-					tut_step = 4
-		4:
-			hud.set_tutorial_text("⑤ 按 F 停车,走到货架前,按住 E 搜出一件商品(0.8秒)")
-			if not player.held.is_empty():
-				tut_step = 5
-		5:
-			hud.set_tutorial_text("⑥ 走回自己车旁,按 E 把商品放入购物车(R 可随时放下)")
-			if is_instance_valid(player.cart) and not player.cart.items_in_basket().is_empty():
-				tut_step = 6
-		6:
-			hud.set_tutorial_text("⑦ 入口旁停着辆无主购物车:按住 E 偷一件(1.2秒)")
-			if _tut_marks.get("stole", false):
-				tut_step = 7
-		7:
-			if player.locate_cd > 0.0:
-				_tut_marks["q"] = true
-			if player.bottle_cd > 0.0:
-				_tut_marks["rmb"] = true
-			if player.braced:
-				_tut_marks["space"] = true
-			var q_mark := "✓" if _tut_marks.get("q", false) else "…"
-			var r_mark := "✓" if _tut_marks.get("rmb", false) else "…"
-			var s_mark := "✓" if _tut_marks.get("space", false) else "…"
-			hud.set_tutorial_text("⑧ 试用技能:Q 找货雷达%s · 右键 掷水瓶%s · 空格 稳住%s" % [q_mark, r_mark, s_mark])
-			if _tut_marks.get("q", false) and _tut_marks.get("rmb", false) and _tut_marks.get("space", false):
-				tut_step = 8
-		8:
-			hud.set_tutorial_text("⑨ 最后:推车开进收银通道,停稳自动扫码——扫完即毕业!")
+## 仅教学模式下创建;九步指引的全部逻辑在 tutorial.gd
+var tutorial_guide: TutorialGuide
 
 # ---------- 环境与相机 ----------
 
@@ -452,22 +382,13 @@ func _setup_environment() -> void:
 	sun.light_energy = 1.1
 	sun.shadow_enabled = true
 	add_child(sun)
-	cam_pivot = Node3D.new()
-	cam_pivot.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	add_child(cam_pivot)
-	cam_pivot.position = Vector3(15, 1.5, 19.5)
-	cam_spring = SpringArm3D.new()
-	cam_spring.spring_length = CAM_DIST
-	cam_spring.collision_mask = Catalog.L_WORLD
-	cam_spring.margin = 0.3
-	cam_pivot.add_child(cam_spring)
-	camera = Camera3D.new()
-	cam_spring.add_child(camera)
-	camera.make_current()
+	cam_rig = CameraRig.new()
+	add_child(cam_rig)
 
-## 碰撞相机震动:只震"这名玩家"所在的机器
+## 碰撞相机震动:只震"这名玩家"所在的机器(net.gd 收到 ev_shake 也走这里)
 func add_camera_shake(v: float) -> void:
-	cam_shake = minf(cam_shake + v, 1.2)
+	if cam_rig != null:
+		cam_rig.add_shake(v)
 
 func shake_for(a: Actor, v: float) -> void:
 	if not (a is Player):
@@ -514,7 +435,7 @@ func _process(delta: float) -> void:
 	_tick_locate(delta)
 
 	if tutorial:
-		_tick_tutorial(delta)
+		tutorial_guide.tick(delta)
 	else:
 		elapsed += delta
 		if not in_grace:
@@ -734,7 +655,7 @@ func trigger_throw_bottle(p: Player = null, dir := Vector3.ZERO) -> void:
 	var fwd := dir
 	fwd.y = 0.0
 	if fwd.length() < 0.1:
-		fwd = Basis(Vector3.UP, cam_yaw) * Vector3.FORWARD
+		fwd = cam_rig.forward()
 	fwd = fwd.normalized()
 	var b := RigidBody3D.new()
 	b.mass = 1.0
@@ -865,21 +786,13 @@ func _tick_locate_visual(delta: float) -> void:
 # ---------- 相机与HUD ----------
 
 func _update_camera(delta: float) -> void:
-	if player == null:
+	if player == null or cam_rig == null:
 		return
+	# 推车时镜头跟车(视野中心是车头,便于瞄准撞击)
 	var target := player.global_position + Vector3.UP * 1.5
 	if player.attached and is_instance_valid(player.cart):
 		target = player.cart.global_position + Vector3.UP * 1.4
-	var k := 1.0 - exp(-10.0 * delta)
-	cam_pivot.global_position = cam_pivot.global_position.lerp(target, k)
-	cam_pivot.rotation = Vector3(cam_pitch, cam_yaw, 0)
-	if cam_shake > 0.002:
-		var s := cam_shake * cam_shake
-		cam_pivot.rotation += Vector3(
-				randf_range(-1, 1) * 0.055 * s,
-				randf_range(-1, 1) * 0.055 * s,
-				randf_range(-1, 1) * 0.04 * s)
-		cam_shake = maxf(0.0, cam_shake - delta * 2.5)
+	cam_rig.follow(target, delta)
 
 func _set_mouse_captured(c: bool) -> void:
 	mouse_captured = c
@@ -1029,7 +942,8 @@ func on_granny_stole(cart: Cart) -> void:
 
 func on_player_stole(thief: Player, _cart: Cart, item: Item) -> void:
 	Main.float_text(self, thief.global_position + Vector3.UP * 2.2, "顺走了 " + item.display_name, Color(1, 0.75, 0.3))
-	_tut_marks["stole"] = true
+	if tutorial_guide != null:
+		tutorial_guide.marks["stole"] = true
 	# 车主大妈:开骂+追上来夺回
 	if _cart.cart_owner is Granny and is_instance_valid(_cart.cart_owner):
 		_cart.cart_owner.on_robbed(item, thief)
@@ -1092,8 +1006,7 @@ func net_granny_left_notify(g: Granny) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	# 鼠标自由视角
 	if event is InputEventMouseMotion and mouse_captured and not game_over:
-		cam_yaw -= event.relative.x * CAM_SENS
-		cam_pitch = clampf(cam_pitch - event.relative.y * CAM_SENS, -1.15, 0.35)
+		cam_rig.look(event.relative)
 		return
 	if event.is_action_pressed("ui_cancel"):
 		_set_mouse_captured(not mouse_captured)
@@ -1116,9 +1029,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.is_action_pressed("locate"):
 			net.send_action("locate")
 		elif event.is_action_pressed("throw"):
-			net.send_action("throw", Basis(Vector3.UP, cam_yaw) * Vector3.FORWARD)
+			net.send_action("throw", cam_rig.forward())
 		elif event.is_action_pressed("elbow"):
-			net.send_action("elbow", Basis(Vector3.UP, cam_yaw) * Vector3.FORWARD)
+			net.send_action("elbow", cam_rig.forward())
 		return
 	if event.is_action_pressed("dev_mode") and not game_over and not net_mp:
 		var showing := not hud.dev_panel.visible
