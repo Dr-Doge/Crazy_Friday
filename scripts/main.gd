@@ -59,7 +59,7 @@ var pending_npc := 8             # 开始界面滑块选定的NPC数量
 func _ready() -> void:
 	instance = self
 	print("疯抢星期五 白盒Demo ", Catalog.GAME_VERSION)
-	_setup_input_map()
+	InputActions.setup()
 	_setup_environment()
 
 	net = Net.new()
@@ -921,49 +921,9 @@ func _update_hud() -> void:
 	_update_skill_hud()
 	hud.set_list(_build_rows(local_idx))
 
-## 清单行(按超市分区分组;入车/已结算标绿划线)
+## 清单行(按超市分区分组;入车/已结算标绿划线):委托 ListRows
 func _build_rows(idx: int) -> Array:
-	var p := players[idx]
-	var cart_ids := {}
-	if is_instance_valid(p.cart):
-		for it3 in p.cart.items_in_basket():
-			cart_ids[it3.item_id] = true
-	var rows: Array = []
-	for zone in [Catalog.ZONE_PREMIUM, Catalog.ZONE_FRESH, Catalog.ZONE_APPLIANCE, Catalog.ZONE_DAILY, Catalog.ZONE_SNACK]:
-		var group: Array = []
-		for entry in pdata[idx]["list"]:
-			if Catalog.ITEMS[entry["id"]]["zone"] == zone:
-				group.append(entry)
-		if group.is_empty():
-			continue
-		rows.append({"header": true, "text": "【%s】" % Catalog.ZONE_NAMES[zone], "color": Catalog.ZONE_COLORS[zone]})
-		for entry in group:
-			var status := ""
-			var done: bool = entry["scanned"]
-			if done:
-				status = "已结算✓" + ("(特价抵扣)" if entry["via_sale"] else "")
-			else:
-				status = _item_whereabouts(entry["id"], p)
-			var cat_tag: String = "必需" if entry["cat"] == Catalog.CAT_NEED else ("大件" if entry["cat"] == Catalog.CAT_LARGE else "常规")
-			var green: bool = done or cart_ids.has(entry["id"])
-			rows.append({"text": "  · %s [%s] — %s" % [entry["name"], cat_tag, status], "green": green})
-	return rows
-
-func _item_whereabouts(id: String, p: Player) -> String:
-	var shelf_left := 0
-	for it in all_items:
-		if not is_instance_valid(it) or it.item_id != id:
-			continue
-		if p.held.has(it):
-			return "手中"
-		if it.state == Item.ItemState.FREE and is_instance_valid(p.cart) \
-				and p.cart.basket_area.overlaps_body(it):
-			return "车内"
-		if it.state == Item.ItemState.SHELVED:
-			shelf_left += 1
-	if shelf_left > 0:
-		return "货架剩%d件" % shelf_left
-	return "场上库存告急!"
+	return ListRows.build(self, idx)
 
 # ---------- 事件与结算 ----------
 
@@ -1058,50 +1018,9 @@ func _finish_player(idx: int, settled: bool) -> void:
 		game_over = true
 		_set_mouse_captured(false)
 
+## 结算画面文案:委托 ResultReport
 func _result_lines(idx: int, settled: bool) -> Array:
-	var pd: Dictionary = pdata[idx]
-	var done := 0
-	for entry in pd["list"]:
-		if entry["scanned"]:
-			done += 1
-	var lines: Array = []
-	lines.append("🛒 结算完成!" if settled else "🛒 打烊结算")
-	lines.append("")
-	lines.append("最终得分:%d" % pd["score"])
-	if net_mp and pdata.size() > 1:
-		# 全场排名(以此刻分数排序)
-		var ranking: Array = []
-		for i in pdata.size():
-			ranking.append([pdata[i]["score"], i])
-		ranking.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
-		lines.append("— 本局排名 —")
-		for r in ranking.size():
-			var who: String = "你" if ranking[r][1] == idx else "玩家%d" % (ranking[r][1] + 1)
-			lines.append("  第%d名 %s:%d分" % [r + 1, who, ranking[r][0]])
-	lines.append("清单完成:%d / %d" % [done, pd["list"].size()])
-	for entry in pd["list"]:
-		var mark: String = "✓" if entry["scanned"] else "✗"
-		lines.append("  %s %s%s" % [mark, entry["name"], "(特价抵扣)" if entry["via_sale"] else ""])
-	var cat_names := {Catalog.CAT_NEED: "必需品", Catalog.CAT_NORMAL: "常规品", Catalog.CAT_LARGE: "大件", Catalog.CAT_SALE: "特价"}
-	for cat in pd["counts"]:
-		lines.append("%s ×%d" % [cat_names.get(cat, cat), pd["counts"][cat]])
-	lines.append("")
-	lines.append("商品原价合计:¥%d · 黑五折后实付:¥%d" % [pd["orig"], pd["orig"] - pd["saved"]])
-	lines.append("疯抢星期五,您总计省下了 ¥%d !" % pd["saved"])
-	lines.append("")
-	if settled and done == pd["list"].size():
-		lines.append("清单全清,赶在打烊前扬长而去——黑五赢家!")
-	elif settled:
-		lines.append("落袋为安。没凑齐的,明年黑五再战。")
-	elif done == pd["list"].size():
-		lines.append("清单全清,满载而归!文明,打烊之前有效。")
-	elif pd["score"] > 0:
-		lines.append("保住了底,下次早点去排队。")
-	else:
-		lines.append("……您是来观光的吗?未过闸机的商品已全部作废。")
-	lines.append("")
-	lines.append("按 回车 " + ("断开并返回开始界面" if net_mp else "重开一局"))
-	return lines
+	return ResultReport.build(pdata, idx, settled, net_mp)
 
 func on_granny_stole(cart: Cart) -> void:
 	if cart.cart_owner is Player and _steal_bc_cd <= 0.0:
@@ -1213,78 +1132,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("debug_down") and not game_over and game_started:
 		player.add_imbalance(100.0)
 
-func _setup_input_map() -> void:
-	# InputMap是全局的,重开一局时避免重复注册
-	if InputMap.has_action("move_forward"):
-		return
-	_add_key("move_forward", KEY_W)
-	_add_key("move_forward", KEY_UP)
-	_add_key("move_back", KEY_S)
-	_add_key("move_back", KEY_DOWN)
-	_add_key("move_left", KEY_A)
-	_add_key("move_left", KEY_LEFT)
-	_add_key("move_right", KEY_D)
-	_add_key("move_right", KEY_RIGHT)
-	_add_key("sprint", KEY_SHIFT)
-	_add_key("interact", KEY_E)
-	_add_key("load_cart", KEY_R)
-	_add_key("drive", KEY_F)
-	_add_key("locate", KEY_Q)
-	_add_key("brace", KEY_SPACE)
-	_add_key("debug_time", KEY_T)
-	_add_key("dev_mode", KEY_F1)
-	_add_key("debug_sale", KEY_F3)
-	_add_key("debug_down", KEY_F4)
-	_add_key("restart", KEY_ENTER)
-	# 肘击只绑鼠标左键
-	if not InputMap.has_action("elbow"):
-		InputMap.add_action("elbow")
-	var mb := InputEventMouseButton.new()
-	mb.button_index = MOUSE_BUTTON_LEFT
-	InputMap.action_add_event("elbow", mb)
-	# 掷水瓶:鼠标右键
-	if not InputMap.has_action("throw"):
-		InputMap.add_action("throw")
-	var mb2 := InputEventMouseButton.new()
-	mb2.button_index = MOUSE_BUTTON_RIGHT
-	InputMap.action_add_event("throw", mb2)
-
-func _add_key(action: String, key: Key) -> void:
-	if not InputMap.has_action(action):
-		InputMap.add_action(action)
-	var ev := InputEventKey.new()
-	ev.physical_keycode = key
-	InputMap.action_add_event(action, ev)
-
 # ---------- 公共服务 ----------
 
-## 大妈寻路:AStarGrid2D,格子1米
+## 大妈寻路:委托 NavGrid(AStarGrid2D,格子1米)
 func find_path(from: Vector3, to: Vector3) -> Array:
-	var a := _nearest_open(_cell(from))
-	var b := _nearest_open(_cell(to))
-	var fallback: Array = [Vector3(to.x, 0, to.z)]
-	if a.x == 9999 or b.x == 9999:
-		return fallback
-	var ids := grid.get_id_path(a, b)
-	if ids.is_empty():
-		return fallback
-	var pts: Array = []
-	for id in ids:
-		pts.append(Vector3(id.x + 0.5, 0, id.y + 0.5))
-	pts.append(Vector3(to.x, 0, to.z))
-	return pts
+	return NavGrid.find_path(grid, from, to)
 
 func _cell(p: Vector3) -> Vector2i:
-	return Vector2i(int(floor(p.x)), int(floor(p.z)))
-
-func _nearest_open(c: Vector2i) -> Vector2i:
-	for r in 5:
-		for dx in range(-r, r + 1):
-			for dy in range(-r, r + 1):
-				var id := c + Vector2i(dx, dy)
-				if grid.is_in_boundsv(id) and not grid.is_point_solid(id):
-					return id
-	return Vector2i(9999, 9999)
+	return NavGrid.cell(p)
 
 func random_shelved_item() -> Item:
 	var pool: Array = []
