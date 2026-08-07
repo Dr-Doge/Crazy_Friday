@@ -1,5 +1,5 @@
 class_name TutorialGuide extends RefCounted
-## 九步教学关:移动→抓车→驾驶→冲刺→搜货→装车→偷窃→三技能→收银毕业。
+## 九步入行教学:走路→抢车→驾驶→冲刺→扫货→装车→顺同行的货→三技能→出货毕业。
 ## 每步只做"读玩家状态 → 满足即推进",不干预对局逻辑。
 ## 参数 m 是 Main(不写类型注解以避免 class_name 循环引用)。
 
@@ -63,21 +63,21 @@ func tick(delta: float) -> void:
 				if _sprint > SPRINT_TIME:
 					step = 4
 		4:
-			_say("⑤ 按 F 停车,走到货架前,按住 E 搜出一件商品(0.8秒)")
+			_say("⑤ 按 F 停车,走到货架前,按住 E 扫下代购单上的货(0.8秒)")
 			if not p.held.is_empty():
 				step = 5
 		5:
-			_say("⑥ 走回自己车旁,按 E 把商品放入购物车(R 可随时放下)")
+			_say("⑥ 走回自己车旁,按 E 把货装进车斗(R 可随时放下)")
 			if is_instance_valid(p.cart) and not p.cart.items_in_basket().is_empty():
 				step = 6
 		6:
-			_say("⑦ 入口旁停着辆无主购物车:按住 E 偷一件(1.2秒)")
+			_say("⑦ 那边有辆没人看着的车:按住 E 顺走一件(1.2秒)——同行而已,别客气")
 			if marks.get("stole", false):
 				step = 7
 		7:
 			_tick_skills(p)
 		8:
-			_say("⑨ 最后:推车开进收银通道,停稳自动扫码——扫完即毕业!")
+			_say("⑨ 最后:把车开进收银通道,停稳自动扫码——扫完就算出货,你出师了!")
 
 ## ⑧三技能各用一次:用CD 是否被触发来判定"用过了"
 func _tick_skills(p: Player) -> void:

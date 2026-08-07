@@ -1,5 +1,5 @@
 class_name Hud extends CanvasLayer
-## 白盒HUD:计时/阶段、购物清单、体力与失衡条、交互提示、超市广播、结算面板。
+## 白盒HUD:计时/阶段、代购清单、体力与失衡条、交互提示、超市广播、结算面板。
 ## 开始界面与联机大厅在 start_menu.gd,本类只做信号转发。
 
 signal npc_count_changed(count: int)
@@ -79,19 +79,19 @@ func _ready() -> void:
 	root.add_child(marquee)
 	marquee.position = Vector2(4000, 118)
 
-	# 左上:购物清单
+	# 左上:代购清单(黄牛接的单子)
 	var list_panel := PanelContainer.new()
 	var lv := VBoxContainer.new()
 	list_panel.add_child(lv)
 	var title := Label.new()
-	title.text = "📋 购物清单"
+	title.text = "📋 代购清单"
 	title.add_theme_font_override("font", Catalog.ui_font_bold())
 	title.add_theme_font_size_override("font_size", 44)
 	lv.add_child(title)
 	list_vbox = VBoxContainer.new()
 	lv.add_child(list_vbox)
 	score_label = Label.new()
-	score_label.text = "已结算得分:0"
+	score_label.text = "已到手货值:0"
 	score_label.add_theme_color_override("font_color", Color(0.55, 0.95, 0.6))
 	lv.add_child(score_label)
 	root.add_child(list_panel)
@@ -369,7 +369,7 @@ func set_list(rows: Array) -> void:
 			list_rows[i].text = "[color=#ffffff]%s[/color]" % t
 
 func set_score(score: int) -> void:
-	score_label.text = "已结算得分:%d" % score
+	score_label.text = "已到手货值:%d" % score
 
 func show_result(lines: Array) -> void:
 	for c in result_vbox.get_children():

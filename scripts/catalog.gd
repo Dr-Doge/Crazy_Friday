@@ -2,7 +2,7 @@ class_name Catalog
 ## 商品目录与全局常量:分类、分区、计分、价格与黑五折扣、物理层位
 
 # 游戏版本号:改版时同步更新 export_presets.cfg 里的导出文件名
-const GAME_VERSION := "v0.13"
+const GAME_VERSION := "v0.14"
 
 # 商品分类(计分见策划案第十节)
 const CAT_NEED := "need"      # 必需品 15分,库存<需求,必然争抢

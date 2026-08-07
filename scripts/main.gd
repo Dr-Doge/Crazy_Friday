@@ -1,5 +1,5 @@
 class_name Main extends Node3D
-## 主控制器:建场、发牌(清单)、计时与打烊、限时特价、计分结算、寻路服务、联机粘合。
+## 主控制器:建场、发牌(代购清单)、计时与打烊、限时特价、计分结算、寻路服务、联机粘合。
 ## 联机为主机权威:世界用共享种子两端确定性重建,客户端只发输入、收状态渲染。
 
 const MATCH_TIME := 300.0        # 5分钟
@@ -147,7 +147,7 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
 	hud.set_menu_status("")
 	_log_milestone("联机开局 seat=%d/%d host=%s npc=%d" % [local_idx, nplayers, host, npc])
 	if host:
-		hud.broadcast("联机对局开始!%d位顾客已入场,黑五愉快,手下无情~" % nplayers)
+		hud.broadcast("联机对局开始!%d位\"热心顾客\"已入场,黑五愉快,手下无情~" % nplayers)
 
 ## 主机点"开始对局"
 func net_begin_match() -> void:
@@ -222,7 +222,7 @@ func _build_world(wseed: int, npc: int, nplayers: int) -> void:
 	sale_times = [randf_range(55.0, 110.0), randf_range(150.0, 220.0)]
 	_spawn_random_slippery(3, 0.0)
 	hud.set_npc_count_display(grannies.size())
-	hud.broadcast("亲爱的顾客,欢迎光临疯抢超市。今天是疯抢星期五,祝您购物愉快～")
+	hud.broadcast("亲爱的顾客,欢迎光临疯抢超市。今天是疯抢星期五,每人限购,理性消费,祝您购物愉快～")
 	hud.broadcast("温馨提示:货架商品先到先得,请文明抢购～")
 
 var _large_slots: Array = []
@@ -261,7 +261,7 @@ func _spawn_stock(data: Dictionary) -> void:
 			it.set_shelved(pos + Vector3(0, it.box_size.y * 0.5, 0))
 			all_items.append(it)
 
-## 每名玩家一张清单:2必需+4常规+1大件(策划案§四)
+## 每名玩家一张代购清单:2硬需求+4常规+1大件。这是客户下的单,不是自己要用的东西
 func _make_lists(nplayers: int) -> void:
 	pdata = []
 	for pi in nplayers:
@@ -718,7 +718,7 @@ func trigger_locate_skill(p: Player = null) -> void:
 		if missing.has(it.item_id):
 			idxs.append(i)
 	Main.float_text(self, p.global_position + Vector3.UP * 2.4,
-			"找货雷达:清单货已备齐!" if idxs.is_empty() else "找货雷达!锁定 %d 件缺货" % idxs.size(),
+			"找货雷达:代购单已备齐!" if idxs.is_empty() else "找货雷达!锁定 %d 件缺货" % idxs.size(),
 			Color(0.3, 1.0, 0.5))
 	if p == player:
 		client_locate(idxs)   # 本机直接开始闪
@@ -822,7 +822,7 @@ func _trigger_flash_sale() -> void:
 		poss.append(sp)
 	if net_mp and not net_client:
 		net.rpc("ev_spawn_items", ids, poss)
-	hud.broadcast("限时特价!超值神秘箱已投放至卖场,数量有限,先到先得哦～(可抵扣清单上任意常规品)")
+	hud.broadcast("限时特价!超值神秘箱已投放至卖场,数量有限,先到先得哦～(可顶替代购单上任意常规品)")
 	for g in grannies:
 		if is_instance_valid(g) and randf() < 0.6:
 			g.rush_to(pos)
