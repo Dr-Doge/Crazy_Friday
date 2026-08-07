@@ -1,6 +1,7 @@
 class_name Checkout extends Node3D
-## 自助收银通道:闸机一次放行一车,通道内免战,逐件扫码1秒/件(策划案第七节)。
-## 通道沿z向:北口z=12进,南口z=19出。
+## 自助收银通道:闸机一次放行一车,通道内免战,逐件扫码1秒/件。
+## 通道沿z 向:北口 MapLayout.GATE_IN_Z 进,南口 MapLayout.GATE_OUT_Z 出。
+## 几何体一律用 CSG 节点,便于后续换成正式模型(闸机是 AnimatableBody3D+CSG 子节点)。
 
 signal item_scanned(item: Item, by_player: Player)
 signal lane_settled(by_player: Player)
@@ -20,42 +21,53 @@ var _scan_timer := 0.0
 var _was_scanning := false
 var _immune_actors: Array = []
 
+## 车尾越过这条线就放行南口(通道后段)
+var _south_release_z := 0.0
+
 ## 返回需要标记为寻路障碍的矩形
 func setup(x: float, index: int) -> Array:
 	lane_x = x
 	lane_index = index
+	name = "Checkout_%d" % index
 	var rects: Array = []
+	var mid_z := MapLayout.lane_mid_z()
+	var lane_len := MapLayout.lane_len()
+	_south_release_z = MapLayout.GATE_OUT_Z - lane_len * 0.25
 
 	# 两侧围栏
-	for side in [-1.2, 1.2]:
-		var rail := _static_box(Vector3(x + side, 0.5, 15.5), Vector3(0.25, 1.0, 7.0), Color(0.5, 0.52, 0.56))
-		add_child(rail)
-		rects.append(Rect2(x + side - 0.5, 12.0, 1.0, 7.0))
+	var i := 0
+	for side in [-MapLayout.LANE_HALF_W, MapLayout.LANE_HALF_W]:
+		_csg_box("Rail_%d" % i, Vector3(x + side, 0.5, mid_z),
+				Vector3(0.25, 1.0, lane_len), Color(0.5, 0.52, 0.56))
+		rects.append(Rect2(x + side - 0.5, MapLayout.GATE_IN_Z, 1.0, lane_len))
+		i += 1
 
 	# 收银带(扫码后商品摆这,不可偷不可撞散)——放通道西侧,不挡东侧主走廊
-	var belt := _static_box(Vector3(x - 1.85, 0.48, 16.0), Vector3(0.9, 0.95, 3.2), Color(0.35, 0.38, 0.42))
-	add_child(belt)
-	rects.append(Rect2(x - 2.3, 14.4, 0.9, 3.2))
+	_csg_box("Belt", Vector3(x + MapLayout.BELT_DX, 0.48, mid_z - 0.5),
+			Vector3(0.9, 0.95, 3.2), Color(0.35, 0.38, 0.42))
+	rects.append(Rect2(x + MapLayout.BELT_DX - 0.45, mid_z - 2.1, 0.9, 3.2))
 
 	# 闸机(升起挡路/沉入地面放行):北口入车,南口只出不进
-	gate = _make_gate(Vector3(x, _gate_closed_pos, 12.0))
-	south_gate = _make_gate(Vector3(x, _gate_closed_pos, 19.0))
+	gate = _make_gate("Gate_In", Vector3(x, _gate_closed_pos, MapLayout.GATE_IN_Z))
+	south_gate = _make_gate("Gate_Out", Vector3(x, _gate_closed_pos, MapLayout.GATE_OUT_Z))
 
 	# 通道内部感应(闸机以南):占用判定+免战区+扫码区
 	inner_area = Area3D.new()
+	inner_area.name = "InnerArea"
 	inner_area.monitoring = true
 	inner_area.monitorable = false
 	inner_area.collision_layer = 0
 	inner_area.collision_mask = Catalog.L_CART | Catalog.L_CHAR
 	var ac := CollisionShape3D.new()
 	var ab := BoxShape3D.new()
-	ab.size = Vector3(2.1, 2.4, 6.2)
+	ab.size = Vector3(MapLayout.LANE_HALF_W * 1.5, 2.4, lane_len - 0.8)
 	ac.shape = ab
-	ac.position = Vector3(x, 1.2, 15.8)
+	ac.position = Vector3(x, 1.2, mid_z)
 	inner_area.add_child(ac)
 	add_child(inner_area)
 
 	sign_label = Label3D.new()
+	sign_label.name = "Sign"
 	sign_label.text = "自助收银 %d" % index
 	sign_label.font = Catalog.ui_font()
 	sign_label.font_size = 90
@@ -64,7 +76,7 @@ func setup(x: float, index: int) -> Array:
 	sign_label.no_depth_test = true
 	sign_label.modulate = Color(0.2, 0.75, 0.35)
 	sign_label.outline_size = 12
-	sign_label.position = Vector3(x, 3.0, 12.0)
+	sign_label.position = Vector3(x, 3.0, MapLayout.GATE_IN_Z)
 	add_child(sign_label)
 	return rects
 
@@ -106,20 +118,20 @@ func _physics_process(delta: float) -> void:
 	# 北口闸机:通道被占或已关闭→升起;有车正压在闸机上时不升,避免把车顶飞
 	var closed := (not lane_open) or (not carts_inside.is_empty())
 	var target_y := _gate_closed_pos if closed else _gate_open_pos
-	if closed and _cart_on_gate(12.0):
+	if closed and _cart_on_gate(MapLayout.GATE_IN_Z):
 		target_y = _gate_open_pos
 	gate.position.y = move_toward(gate.position.y, target_y, 3.0 * delta)
 
 	# 南口闸机:默认封住(防倒灌+防绕过排队);车扫完往外走时放行
-	# 压车保护只认通道内侧(z<19)的车,南侧来的车不触发,否则又能绕过排队
+	# 压车保护只认通道内侧的车,南侧来的车不触发,否则又能绕过排队
 	var south_open := false
 	if lane_open:
 		for c in carts_inside:
-			if c.global_position.z > 17.5:
+			if c.global_position.z > _south_release_z:
 				south_open = true
 				break
 	var south_target := _gate_open_pos if south_open else _gate_closed_pos
-	if not south_open and _cart_on_gate(19.0, 19.05):
+	if not south_open and _cart_on_gate(MapLayout.GATE_OUT_Z, MapLayout.GATE_OUT_Z + 0.05):
 		south_target = _gate_open_pos
 	south_gate.position.y = move_toward(south_gate.position.y, south_target, 3.0 * delta)
 
@@ -176,22 +188,24 @@ func _cart_on_gate(gate_z: float, max_z := 999.0) -> bool:
 			return true
 	return false
 
-func _make_gate(pos: Vector3) -> AnimatableBody3D:
+func _make_gate(node_name: String, pos: Vector3) -> AnimatableBody3D:
 	var g := AnimatableBody3D.new()
+	g.name = node_name
 	g.collision_layer = Catalog.L_WORLD
 	g.collision_mask = 0
 	g.sync_to_physics = false
-	var gm := MeshInstance3D.new()
-	var gb := BoxMesh.new()
-	gb.size = Vector3(2.15, 1.1, 0.22)
-	var gmat := StandardMaterial3D.new()
-	gmat.albedo_color = Color(0.85, 0.45, 0.2)
-	gb.material = gmat
-	gm.mesh = gb
-	g.add_child(gm)
+	# 闸机杆本体用 CSG:换正式模型时把这个子节点替掉即可,父级动画逻辑不动
+	var bar := CSGBox3D.new()
+	bar.name = "Bar"
+	bar.size = Vector3(MapLayout.LANE_HALF_W * 1.55, 1.1, 0.22)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.85, 0.45, 0.2)
+	bar.material = mat
+	bar.use_collision = false   # 碰撞由父 AnimatableBody3D 提供,随之移动
+	g.add_child(bar)
 	var gc := CollisionShape3D.new()
 	var gs := BoxShape3D.new()
-	gs.size = Vector3(2.15, 1.1, 0.22)
+	gs.size = bar.size
 	gc.shape = gs
 	g.add_child(gc)
 	g.position = pos
@@ -203,24 +217,20 @@ func _next_belt_pos() -> Vector3:
 	var row := int(_belt_count / 7.0)
 	var col := _belt_count % 7
 	_belt_count += 1
-	return Vector3(lane_x - 1.85 + row * 0.05, 1.15 + row * 0.35, 14.6 + col * 0.45)
+	var z0 := MapLayout.lane_mid_z() - 2.0
+	return Vector3(lane_x + MapLayout.BELT_DX + row * 0.05, 1.15 + row * 0.35, z0 + col * 0.45)
 
-func _static_box(pos: Vector3, size: Vector3, color: Color) -> StaticBody3D:
-	var body := StaticBody3D.new()
-	body.collision_layer = Catalog.L_WORLD
-	body.collision_mask = 0
-	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = size
+## 通道内的静态 CSG 构件(围栏/收银带)
+func _csg_box(node_name: String, pos: Vector3, size: Vector3, color: Color) -> CSGBox3D:
+	var b := CSGBox3D.new()
+	b.name = node_name
+	b.size = size
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
-	bm.material = mat
-	mi.mesh = bm
-	body.add_child(mi)
-	var cs := CollisionShape3D.new()
-	var bs := BoxShape3D.new()
-	bs.size = size
-	cs.shape = bs
-	body.add_child(cs)
-	body.position = pos
-	return body
+	b.material = mat
+	b.use_collision = true
+	b.collision_layer = Catalog.L_WORLD
+	b.collision_mask = 0
+	b.position = pos
+	add_child(b)
+	return b

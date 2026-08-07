@@ -11,7 +11,7 @@ const PITCH_MAX := 0.35         # 仰角上限
 const FOLLOW_LAMBDA := 10.0     # 跟随平滑系数(越大越跟手)
 const SHAKE_MAX := 1.2          # 震动强度上限
 const SHAKE_DECAY := 2.5        # 震动每秒衰减
-const SPAWN_POS := Vector3(15, 1.5, 19.5)
+const SPAWN_POS := Vector3(MapLayout.PLAYER_SPAWN.x, 1.5, MapLayout.PLAYER_SPAWN.z)
 
 var yaw := 0.0
 var pitch := -0.38

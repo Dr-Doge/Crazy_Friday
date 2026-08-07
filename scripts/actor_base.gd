@@ -209,7 +209,7 @@ func apply_motion(delta: float, wish: Vector3, speed: float) -> void:
 	move_and_slide()
 	# 兜底:任何原因跌出世界都拉回入口
 	if global_position.y < -5.0:
-		global_position = Vector3(15, 0.5, 19.5)
+		global_position = MapLayout.respawn_pos(0.5)
 		velocity = Vector3.ZERO
 		push_velocity = Vector3.ZERO
 		reset_physics_interpolation()

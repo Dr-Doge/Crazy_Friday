@@ -26,7 +26,7 @@ const STEAL_RANGE := 9.0
 const RAM_RANGE := 18.0     # 别人车里有想要的货时,这个距离内会开车冲撞(对全场生效)
 const RAM_CD_HIT := 6.0     # 冲撞得手后的冷却(越短越凶)
 const RAM_CD_FAIL := 3.5    # 冲撞失败/放弃的冷却
-const EXIT_X := -24.5       # 收银后离场出口的x位置
+const EXIT_X := MapLayout.EXIT_X   # 收银后离场出口的x位置
 
 # 大妈语录(带方言味,对玩家操作做反应)
 const SAY_HURT := ["哎哟我的老腰!!", "造孽哦——!", "哪个挨千刀的撞我!", "哎呀妈呀!!", "撞人啦!没王法啦!"]
@@ -294,7 +294,9 @@ func _decide() -> void:
 				return
 	# 溜达
 	_after_drive = ""
-	_drive_path_to(Vector3(randf_range(-24, 24), 0, randf_range(-16, 8)))
+	_drive_path_to(Vector3(
+			randf_range(MapLayout.wander_x().x, MapLayout.wander_x().y), 0,
+			randf_range(MapLayout.wander_z().x, MapLayout.wander_z().y)))
 	state = GState.DRIVE
 
 func _go_shop(it: Item) -> void:
@@ -323,13 +325,13 @@ func _start_checkout() -> void:
 		# 没有开放的通道:直接离场
 		_leave_world = true
 		_after_drive = "leave"
-		_drive_path_to(Vector3(EXIT_X, 0, 21.0))
+		_drive_path_to(Vector3(EXIT_X, 0, MapLayout.exit_inner_z()))
 		state = GState.DRIVE
 		return
 	target_checkout = best
 	_after_drive = "queue"
 	# 网格寻路开到闸机口正前(避开货架行),之后再直线进通道
-	_drive_path_to(Vector3(best.lane_x, 0, 11.0))
+	_drive_path_to(Vector3(best.lane_x, 0, MapLayout.queue_wait_z()))
 	state = GState.DRIVE
 
 # ---------- 状态实现 ----------
@@ -350,7 +352,7 @@ func _drive_state(delta: float) -> void:
 	if _follow_path_drive(delta):
 		match _after_drive:
 			"queue":
-				_lane_pts = [Vector3(target_checkout.lane_x, 0, 15.2)]
+				_lane_pts = [Vector3(target_checkout.lane_x, 0, MapLayout.scan_stop_z())]
 				_lane_idx = 0
 				action_timer = 30.0
 				state = GState.Q_DRIVE
@@ -365,7 +367,7 @@ func _drive_state(delta: float) -> void:
 				else:
 					state = GState.IDLE
 			"leave":
-				_lane_pts = [Vector3(EXIT_X, 0, 24.0)]
+				_lane_pts = [Vector3(EXIT_X, 0, MapLayout.exit_outer_z())]
 				_lane_idx = 0
 				state = GState.EXIT_DRIVE
 			_:
@@ -538,9 +540,9 @@ func _queue_state(delta: float) -> void:
 	action_timer -= delta
 	if not attached or target_checkout == null or not target_checkout.lane_open or action_timer <= 0.0:
 		if attached and target_checkout != null and not target_checkout.lane_open \
-				and cart.global_position.z > 12.5:
+				and cart.global_position.z > MapLayout.GATE_IN_Z + 0.5:
 			# 已过闸机却赶上通道关闭:从南口离场,别困死在里面
-			_lane_pts = [Vector3(target_checkout.lane_x, 0, 20.8)]
+			_lane_pts = [Vector3(target_checkout.lane_x, 0, MapLayout.lane_out_z())]
 			_lane_idx = 0
 			state = GState.EXIT_DRIVE
 		else:
@@ -567,13 +569,17 @@ func _scanning_state(delta: float) -> void:
 			# 结算完毕:开去出口离场,不再挡道
 			want_label.text = "买完收工~"
 			want_label.modulate = Color(0.55, 0.95, 0.6)
-			_lane_pts = [Vector3(lx, 0, 20.8), Vector3(EXIT_X, 0, 21.0), Vector3(EXIT_X, 0, 24.0)]
+			_lane_pts = [
+				Vector3(lx, 0, MapLayout.lane_out_z()),
+				Vector3(EXIT_X, 0, MapLayout.exit_inner_z()),
+				Vector3(EXIT_X, 0, MapLayout.exit_outer_z()),
+			]
 		else:
-			_lane_pts = [Vector3(lx, 0, 20.8)]
+			_lane_pts = [Vector3(lx, 0, MapLayout.lane_out_z())]
 		_lane_idx = 0
 		state = GState.EXIT_DRIVE
 		return
-	_drive_toward(delta, Vector3(target_checkout.lane_x, 0, 15.2), false)
+	_drive_toward(delta, Vector3(target_checkout.lane_x, 0, MapLayout.scan_stop_z()), false)
 
 func _exit_state(delta: float) -> void:
 	# 已驶出出口豁口:从场上移除

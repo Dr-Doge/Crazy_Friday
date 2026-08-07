@@ -484,7 +484,7 @@ func _process(delta: float) -> void:
 		_void_sweep_timer = 2.0
 		for it in all_items:
 			if is_instance_valid(it) and it.state == Item.ItemState.FREE and it.global_position.y < -5.0:
-				it.set_free_at(Vector3(15, 0.8, 19.0))
+				it.set_free_at(MapLayout.respawn_pos(0.8))
 
 	# 红色高亮(杀意感知):本机玩家"还缺"的商品在谁车里,那辆车亮红壳
 	_hl_timer -= delta
@@ -648,7 +648,9 @@ func _spawn_random_slippery(count: int, life: float) -> void:
 	var tries := 0
 	while placed < count and tries < 200:
 		tries += 1
-		var p := Vector3(randf_range(-25.0, 25.0), 0, randf_range(-17.0, 8.0))
+		var sx := MapLayout.slippery_x()
+		var sz := MapLayout.slippery_z()
+		var p := Vector3(randf_range(sx.x, sx.y), 0, randf_range(sz.x, sz.y))
 		var cell := _cell(p)
 		if grid.is_in_boundsv(cell) and not grid.is_point_solid(cell):
 			SlipperyZone.create(self, p, Vector3(3.5, 2, 3.5), life)

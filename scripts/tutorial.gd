@@ -3,8 +3,8 @@ class_name TutorialGuide extends RefCounted
 ## 每步只做"读玩家状态 → 满足即推进",不干预对局逻辑。
 ## 参数 m 是 Main(不写类型注解以避免 class_name 循环引用)。
 
-## 练手无主车的摆放点(入口区旁)
-const DUMMY_CART_POS := Vector3(11, 0.2, 17.0)
+## 练手无主车的摆放点(入口区旁,玩家出生点西侧)
+const DUMMY_CART_POS := Vector3(MapLayout.PLAYER_SPAWN.x - 6.0, 0.2, MapLayout.PLAYER_SPAWN.z - 3.0)
 const MOVE_DIST := 5.0        # ①走够多远
 const DRIVE_DIST := 10.0      # ③推着走够多远
 const SPRINT_TIME := 1.0      # ④冲刺持续多久
