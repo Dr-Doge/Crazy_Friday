@@ -1,0 +1,371 @@
+class_name Player extends Actor
+## 玩家:徒步/推车两态。搜货必须脱车(策划案第五节),E键情境交互。
+
+const WALK_SPEED := 4.2
+const SPRINT_MULT := 1.55
+const PUSH_FORCE := 620.0
+const DRIVE_STEER := 110.0    # 驾驶转向力(过高会原地打转)
+const BRAKE_MULT := 1.5       # S刹车强度
+const REVERSE_MULT := 0.45    # 倒车推力比例
+const SEARCH_TIME := 0.8   # 货架搜货
+const STEAL_TIME := 1.2    # 偷别人车里的货
+const ELBOW_STAMINA := 4.0 # 肘击耗体力:一管体力=25次肘击
+
+var stamina := 100.0
+var settled_once := false   # 是否已结算
+var finished := false       # 本局已完赛(结算/打烊/掉线),停止操控
+var avatar_color := Color(0.25, 0.5, 0.9)
+var seat_label := "你"      # 头顶名牌(本机"你",其余"玩家N")
+var brace_time := 0.0       # 空格:冲击准备剩余时长
+var brace_cd := 0.0
+var locate_cd := 0.0        # 技能CD按人各算(联机双人)
+var bottle_cd := 0.0
+
+# 联机:远程玩家由主机模拟,输入来自网络(含客户端镜头朝向)
+var remote := false
+var net_move := Vector2.ZERO
+var net_sprint := false
+var net_brace := false
+var net_interact := false
+var net_cam_yaw := 0.0
+var _interact_held := false
+
+func set_net_input(mv: Vector2, sp: bool, br: bool, ih: bool, cam_yaw: float) -> void:
+	net_move = mv
+	net_sprint = sp
+	net_brace = br
+	net_interact = ih
+	net_cam_yaw = cam_yaw
+
+var main: Main
+
+# 交互引导(由HUD显示)
+var prompt_text := ""
+var channel_progress := -1.0
+
+# E键长按通道
+var _channel_kind := ""       # "search" / "steal"
+var _channel_target: Node = null
+var _channel_time := 0.0
+var _channel_need := 0.0
+
+func _ready() -> void:
+	build_body(avatar_color, seat_label)
+	hold_capacity = 2
+
+func is_running() -> bool:
+	return Input.is_action_pressed("sprint") and stamina > 1.0
+
+func _physics_process(delta: float) -> void:
+	actor_tick(delta)
+	prompt_text = ""
+	channel_progress = -1.0
+	if downed or finished or (main != null and main.game_over):
+		apply_motion(delta, Vector3.ZERO, 0.0)
+		return
+
+	var input := net_move if remote else Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	_interact_held = net_interact if remote else Input.is_action_pressed("interact")
+	var sprint_key := net_sprint if remote else Input.is_action_pressed("sprint")
+	var brace_key := net_brace if remote else Input.is_action_pressed("brace")
+
+	locate_cd = maxf(0.0, locate_cd - delta)
+	bottle_cd = maxf(0.0, bottle_cd - delta)
+
+	# 冲刺:按下Shift立即提速,耗体力
+	var moving := attached or input.length() > 0.1
+	var sprint := sprint_key and stamina > 1.0 and moving
+	if sprint:
+		stamina = maxf(0.0, stamina - 22.0 * delta)
+	else:
+		stamina = minf(100.0, stamina + 15.0 * delta)
+
+	# 空格:冲击准备1秒——期间被车撞不涨失衡(内置2.5秒冷却防常驻)
+	brace_cd = maxf(0.0, brace_cd - delta)
+	if brace_time > 0.0:
+		brace_time -= delta
+		if brace_time <= 0.0:
+			braced = false
+	if brace_key and brace_cd <= 0.0:
+		braced = true
+		brace_time = 1.0
+		brace_cd = 2.5
+
+	if attached and is_instance_valid(cart):
+		_drive_cart(delta, input, sprint)
+	else:
+		# 徒步:移动方向跟随镜头(第三人称);远程玩家用客户端发来的镜头朝向解算
+		var wish := Vector3.ZERO
+		if input.length() > 0.05:
+			var yaw := net_cam_yaw if remote else (main.cam_yaw if main != null else 0.0)
+			var yaw_basis := Basis(Vector3.UP, yaw)
+			wish = (yaw_basis * Vector3(input.x, 0, input.y)).normalized()
+		var speed := WALK_SPEED * (SPRINT_MULT if sprint else 1.0) * speed_factor()
+		if braced:
+			speed *= 0.45
+		apply_motion(delta, wish, speed)
+
+	# 手部姿态
+	if braced:
+		hand_pose = "brace"
+	elif attached:
+		hand_pose = "push"
+	elif _channel_kind != "":
+		hand_pose = "channel"
+	elif not held.is_empty():
+		hand_pose = "carry"
+	else:
+		hand_pose = "idle"
+
+	_update_channel(delta, input)
+	_update_interactions()
+
+## 大件减速:抱着电视速度减半
+func speed_factor() -> float:
+	for it in held:
+		if it.category == Catalog.CAT_LARGE:
+			return 0.5
+	return 1.0
+
+# ---------- 推车 ----------
+
+## 汽车式驾驶:W沿车头前进,A/D转向,S刹车/倒车
+func _drive_cart(delta: float, input: Vector2, sprint: bool) -> void:
+	# 车被撞翻(侧倾过大)时强制人车分离,避免人被"焊"在翻倒的车把上
+	if cart.global_transform.basis.y.dot(Vector3.UP) < 0.35:
+		detach_cart()
+		return
+	var throttle := -input.y   # W=+1 前进,S=-1
+	var steer := input.x       # A=-1 D=+1
+	cart.sprinting = sprint and throttle > 0.1
+	cart.sprint_level = 1.0 if cart.sprinting else move_toward(cart.sprint_level, 0.0, delta * 3.0)
+	var lf := cart.load_factor()   # 满载→推力体感下降、转向变笨
+	var fwd := -cart.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var fwd_speed := fwd.dot(cart.linear_velocity)
+
+	if throttle > 0.05:
+		cart.apply_central_force(fwd * PUSH_FORCE * throttle * (1.7 if sprint else 1.0))
+	elif throttle < -0.05:
+		if fwd_speed > 0.6:
+			# 刹车
+			cart.apply_central_force(-fwd * PUSH_FORCE * BRAKE_MULT * absf(throttle))
+		else:
+			# 倒车(慢速)
+			cart.apply_central_force(fwd * PUSH_FORCE * REVERSE_MULT * throttle)
+	if absf(steer) > 0.05:
+		# 转向力与车速强挂钩:静止时几乎不转(修"原地漂移"),越快越听方向
+		# 倒车时转向反打:按A行进轨迹仍向屏幕左弯(倒库直觉)
+		var steer_eff := clampf(absf(fwd_speed) / 3.5, 0.12, 1.0)
+		var steer_sign := -1.0 if fwd_speed < -0.2 else 1.0
+		cart.apply_torque(Vector3(0, -steer * steer_sign * DRIVE_STEER * cart.mass * 0.12 * steer_eff * (0.4 + 0.6 * lf), 0))
+
+	# 人挂在车把上
+	global_position = cart.handle_pos()
+	body_root.global_rotation = Vector3(0, cart.global_rotation.y, 0)
+	velocity = Vector3.ZERO
+
+func _on_knockdown() -> void:
+	# 推车时被撞满失衡:人车分离+翻车甩货,按失衡溢出量30%起(策划案第六节)
+	if attached and is_instance_valid(cart):
+		detach_cart()
+		cart.spill(clampf(0.3 + last_overflow / 100.0, 0.3, 1.0))
+	stamina = maxf(stamina, 30.0)
+
+# ---------- 输入 ----------
+
+func _unhandled_input(event: InputEvent) -> void:
+	if remote or downed or main == null or main.game_over:
+		return
+	if event.is_action_pressed("interact"):
+		_on_interact_pressed()
+	elif event.is_action_released("interact"):
+		_cancel_channel()
+	elif event.is_action_pressed("drive"):
+		# F:抓住/放开购物车(侧翻的车抓住时自动扶正)
+		if attached:
+			detach_cart()
+		elif cart != null and is_instance_valid(cart) \
+				and global_position.distance_to(cart.global_position) < 2.6:
+			attach_cart()
+	elif event.is_action_pressed("load_cart"):
+		_drop_held()
+	elif event.is_action_pressed("locate"):
+		main.trigger_locate_skill()
+	elif event.is_action_pressed("throw"):
+		main.trigger_throw_bottle()
+	elif event.is_action_pressed("elbow"):
+		# 肘击自动朝镜头面朝的方向
+		var cam_fwd := Vector3.ZERO
+		if main != null:
+			cam_fwd = Basis(Vector3.UP, main.cam_yaw) * Vector3.FORWARD
+		do_elbow(cam_fwd)
+
+## 肘击统一入口(本地/联机远程共用):结算体力,不够抡不动
+func do_elbow(dir: Vector3) -> void:
+	if downed or finished:
+		return
+	if stamina < ELBOW_STAMINA:
+		Main.float_text(self, global_position + Vector3.UP * 2.2, "胳膊抡不动了...(体力不足)", Color(0.8, 0.8, 0.8))
+		return
+	if not attached:
+		# 转身面向出肘方向(本地=镜头方向,远程=客户端镜头方向)
+		if dir.length() > 0.1:
+			body_root.global_rotation = Vector3(0, atan2(-dir.x, -dir.z), 0)
+		elif main != null:
+			body_root.global_rotation = Vector3(0, main.cam_yaw, 0)
+	if try_elbow(dir):
+		stamina = maxf(0.0, stamina - ELBOW_STAMINA)
+
+func _on_interact_pressed() -> void:
+	if attached:
+		return
+	var pick := _best_interaction()
+	match pick.get("kind", ""):
+		"pickup":
+			var it: Item = pick["target"]
+			if can_hold(it):
+				it.set_held()
+				take_item(it)
+				Main.float_text(self, global_position + Vector3.UP * 2.0, "拾取 " + it.display_name, Color(0.6, 0.9, 0.6))
+		"search":
+			_start_channel("search", pick["target"], SEARCH_TIME)
+		"steal":
+			_start_channel("steal", pick["target"], STEAL_TIME)
+		"load":
+			_load_held_into_cart()
+
+func _start_channel(kind: String, target: Node, need: float) -> void:
+	_channel_kind = kind
+	_channel_target = target
+	_channel_time = 0.0
+	_channel_need = need
+
+func _cancel_channel() -> void:
+	_channel_kind = ""
+	_channel_target = null
+
+func _update_channel(delta: float, input: Vector2) -> void:
+	if _channel_kind == "":
+		return
+	# 移动、被撞离目标或目标失效则打断
+	if input.length() > 0.1 or not is_instance_valid(_channel_target) or downed or attached:
+		_cancel_channel()
+		return
+	if _channel_target is Node3D and global_position.distance_to(_channel_target.global_position) > 2.8:
+		_cancel_channel()
+		return
+	if not _interact_held:
+		_cancel_channel()
+		return
+	_channel_time += delta
+	channel_progress = _channel_time / _channel_need
+	if _channel_time < _channel_need:
+		if _channel_kind == "search":
+			prompt_text = "搜货中……(松开取消)"
+		else:
+			prompt_text = "翻别人车斗中……(松开取消)"
+		return
+	# 完成
+	match _channel_kind:
+		"search":
+			var it: Item = _channel_target
+			if it.state == Item.ItemState.SHELVED and can_hold(it):
+				it.set_held()
+				take_item(it)
+				main.on_player_took_from_shelf(it)
+		"steal":
+			var target_cart: Cart = _channel_target
+			var it2 := target_cart.take_top_item()
+			if it2 != null and can_hold(it2):
+				it2.set_held()
+				take_item(it2)
+				target_cart.show_steal_alert()
+				main.on_player_stole(self, target_cart, it2)
+	_cancel_channel()
+
+func _load_held_into_cart() -> void:
+	if attached or held.is_empty() or cart == null or not is_instance_valid(cart):
+		return
+	if global_position.distance_to(cart.global_position) > 2.6:
+		return
+	while not held.is_empty():
+		var it: Item = held.pop_back()
+		var drop_pos := cart.to_global(Vector3(randf_range(-0.15, 0.15), 1.5, randf_range(-0.25, 0.25)))
+		it.set_free_at(drop_pos, Vector3(0, -1.0, 0))
+	Main.float_text(self, global_position + Vector3.UP * 2.0, "装车!", Color(0.6, 0.9, 0.6))
+
+## R:把手里的东西放在脚边
+func _drop_held() -> void:
+	if attached or held.is_empty():
+		return
+	var fwd := -body_root.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	while not held.is_empty():
+		var it: Item = held.pop_back()
+		it.set_free_at(global_position + fwd * 0.7 + Vector3.UP * 0.9)
+	Main.float_text(self, global_position + Vector3.UP * 2.0, "放下了物品", Color(0.8, 0.8, 0.8))
+
+# ---------- 交互扫描 ----------
+
+func _best_interaction() -> Dictionary:
+	var best := {}
+	var best_d := 999.0
+	# 地上的散货(不含别人车斗里的)
+	for node in get_tree().get_nodes_in_group("items"):
+		var it: Item = node
+		if not is_instance_valid(it):
+			continue
+		var d := global_position.distance_to(it.global_position)
+		if it.state == Item.ItemState.FREE and d < 1.8 and d < best_d and not _item_in_any_basket(it):
+			if can_hold(it):
+				best = {"kind": "pickup", "target": it, "label": "E 拾取 " + it.display_name}
+				best_d = d
+		elif it.state == Item.ItemState.SHELVED and d < 1.9 and d < best_d:
+			if can_hold(it):
+				best = {"kind": "search", "target": it, "label": "按住E 搜货:" + it.display_name}
+			else:
+				best = {"kind": "search_full", "target": it, "label": "手上拿不下了(R先装车)"}
+			best_d = d
+	# 别人的车(无人推、有货)
+	for node in get_tree().get_nodes_in_group("carts"):
+		var c: Cart = node
+		if c == cart or not is_instance_valid(c):
+			continue
+		var d2 := global_position.distance_to(c.global_position)
+		if d2 < 2.1 and d2 < best_d and c.attached_agent == null and not c.items_in_basket().is_empty():
+			if held_slots_used() < hold_capacity:
+				best = {"kind": "steal", "target": c, "label": "按住E 偷取车内商品(1.2秒)"}
+				best_d = d2
+	# 手里有货且在自己车旁:E 放入购物车
+	if not held.is_empty() and cart != null and is_instance_valid(cart):
+		var d3 := global_position.distance_to(cart.global_position)
+		if d3 < 2.6 and d3 < best_d:
+			best = {"kind": "load", "target": cart, "label": "E 放入购物车"}
+			best_d = d3
+	return best
+
+func _item_in_any_basket(it: Item) -> bool:
+	for node in get_tree().get_nodes_in_group("carts"):
+		var c: Cart = node
+		if is_instance_valid(c) and c.basket_area.overlaps_body(it):
+			return true
+	return false
+
+func _update_interactions() -> void:
+	if channel_progress >= 0.0:
+		return
+	if attached:
+		prompt_text = "W前进 A/D转向 S刹车 · Shift冲刺 · F放开 · 左键肘击"
+		return
+	var parts: Array = []
+	var pick := _best_interaction()
+	if pick.has("label"):
+		parts.append(str(pick["label"]))
+	if cart != null and is_instance_valid(cart) and global_position.distance_to(cart.global_position) < 2.6:
+		parts.append("F 扶正并推车" if cart.global_transform.basis.y.dot(Vector3.UP) < 0.8 else "F 推车")
+	if not held.is_empty():
+		parts.append("R 放下")
+	prompt_text = " · ".join(parts)
