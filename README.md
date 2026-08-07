@@ -82,6 +82,34 @@
 - 用 Godot 打开本文件夹(导入 `project.godot`),直接 F5 运行
 - 或命令行:`Godot_v4.7-stable_win64.exe --path <本目录>`
 
+## 自动化冒烟测试
+
+改动代码后跑一遍,**stderr 零容忍**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Mode all       # 单机+教学关+联机
+powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Mode single -Full# 全场对局(约5.5分钟)
+powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Mode mp -Clients 5# 6人满员联机
+```
+
+脚本自动探测 Godot(也可 `-Godot <路径>` 或环境变量 `GODOT_BIN`),会先 `--import`
+注册新脚本的 `class_name`,再多实例并发跑,逐项判定退出码/stderr/里程碑,
+日志落在 `test_out/`。判定为 FAIL 时脚本以退出码 1 结束,可直接接 CI。
+
+测试用环境变量钩子:
+
+| 变量 | 作用 |
+|------|------|
+| `WHITEBOX_AUTOSTART=1` | 跳过开始界面直接单机开局(无头运行默认如此) |
+| `WHITEBOX_TUTORIAL=1` | 无头直接进教学关 |
+| `WHITEBOX_NPC=<0-10>` | 指定大妈数量 |
+| `WHITEBOX_QUIT_ON_END=1` | 对局结算完毕自动退出(全场模拟用) |
+| `WHITEBOX_HOST=<N>` | 建房,凑够 N 名客户端立即开局 |
+| `WHITEBOX_JOIN=<IP>` | 自动加入指定主机 |
+| `WHITEBOX_HOSTJOIN=<IP>` | 先建房再加入,复现真实误操作序列 |
+| `WHITEBOX_PORT=<端口>` | 换端口,便于单机多实例 |
+| `WHITEBOX_SHOT=<png>` | 运行约2秒自动截图退出(可视化回归) |
+
 ## 操作(第三人称+驾驶式推车)
 
 | 按键 | 功能 |
@@ -156,16 +184,41 @@
 ## 代码结构
 
 ```
-scenes/main.tscn        入口(仅一个挂 main.gd 的根节点)
-scripts/main.gd         主控制器:计时/阶段/特价/计分/寻路服务
-scripts/market_builder.gd 灰盒地图生成(4分区+2收银道+地滑区+寻路网格)
-scripts/catalog.gd      商品目录/分区/计分/物理层常量
-scripts/item.gd         商品刚体(货架冻结/手持/自由/已扫码 四态)
-scripts/cart.gd         购物车刚体(物理车斗/撞击部位结算/偷窃接口)
-scripts/actor_base.gd   角色基类(失衡/倒地/手持/肘击)
-scripts/player.gd       玩家(推车驾驶/情境交互/长按通道)
-scripts/granny.gd       大妈NPC(扫货/囤货/偷车/特价冲锋,AStarGrid2D寻路)
-scripts/checkout.gd     收银通道(闸机/免战/逐件扫码)
-scripts/slippery_zone.gd 地滑区
-scripts/hud.gd          HUD(清单/计时/双条/广播/结算面板)
+scenes/main.tscn          入口(仅一个挂 main.gd 的根节点,其余一切由代码运行时生成)
+
+—— 主控与对局 ——
+scripts/main.gd           主控:建场/发牌/计时打烊/特价/计分结算/联机粘合   1041
+scripts/market_builder.gd 灰盒地图生成(4分区+中央爆款专区+2收银道+寻路网格) 305
+scripts/catalog.gd        商品目录/分区/计分/价格折扣/物理层常量/字体        116
+
+—— 实体 ——
+scripts/actor_base.gd     角色基类(失衡/倒地/手持/肘击)                     375
+scripts/player.gd         玩家(推车驾驶/情境交互/长按通道)371
+scripts/granny.gd         大妈NPC(扫货/囤货/偷车/追讨/特价冲锋,AStar寻路)    868
+scripts/cart.gd           购物车刚体(物理车斗/撞击部位结算/偷窃接口)         341
+scripts/item.gd           商品刚体(货架冻结/手持/自由/已扫码 四态)           126
+scripts/checkout.gd       收银通道(闸机/免战/逐件扫码)226
+scripts/slippery_zone.gd  湿滑地面(带寿命,到点蒸发)126
+
+—— 表现与界面 ——
+scripts/hud.gd            HUD+开始界面+大厅(清单/计时/双条/大喇叭/结算面板)  498
+scripts/camera_rig.gd     第三人称相机(SpringArm防穿墙/跟随/碰撞震动)        58
+scripts/list_rows.gd      HUD 清单行生成(按分区分组/入车标绿)                 67
+scripts/result_report.gd  结算文案生成(纯数据→字符串,含排名与省钱账本)        63
+
+—— 联机 ——
+scripts/net.gd            ENet 主机权威联机(大厅/座位/20Hz同步/容错)         373
+scripts/client_view.gd    客户端插值渲染(只渲染,不模拟)                      124
+
+—— 支撑 ——
+scripts/nav_grid.gd       AStarGrid2D 寻路服务(格子1米)                       39
+scripts/input_actions.gd  输入映射的唯一定义处(两张绑定表,改键位只看这里)     57
+scripts/tutorial.gd       九步教学关99
+
+tools/smoke_test.ps1无头自动化冒烟测试(单机/教学关/联机满员)
 ```
+
+> `main.gd` 原为 1321 行的单体主控,已按职责拆出 `camera_rig` / `tutorial` /
+> `client_view` / `nav_grid` / `input_actions` / `result_report` / `list_rows`
+> 七个模块。对外接口(`main.cam_yaw`、`main.find_path()`、`main.add_camera_shake()` 等)
+> 以代理属性和转发函数保留,故 `net.gd` / `player.gd` / `granny.gd` 无需改动。

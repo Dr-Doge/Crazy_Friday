@@ -52,11 +52,19 @@ var tutorial := false
 var net_mp := false              # 联机对局
 var net_client := false          # 本机是客户端
 var pending_npc := 8             # 开始界面滑块选定的NPC数量
+## 无头运行(自动化测试);为true时把关键里程碑打到 stdout 供 tools/smoke_test.ps1 断言
+var headless := false
+
+## 里程碑日志:只在无头测试下输出,不干扰正常游玩
+func _log_milestone(msg: String) -> void:
+	if headless:
+		print("[headless] ", msg)
 
 # ---------- 启动与开始界面 ----------
 
 func _ready() -> void:
 	instance = self
+	headless = DisplayServer.get_name() == "headless"
 	print("疯抢星期五 白盒Demo ", Catalog.GAME_VERSION)
 	InputActions.setup()
 	_setup_environment()
@@ -75,6 +83,8 @@ func _ready() -> void:
 	hud.host_pressed.connect(_menu_host)
 	hud.join_pressed.connect(_menu_join)
 	hud.begin_pressed.connect(net_begin_match)
+	if OS.get_environment("WHITEBOX_NPC") != "":
+		pending_npc = clampi(int(OS.get_environment("WHITEBOX_NPC")), 0, 10)
 	hud.set_npc_count_display(pending_npc)
 
 	# 调试:设置环境变量 WHITEBOX_SHOT=<png路径> 时,运行约2秒自动截图退出(hud常驻层执行)
@@ -96,8 +106,9 @@ func _ready() -> void:
 		_menu_host()
 		get_tree().create_timer(2.0).timeout.connect(func() -> void:
 			_menu_join(OS.get_environment("WHITEBOX_HOSTJOIN")))
-	elif DisplayServer.get_name() == "headless" or OS.get_environment("WHITEBOX_AUTOSTART") != "":
-		_start_match(false)
+	elif headless or OS.get_environment("WHITEBOX_AUTOSTART") != "":
+		# WHITEBOX_TUTORIAL=1 时无头跑教学关,用于覆盖九步指引代码路径
+		_start_match(OS.get_environment("WHITEBOX_TUTORIAL") != "")
 	else:
 		_set_mouse_captured(false)
 
@@ -124,11 +135,13 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int) -> 
 	tutorial = false
 	_build_world(wseed, npc, nplayers)
 	if net_client:
+		client_view = ClientView.new(self)
 		_make_client_puppets()
 	net.register_world()
 	hud.hide_menu()
 	_set_mouse_captured(true)
 	hud.set_menu_status("")
+	_log_milestone("联机开局 seat=%d/%d host=%s npc=%d" % [local_idx, nplayers, host, npc])
 	if host:
 		hud.broadcast("联机对局开始!%d位顾客已入场,黑五愉快,手下无情~" % nplayers)
 
@@ -522,22 +535,16 @@ func _hot_carts_for(idx: int) -> Array:
 
 # ---------- 客户端渲染 ----------
 
-var _net_state := {}
-var _client_rows: Array = []
-var _client_score := 0
+## 仅客户端创建:状态包缓存与插值渲染,详见 client_view.gd
+var client_view: ClientView
 
 func apply_net_state(d: Dictionary) -> void:
-	# 拆分包按键合并(A包:玩家/车/闸机/计时,B包:大妈/商品)
-	for k in d:
-		_net_state[k] = d[k]
+	if client_view != null:
+		client_view.apply_state(d)
 
 func client_hud(rows: Array, score: int, hot_carts: Array) -> void:
-	_client_rows = rows
-	_client_score = score
-	for i in net.carts_net.size():
-		var c = net.carts_net[i]
-		if is_instance_valid(c):
-			c.set_highlight(hot_carts.has(i))
+	if client_view != null:
+		client_view.set_hud(rows, score, hot_carts)
 
 func client_locate(idxs: Array) -> void:
 	locate_time = 3.0
@@ -565,69 +572,7 @@ func client_show_result(lines: Array) -> void:
 
 func _client_tick(delta: float) -> void:
 	# 本机技能CD等由同步覆盖;这里只做插值渲染+HUD
-	if not _net_state.is_empty():
-		var k := 1.0 - exp(-14.0 * delta)
-		var ps: Array = _net_state.get("p", [])
-		for i in mini(ps.size(), players.size()):
-			var a: Array = ps[i]
-			var p := players[i]
-			p.global_position = p.global_position.lerp(a[0], k)
-			p.body_root.rotation.y = lerp_angle(p.body_root.rotation.y, a[1], k)
-			p.hand_pose = a[2]
-			p.imbalance = a[3]
-			p.stamina = a[4]
-			p.downed = a[5]
-			p.braced = a[6]
-			p.channel_progress = a[7]
-			p.body_root.rotation.x = lerpf(p.body_root.rotation.x, a[8], k)
-			p.locate_cd = a[9]
-			p.bottle_cd = a[10]
-			p.brace_cd = a[11]
-			p.puppet_update(delta)
-		var cs: Array = _net_state.get("c", [])
-		for i in mini(cs.size(), net.carts_net.size()):
-			if cs[i] == null:
-				continue
-			var c = net.carts_net[i]
-			if not is_instance_valid(c):
-				continue
-			c.global_position = c.global_position.lerp(cs[i][0], k)
-			var r: Vector3 = cs[i][1]
-			c.global_rotation = Vector3(
-					lerp_angle(c.global_rotation.x, r.x, k),
-					lerp_angle(c.global_rotation.y, r.y, k),
-					lerp_angle(c.global_rotation.z, r.z, k))
-		var gs: Array = _net_state.get("g", [])
-		for i in mini(gs.size(), net.grannies_net.size()):
-			if gs[i] == null:
-				continue
-			var g = net.grannies_net[i]
-			if not is_instance_valid(g):
-				continue
-			g.global_position = g.global_position.lerp(gs[i][0], k)
-			g.body_root.rotation.y = lerp_angle(g.body_root.rotation.y, gs[i][1], k)
-			g.hand_pose = gs[i][2]
-			g.body_root.rotation.x = lerpf(g.body_root.rotation.x, gs[i][3], k)
-			g.puppet_update(delta)
-		for e in _net_state.get("i", []):
-			var idx: int = e[0]
-			if idx < 0 or idx >= all_items.size():
-				continue
-			var it = all_items[idx]
-			if not is_instance_valid(it):
-				continue
-			it.state = e[1]
-			it.global_position = it.global_position.lerp(e[2], k)
-			it.global_rotation.y = lerp_angle(it.global_rotation.y, e[3], k)
-			if it.state == Item.ItemState.SCANNED and it.label != null:
-				it.label.modulate = Color(0.1, 0.55, 0.2)
-		var cos: Array = _net_state.get("co", [])
-		for i in mini(cos.size(), checkouts.size()):
-			checkouts[i].gate.position.y = cos[i][0]
-			checkouts[i].south_gate.position.y = cos[i][1]
-		time_left = _net_state.get("t", time_left)
-		in_grace = _net_state.get("ig", false)
-		grace_left = _net_state.get("gl", grace_left)
+	client_view.interpolate(delta)
 	_tick_locate_visual(delta)
 	_update_hud_client()
 
@@ -635,9 +580,9 @@ func _update_hud_client() -> void:
 	_update_timer_hud()
 	hud.set_bars(player.stamina, player.imbalance)
 	hud.set_prompt(player.prompt_text, player.channel_progress)
-	hud.set_score(_client_score)
+	hud.set_score(client_view.score)
 	_update_skill_hud()
-	hud.set_list(_client_rows)
+	hud.set_list(client_view.rows)
 
 # ---------- 技能 ----------
 
@@ -914,6 +859,7 @@ func _match_time_up() -> void:
 func _finish_player(idx: int, settled: bool) -> void:
 	pdata[idx]["done"] = true
 	players[idx].finished = true
+	_log_milestone("玩家%d 结算 settled=%s 得分=%d" % [idx + 1, settled, pdata[idx]["score"]])
 	var lines := _result_lines(idx, settled)
 	if idx == local_idx:
 		hud.show_result(lines)
@@ -930,6 +876,12 @@ func _finish_player(idx: int, settled: bool) -> void:
 	if all_done:
 		game_over = true
 		_set_mouse_captured(false)
+		_log_milestone("对局结束(全员已结算)")
+		# 测试钩子:WHITEBOX_QUIT_ON_END=1 时结算完自动退出。
+		# 无头下游戏时间按真实时间走,用 --quit-after 帧数卡全场并不可靠,
+		# 让对局自己决定何时结束才准。延迟半秒是为了让结算日志先刷出去。
+		if OS.get_environment("WHITEBOX_QUIT_ON_END") != "":
+			get_tree().create_timer(0.5).timeout.connect(get_tree().quit)
 
 ## 结算画面文案:委托 ResultReport
 func _result_lines(idx: int, settled: bool) -> Array:
