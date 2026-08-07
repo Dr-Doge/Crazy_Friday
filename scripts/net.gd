@@ -94,7 +94,7 @@ func _on_server_lost() -> void:
 
 func _on_connected_ok() -> void:
 	print("[Net] 已连上主机,等待开局指令")
-	main.hud.set_menu_status("已连上主机!正在同步你的黄牛档案...")
+	main.hud.set_menu_status("已连上主机!正在同步你的角色档案...")
 	push_profile()
 
 ## 把本机档案(昵称+配色)上报给主机。在大厅里改名换色也调这个。
@@ -286,16 +286,32 @@ func client_input(mv: Vector2, sprint: bool, brace: bool, interact_held: bool, c
 	if not is_host:
 		return
 	var seat := seat_of_peer(multiplayer.get_remote_sender_id())
-	if seat > 0 and seat < main.players.size():
-		main.players[seat].set_net_input(mv, sprint, brace, interact_held, cam_yaw)
+	if seat <= 0 or seat >= main.players.size():
+		return
+	# 【权威边界】绝不直接采信远程输入。
+	# 本机 Input.get_vector() 天然落在单位圆内,但改过的客户端可以发 (0,-50):
+	# 推车路径的 throttle := -input.y 会直接乘进 apply_central_force(player.gd),
+	# 等于把推力和撞击动能放大数十倍(徒步路径有 normalized() 兜住,推车没有)。
+	# NaN/inf 则会污染物理状态并在各端扩散,必须整帧丢弃。
+	if not mv.is_finite() or not is_finite(cam_yaw):
+		return
+	if mv.length() > 1.0:
+		mv = mv.normalized()
+	main.players[seat].set_net_input(mv, sprint, brace, interact_held, cam_yaw)
 
 @rpc("any_peer", "call_remote", "reliable")
 func client_action(kind: String, dir: Vector3) -> void:
 	if not is_host:
 		return
 	var seat := seat_of_peer(multiplayer.get_remote_sender_id())
-	if seat > 0:
-		main.apply_remote_action(seat, kind, dir)
+	if seat <= 0:
+		return
+	# 同上:方向向量只取朝向,长度一律归一(肘击/投掷会用它施力)
+	if not dir.is_finite():
+		return
+	if dir.length() > 0.001:
+		dir = dir.normalized()
+	main.apply_remote_action(seat, kind, dir)
 
 # ---------- 状态同步 ----------
 

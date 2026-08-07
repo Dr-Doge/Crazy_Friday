@@ -39,7 +39,7 @@ const SAY_SHOP := ["便宜!快囤!", "又抢到一个,美滋滋~", "这个俺屋
 
 var main: Main
 var body_color := Color(0, 0, 0, 0)   # 由main指定,与自己的车同色
-var shopping_list: Array = []          # 购物清单(商品id)。大妈是真顾客,玩家才是黄牛
+var shopping_list: Array = []          # 购物清单(商品id)。大妈是真顾客,玩家才是投机者
 var acquired := {}                     # 已到手的清单项
 var want_label: Label3D
 var bubble: Label3D                    # 对话气泡

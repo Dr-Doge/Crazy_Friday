@@ -1,7 +1,7 @@
 class_name StartMenu extends Control
 ## 开始界面 + 联机大厅。
 ##
-## 布局分两栏:左栏是单机入口与开发者选项,右栏是「我的黄牛」角色自定义
+## 布局分两栏:左栏是单机入口与开发者选项,右栏是「我的角色」自定义
 ## 与局域网联机。进入房间后,右栏下方会展开房间成员列表(实时显示每个人的
 ## 昵称与配色),主机独有「开始对局」按钮。
 
@@ -73,7 +73,7 @@ func _ready() -> void:
 
 func _build_title(page: VBoxContainer) -> void:
 	var title := Label.new()
-	title.text = "黄 牛 模 拟 器"
+	title.text = "疯 抢 星 期 五"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_override("font", Catalog.ui_font_bold())
 	title.add_theme_font_size_override("font_size", 92)
@@ -83,7 +83,7 @@ func _build_title(page: VBoxContainer) -> void:
 	page.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "黑五超市代购争夺战 · 白盒Demo %s —— 低价扫进来,加价倒出去" % Catalog.GAME_VERSION
+	sub.text = "黑五超市抢购对抗 · 白盒Demo %s —— 文明,打烊之前有效" % Catalog.GAME_VERSION
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 24)
 	sub.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
@@ -94,9 +94,9 @@ func _build_title(page: VBoxContainer) -> void:
 func _build_left(cols: HBoxContainer) -> void:
 	var box := _panel(cols)
 
-	_btn_start = _button(box, "开 始 单干", 38, true)
+	_btn_start = _button(box, "开 始 游戏", 38, true)
 	_btn_start.pressed.connect(func() -> void: start_game_pressed.emit())
-	_btn_tut = _button(box, "新手 教 学", 30)
+	_btn_tut = _button(box, "新 手 教 学", 30)
 	_btn_tut.pressed.connect(func() -> void: start_tutorial_pressed.emit())
 
 	_section(box, "🔧 开发者选项", Color(1, 0.8, 0.3))
@@ -126,7 +126,7 @@ func _build_left(cols: HBoxContainer) -> void:
 func _build_right(cols: HBoxContainer) -> void:
 	var box := _panel(cols)
 
-	_section(box, "🧢 我的黄牛", Color(0.55, 0.95, 0.6))
+	_section(box, "🧢 我的角色", Color(0.55, 0.95, 0.6))
 
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 8)

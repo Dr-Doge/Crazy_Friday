@@ -21,10 +21,10 @@ const COLORS: Array[Color] = [
 
 const COLOR_NAMES: Array[String] = ["蓝", "橙", "绿", "紫", "粉", "青", "黄", "棕"]
 
-## 没起名时的随机默认名(黄牛行话)
+## 没起名时的随机默认名
 const DEFAULT_NAMES: Array[String] = [
-	"黄牛甲", "代购老王", "票贩子李", "扫货王",
-	"批发大户", "加价侠", "跑腿小张", "囤货狂",
+	"扫货王", "代购老王", "跑腿小张", "囤货狂",
+	"批发大户", "手快张三", "抢购达人", "满载而归",
 ]
 
 static var display_name := ""

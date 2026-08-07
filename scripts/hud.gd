@@ -79,7 +79,7 @@ func _ready() -> void:
 	root.add_child(marquee)
 	marquee.position = Vector2(4000, 118)
 
-	# 左上:代购清单(黄牛接的单子)
+	# 左上:代购清单(本局要抢齐的单子)
 	var list_panel := PanelContainer.new()
 	var lv := VBoxContainer.new()
 	list_panel.add_child(lv)
