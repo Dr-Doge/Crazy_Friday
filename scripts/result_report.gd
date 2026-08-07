@@ -10,7 +10,8 @@ const CAT_NAMES := {
 }
 
 ## idx:本次结算的玩家下标 · settled:true=过闸机结算,false=打烊硬结算
-static func build(pdata: Array, idx: int, settled: bool, net_mp: bool) -> Array:
+## names:各座位昵称(联机排名用),空则回落到"玩家N"
+static func build(pdata: Array, idx: int, settled: bool, net_mp: bool, names: Array = []) -> Array:
 	var pd: Dictionary = pdata[idx]
 	var done := 0
 	for entry in pd["list"]:
@@ -21,7 +22,7 @@ static func build(pdata: Array, idx: int, settled: bool, net_mp: bool) -> Array:
 	lines.append("")
 	lines.append("最终得分:%d" % pd["score"])
 	if net_mp and pdata.size() > 1:
-		lines.append_array(_ranking(pdata, idx))
+		lines.append_array(_ranking(pdata, idx, names))
 	lines.append("清单完成:%d / %d" % [done, pd["list"].size()])
 	for entry in pd["list"]:
 		var mark: String = "✓" if entry["scanned"] else "✗"
@@ -38,14 +39,17 @@ static func build(pdata: Array, idx: int, settled: bool, net_mp: bool) -> Array:
 	return lines
 
 ## 全场排名(以此刻分数排序)
-static func _ranking(pdata: Array, idx: int) -> Array:
+static func _ranking(pdata: Array, idx: int, names: Array) -> Array:
 	var ranking: Array = []
 	for i in pdata.size():
 		ranking.append([pdata[i]["score"], i])
 	ranking.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
 	var lines: Array = ["— 本局排名 —"]
 	for r in ranking.size():
-		var who: String = "你" if ranking[r][1] == idx else "玩家%d" % (ranking[r][1] + 1)
+		var seat: int = ranking[r][1]
+		var who: String = str(names[seat]) if seat < names.size() else "玩家%d" % (seat + 1)
+		if seat == idx:
+			who = "%s(你)" % who
 		lines.append("  第%d名 %s:%d分" % [r + 1, who, ranking[r][0]])
 	return lines
 

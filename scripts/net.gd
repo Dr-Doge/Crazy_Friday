@@ -6,13 +6,16 @@ class_name Net extends Node
 const PORT := 7788
 const MAX_CLIENTS := 5     # 主机+5客户端=6人
 const SYNC_INTERVAL := 3   # 每3个物理帧同步一次(约20Hz)
-const NET_VERSION := 2     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
+const NET_VERSION := 3     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
 
 var main: Main
 var is_host := false
 var active := false            # 联机对局进行中
 var peers: Array[int] = []     # 大厅接入顺序(开局时座位=下标+1)
 var seat_peers: Array[int] = []# 开局后:座位i(≥1)对应seat_peers[i-1]的peer id
+## 大厅档案:peer_id -> {name: String, color: int}。客户端连上后自行上报,
+## 之后在大厅里改名/换色也会实时推送过来。
+var lobby_profiles := {}
 var _frame := 0
 var _item_cursor := 0
 var carts_net: Array = []      # 同步用固定顺序:玩家车们+大妈车们
@@ -91,7 +94,33 @@ func _on_server_lost() -> void:
 
 func _on_connected_ok() -> void:
 	print("[Net] 已连上主机,等待开局指令")
-	main.hud.set_menu_status("已连上主机!正在进入对局...")
+	main.hud.set_menu_status("已连上主机!正在同步你的黄牛档案...")
+	push_profile()
+
+## 把本机档案(昵称+配色)上报给主机。在大厅里改名换色也调这个。
+func push_profile() -> void:
+	if is_host:
+		# 主机自己就是权威,直接刷新大厅
+		if active:
+			return
+		_lobby_update()
+		return
+	if multiplayer.multiplayer_peer == null or not multiplayer.has_multiplayer_peer():
+		return
+	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	rpc_id(1, "client_profile", PlayerProfile.display_name, PlayerProfile.color_index)
+
+@rpc("any_peer", "call_remote", "reliable")
+func client_profile(pname: String, color: int) -> void:
+	if not is_host or active:
+		return
+	var pid := multiplayer.get_remote_sender_id()
+	lobby_profiles[pid] = {
+		"name": PlayerProfile.sanitize(pname),
+		"color": clampi(color, 0, PlayerProfile.COLORS.size() - 1),
+	}
+	_lobby_update()
 
 func _on_connect_fail() -> void:
 	print("[Net] 连接失败")
@@ -114,17 +143,34 @@ func _on_peer_connected(id: int) -> void:
 	if env_host != "" and peers.size() >= maxi(1, int(env_host)):
 		start_game()
 
+## 汇总大厅成员并推给所有人。下标即座位号,0=房主
 func _lobby_update() -> void:
-	var n := peers.size() + 1
-	main.hud.set_lobby_host(n)
+	var members := lobby_members()
+	main.hud.set_lobby(members, true)
+	main.hud.set_menu_status("房间已开:%d/%d 人。人齐了就点\"开始对局\"" % [members.size(), MAX_CLIENTS + 1])
 	for pid in peers:
-		rpc_id(pid, "ev_lobby", n)
+		rpc_id(pid, "ev_lobby", members)
+
+## [{name, color}] 按座位顺序;尚未上报档案的显示占位
+func lobby_members() -> Array:
+	var out: Array = [{
+		"name": PlayerProfile.display_name,
+		"color": PlayerProfile.color_index,
+	}]
+	for pid in peers:
+		var prof: Dictionary = lobby_profiles.get(pid, {})
+		out.append({
+			"name": str(prof.get("name", "连接中…")),
+			"color": int(prof.get("color", 0)),
+		})
+	return out
 
 @rpc("authority", "call_remote", "reliable")
-func ev_lobby(n: int) -> void:
-	main.hud.set_menu_status("已连上主机!当前人数 %d/%d,等待主机开始对局..." % [n, MAX_CLIENTS + 1])
+func ev_lobby(members: Array) -> void:
+	main.hud.set_lobby(members, false)
+	main.hud.set_menu_status("已在房间中(%d/%d 人),等待房主开始对局..." % [members.size(), MAX_CLIENTS + 1])
 
-## 主机点"开始对局":给每名客户端分配座位并统一开局
+## 主机点"开始对局":分配座位、消歧昵称与配色,统一开局
 func start_game() -> void:
 	if not is_host or active or peers.is_empty():
 		return
@@ -132,16 +178,27 @@ func start_game() -> void:
 	seat_peers = peers.duplicate()
 	var world_seed := randi()
 	var total := peers.size() + 1
+	# 撞色/重名会导致场上分不清谁是谁,由主机统一消歧后下发,保证各端一致
+	var members := lobby_members()
+	var raw_names: Array = []
+	var raw_colors: Array = []
+	for m in members:
+		raw_names.append(m["name"])
+		raw_colors.append(m["color"])
+	var names := PlayerProfile.resolve_names(raw_names)
+	var colors := PlayerProfile.resolve_colors(raw_colors)
 	for i in peers.size():
-		rpc_id(peers[i], "client_start", world_seed, main.pending_npc, NET_VERSION, i + 1, total)
+		rpc_id(peers[i], "client_start", world_seed, main.pending_npc, NET_VERSION,
+				i + 1, total, names, colors)
 	print("[Net] 进入对局 身份=主机 玩家数=", total)
-	main.start_mp(true, world_seed, main.pending_npc, 0, total)
+	main.start_mp(true, world_seed, main.pending_npc, 0, total, names, colors)
 
 func _on_peer_left(id: int) -> void:
 	if is_host:
 		if not active:
 			print("[Net] 大厅离开 peer=", id)
 			peers.erase(id)
+			lobby_profiles.erase(id)
 			_lobby_update()
 			return
 		# 对局中有客户端掉线:该玩家退场,比赛继续
@@ -156,7 +213,8 @@ func shutdown() -> void:
 		multiplayer.multiplayer_peer = null
 
 @rpc("authority", "call_remote", "reliable")
-func client_start(world_seed: int, npc: int, ver: int, my_seat: int, total: int) -> void:
+func client_start(world_seed: int, npc: int, ver: int, my_seat: int, total: int,
+		names: Array, colors: Array) -> void:
 	print("[Net] 收到开局指令 seed=", world_seed, " npc=", npc, " ver=", ver, " 座位=", my_seat, " 总人数=", total)
 	if ver != NET_VERSION:
 		main.hud.set_menu_status("联机失败:各电脑的游戏版本不一致!\n请把同一份exe拷给所有人后重试")
@@ -166,7 +224,7 @@ func client_start(world_seed: int, npc: int, ver: int, my_seat: int, total: int)
 		return
 	active = true
 	print("[Net] 进入对局 身份=客户端 座位=", my_seat)
-	main.start_mp(false, world_seed, npc, my_seat, total)
+	main.start_mp(false, world_seed, npc, my_seat, total, names, colors)
 
 ## 开局后由main调用:登记同步对象表(两端顺序一致)
 func register_world() -> void:

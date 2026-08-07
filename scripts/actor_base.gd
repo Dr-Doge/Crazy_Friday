@@ -23,6 +23,7 @@ var _saved_layer := 0
 var _saved_mask := 0
 
 var body_root: Node3D           # 可倾倒的视觉根
+var name_label: Label3D         # 头顶名牌(玩家自定义昵称,染本人配色)
 var hand_l: MeshInstance3D      # 双手小球
 var hand_r: MeshInstance3D
 var hand_pose := "idle"         # idle / push / channel / carry,由子类每帧设置
@@ -86,19 +87,27 @@ func build_body(color: Color, title: String, height := 1.7) -> void:
 	col.position = Vector3(0, height * 0.5, 0)
 	add_child(col)
 
-	var lb := Label3D.new()
-	lb.text = title
-	lb.font = Catalog.ui_font()
-	lb.font_size = 58
-	lb.pixel_size = 0.004
-	lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lb.no_depth_test = true
-	lb.outline_size = 10
-	lb.outline_modulate = Color(0, 0, 0, 0.8)
-	lb.position = Vector3(0, height + 0.45, 0)
-	add_child(lb)
+	# 头顶名牌:染成本人配色,联机时一眼分清谁是谁
+	name_label = Label3D.new()
+	name_label.name = "NameTag"
+	name_label.text = title
+	name_label.font = Catalog.ui_font_bold()
+	name_label.font_size = 72
+	name_label.pixel_size = 0.004
+	name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	name_label.no_depth_test = true
+	name_label.modulate = color.lightened(0.45)
+	name_label.outline_size = 14
+	name_label.outline_modulate = Color(0, 0, 0, 0.85)
+	name_label.position = Vector3(0, height + 0.45, 0)
+	add_child(name_label)
 
 	add_to_group("characters")
+
+## 改名(大厅改档案后即时生效)
+func set_display_name(t: String) -> void:
+	if name_label != null:
+		name_label.text = t
 
 func is_running() -> bool:
 	return false

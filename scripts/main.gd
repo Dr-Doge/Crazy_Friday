@@ -125,7 +125,8 @@ func _start_match(tut: bool) -> void:
 		tutorial_guide.setup()
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
-func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int) -> void:
+func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
+		names: Array = [], colors: Array = []) -> void:
 	if game_started:
 		return
 	game_started = true
@@ -133,6 +134,9 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int) -> 
 	net_client = not host
 	local_idx = 0 if host else my_seat
 	tutorial = false
+	# 主机下发的全员档案(已消歧),各端一致
+	seat_names = PlayerProfile.resolve_names(names) if not names.is_empty() else []
+	seat_colors = PlayerProfile.resolve_colors(colors) if not colors.is_empty() else []
 	_build_world(wseed, npc, nplayers)
 	if net_client:
 		client_view = ClientView.new(self)
@@ -160,7 +164,7 @@ func on_player_disconnected(seat: int) -> void:
 		p.finished = true
 	if seat < pdata.size():
 		pdata[seat]["done"] = true
-	hud.broadcast("玩家%d已提前离场。他的购物车留在原地——商品先到先得~" % (seat + 1))
+	hud.broadcast("%s 已提前离场。他的购物车留在原地——商品先到先得~" % seat_name(seat))
 
 func _menu_host() -> void:
 	if game_started:
@@ -170,6 +174,8 @@ func _menu_host() -> void:
 		hud.set_menu_status("创建房间失败(端口可能被占用)")
 	else:
 		hud.lock_menu_for_host()
+		# 房主自己也要出现在成员列表里
+		net.push_profile()
 		hud.set_menu_status("房间已创建!本机IP: %s (端口%d)\n把IP告诉大家,最多可容纳6人,人齐后点\"开始对局\"\n(也可改填别人的IP点\"加入房间\",本机自动改当客户端)\n若别人连不上:在本机Windows防火墙里\"允许\"本程序(UDP %d)" % [ips, Net.PORT, Net.PORT])
 
 func _menu_join(ip: String) -> void:
@@ -277,25 +283,40 @@ func _make_lists(nplayers: int) -> void:
 		pdata.append({"list": list, "score": 0, "counts": {}, "orig": 0, "saved": 0, "settled": false, "done": false})
 
 ## 玩家出生:最多6人,6种配色,沿入口区一字排开
-const PLAYER_COLORS: Array = [
-	Color(0.25, 0.5, 0.9),    # 蓝
-	Color(0.95, 0.55, 0.2),   # 橙
-	Color(0.3, 0.8, 0.45),    # 绿
-	Color(0.7, 0.4, 0.9),     # 紫
-	Color(0.95, 0.4, 0.55),   # 粉
-	Color(0.35, 0.8, 0.85),   # 青
-]
+## 各座位的昵称与配色。联机时由主机下发(已消歧),单机时只有本机一人。
+var seat_names: Array[String] = []
+var seat_colors: Array[int] = []
+
+## 座位 i 的显示名。没有档案时回落到"玩家N"
+func seat_name(i: int) -> String:
+	if i >= 0 and i < seat_names.size():
+		return seat_names[i]
+	return "玩家%d" % (i + 1)
+
+## 第二人称称呼:本机是"你",别人用昵称
+func seat_name_2nd(i: int) -> String:
+	return "你" if i == local_idx else seat_name(i)
+
+func seat_color(i: int) -> Color:
+	if i >= 0 and i < seat_colors.size():
+		return PlayerProfile.color_of(seat_colors[i])
+	return PlayerProfile.color_of(i)
 
 func _spawn_players(data: Dictionary, nplayers: int) -> void:
+	# 单机:直接用本机档案,让玩家在单人局也能看到自己起的名字与配色
+	if seat_names.is_empty():
+		PlayerProfile.ensure_loaded()
+		seat_names = [PlayerProfile.display_name]
+		seat_colors = [PlayerProfile.color_index]
 	for i in nplayers:
 		var p := Player.new()
 		p.main = self
 		p.remote = (i != local_idx)
-		p.avatar_color = PLAYER_COLORS[i % PLAYER_COLORS.size()]
-		p.seat_label = "你" if i == local_idx else "玩家%d" % (i + 1)
+		p.avatar_color = seat_color(i)
+		p.seat_label = seat_name(i)
 		add_child(p)
 		p.global_position = data["player_spawn"] + Vector3(-2.2 * i, 0, 0.9 * (i % 2))
-		var cart := Cart.create(p.avatar_color, "你的车" if i == local_idx else "玩家%d的车" % (i + 1))
+		var cart := Cart.create(p.avatar_color, "%s的车" % seat_name(i))
 		cart.cart_owner = p
 		add_child(cart)
 		cart.global_position = p.global_position + Vector3(-1.6, 0.2, -0.5)
@@ -861,7 +882,7 @@ func _match_time_up() -> void:
 func _finish_player(idx: int, settled: bool) -> void:
 	pdata[idx]["done"] = true
 	players[idx].finished = true
-	_log_milestone("玩家%d 结算 settled=%s 得分=%d" % [idx + 1, settled, pdata[idx]["score"]])
+	_log_milestone("%s 结算 settled=%s 得分=%d" % [seat_name(idx), settled, pdata[idx]["score"]])
 	var lines := _result_lines(idx, settled)
 	if idx == local_idx:
 		hud.show_result(lines)
@@ -887,7 +908,7 @@ func _finish_player(idx: int, settled: bool) -> void:
 
 ## 结算画面文案:委托 ResultReport
 func _result_lines(idx: int, settled: bool) -> Array:
-	return ResultReport.build(pdata, idx, settled, net_mp)
+	return ResultReport.build(pdata, idx, settled, net_mp, seat_names)
 
 func on_granny_stole(cart: Cart) -> void:
 	if cart.cart_owner is Player and _steal_bc_cd <= 0.0:

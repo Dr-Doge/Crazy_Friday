@@ -1,5 +1,6 @@
 class_name Hud extends CanvasLayer
-## 白盒HUD:计时/阶段、购物清单、体力与失衡条、交互提示、超市广播、结算面板
+## 白盒HUD:计时/阶段、购物清单、体力与失衡条、交互提示、超市广播、结算面板。
+## 开始界面与联机大厅在 start_menu.gd,本类只做信号转发。
 
 signal npc_count_changed(count: int)
 signal start_game_pressed
@@ -18,16 +19,7 @@ var npc_slider: HSlider
 var npc_count_label: Label
 var skill_label: Label
 var marquee: Label            # 大喇叭滚动横幅
-var menu_root: Control        # 开始界面
-var menu_npc_slider: HSlider
-var menu_npc_label: Label
-var menu_status: Label        # 联机状态提示
-var menu_ip_edit: LineEdit
-var menu_btn_start: Button
-var menu_btn_tut: Button
-var menu_btn_host: Button
-var menu_btn_join: Button
-var menu_btn_begin: Button   # 主机大厅:开始对局(人数≥2才可点)
+var menu: StartMenu           # 开始界面 + 联机大厅
 var tutorial_label: Label     # 教学指引大字
 var prompt_label: Label
 var broadcast_panel: PanelContainer
@@ -147,8 +139,7 @@ func _ready() -> void:
 	channel_fill.size = Vector2(0, 8)
 	channel_bg.add_child(channel_fill)
 
-	# 右下:操作说明
-	# 键位说明:精简三行
+	# 右下:操作说明(精简三行)
 	var hint := Label.new()
 	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n左键 肘击 · 右键 掷水瓶 · Q 找货雷达 · 空格 稳住(格挡撞击)\nEsc 鼠标 · F1 开发者 · T/F3/F4 调试"
 	hint.add_theme_font_override("font", Catalog.ui_font_bold())
@@ -227,141 +218,38 @@ func _ready() -> void:
 	root.add_child(tutorial_label)
 	tutorial_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE, Control.PRESET_MODE_MINSIZE, 200)
 
-	# 开始界面
-	menu_root = Control.new()
-	menu_root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	var dim2 := ColorRect.new()
-	dim2.color = Color(0.05, 0.02, 0.02, 0.8)
-	dim2.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim2.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	menu_root.add_child(dim2)
-	var mc := CenterContainer.new()
-	mc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	menu_root.add_child(mc)
-	var mv := VBoxContainer.new()
-	mv.alignment = BoxContainer.ALIGNMENT_CENTER
-	mv.add_theme_constant_override("separation", 18)
-	mc.add_child(mv)
-	var mtitle := Label.new()
-	mtitle.text = "疯 抢 星 期 五"
-	mtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mtitle.add_theme_font_override("font", Catalog.ui_font_bold())
-	mtitle.add_theme_font_size_override("font_size", 110)
-	mtitle.add_theme_color_override("font_color", Color(1, 0.12, 0.08))
-	mtitle.add_theme_color_override("font_outline_color", Color(1, 0.9, 0.15))
-	mtitle.add_theme_constant_override("outline_size", 24)
-	mv.add_child(mtitle)
-	var msub := Label.new()
-	msub.text = "黑五超市对抗 · 白盒Demo %s —— 文明,打烊之前有效" % Catalog.GAME_VERSION
-	msub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	msub.add_theme_font_size_override("font_size", 28)
-	msub.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
-	mv.add_child(msub)
-	menu_btn_start = Button.new()
-	menu_btn_start.text = "开 始 游 戏"
-	menu_btn_start.custom_minimum_size = Vector2(380, 76)
-	menu_btn_start.add_theme_font_override("font", Catalog.ui_font_bold())
-	menu_btn_start.add_theme_font_size_override("font_size", 40)
-	menu_btn_start.pressed.connect(func() -> void: start_game_pressed.emit())
-	mv.add_child(menu_btn_start)
-	menu_btn_tut = Button.new()
-	menu_btn_tut.text = "教 学 关 卡"
-	menu_btn_tut.custom_minimum_size = Vector2(380, 62)
-	menu_btn_tut.add_theme_font_size_override("font_size", 32)
-	menu_btn_tut.pressed.connect(func() -> void: start_tutorial_pressed.emit())
-	mv.add_child(menu_btn_tut)
+	# 开始界面 + 联机大厅(在 mouse_ignore 之后创建,保持可交互)
+	menu = StartMenu.new()
+	menu.start_game_pressed.connect(func() -> void: start_game_pressed.emit())
+	menu.start_tutorial_pressed.connect(func() -> void: start_tutorial_pressed.emit())
+	menu.host_pressed.connect(func() -> void: host_pressed.emit())
+	menu.join_pressed.connect(func(ip: String) -> void: join_pressed.emit(ip))
+	menu.begin_pressed.connect(func() -> void: begin_pressed.emit())
+	menu.npc_changed.connect(func(n: int) -> void: npc_count_changed.emit(n))
+	root.add_child(menu)
 
-	# 局域网联机(本机IP直接亮出来,不必为了看IP去建房)
-	var mlan := Label.new()
-	mlan.text = "—— 🌐 局域网联机(同一网络,2-6人) ——\n本机IP: %s" % Net.local_ips()
-	mlan.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mlan.add_theme_font_size_override("font_size", 26)
-	mlan.add_theme_color_override("font_color", Color(0.45, 0.8, 1.0))
-	mv.add_child(mlan)
-	menu_btn_host = Button.new()
-	menu_btn_host.text = "创建房间(当主机)"
-	menu_btn_host.custom_minimum_size = Vector2(380, 56)
-	menu_btn_host.add_theme_font_size_override("font_size", 28)
-	menu_btn_host.pressed.connect(func() -> void: host_pressed.emit())
-	mv.add_child(menu_btn_host)
-	var jrow := HBoxContainer.new()
-	jrow.add_theme_constant_override("separation", 10)
-	menu_ip_edit = LineEdit.new()
-	menu_ip_edit.placeholder_text = "主机IP,如 192.168.1.5"
-	menu_ip_edit.custom_minimum_size = Vector2(250, 52)
-	menu_ip_edit.add_theme_font_size_override("font_size", 24)
-	jrow.add_child(menu_ip_edit)
-	menu_btn_join = Button.new()
-	menu_btn_join.text = "加入房间"
-	menu_btn_join.custom_minimum_size = Vector2(120, 52)
-	menu_btn_join.add_theme_font_size_override("font_size", 26)
-	menu_btn_join.pressed.connect(func() -> void: join_pressed.emit(menu_ip_edit.text))
-	jrow.add_child(menu_btn_join)
-	mv.add_child(jrow)
-	menu_btn_begin = Button.new()
-	menu_btn_begin.text = "开 始 对 局"
-	menu_btn_begin.custom_minimum_size = Vector2(380, 62)
-	menu_btn_begin.add_theme_font_override("font", Catalog.ui_font_bold())
-	menu_btn_begin.add_theme_font_size_override("font_size", 32)
-	menu_btn_begin.visible = false
-	menu_btn_begin.pressed.connect(func() -> void: begin_pressed.emit())
-	mv.add_child(menu_btn_begin)
-	menu_status = Label.new()
-	menu_status.text = ""
-	menu_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	menu_status.add_theme_font_size_override("font_size", 24)
-	menu_status.add_theme_color_override("font_color", Color(0.95, 0.9, 0.5))
-	mv.add_child(menu_status)
-	var mdev := Label.new()
-	mdev.text = "—— 🔧 开发者选项 ——"
-	mdev.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mdev.add_theme_font_size_override("font_size", 26)
-	mdev.add_theme_color_override("font_color", Color(1, 0.8, 0.3))
-	mv.add_child(mdev)
-	menu_npc_label = Label.new()
-	menu_npc_label.text = "NPC数量: 8"
-	menu_npc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mv.add_child(menu_npc_label)
-	menu_npc_slider = HSlider.new()
-	menu_npc_slider.min_value = 0
-	menu_npc_slider.max_value = 10
-	menu_npc_slider.step = 1
-	menu_npc_slider.value = 8
-	menu_npc_slider.custom_minimum_size = Vector2(380, 36)
-	menu_npc_slider.value_changed.connect(func(v: float) -> void:
-		npc_count_changed.emit(int(v))
-	)
-	mv.add_child(menu_npc_slider)
-	root.add_child(menu_root)
+# ---------------------------------------------------------------- 菜单转发
 
 func hide_menu() -> void:
-	menu_root.visible = false
+	menu.visible = false
 
 func set_menu_status(t: String) -> void:
-	menu_status.text = t
+	menu.set_status(t)
 
 ## 建房后:锁单机入口,但保留"加入对方房间"(join会正确切换身份)
 func lock_menu_for_host() -> void:
-	menu_btn_start.disabled = true
-	menu_btn_start.text = "(联机模式进行中)"
-	menu_btn_tut.disabled = true
-	menu_btn_host.disabled = true
-	menu_btn_begin.visible = true
-	menu_btn_begin.disabled = true
-	menu_btn_begin.text = "开始对局(等待其他玩家加入)"
-
-## 主机大厅人数变化:人数≥2解锁"开始对局"
-func set_lobby_host(n: int) -> void:
-	menu_btn_begin.visible = true
-	menu_btn_begin.disabled = n < 2
-	menu_btn_begin.text = "开 始 对 局(当前%d人)" % n
-	set_menu_status("大厅人数 %d/6。人齐了就点上面的\"开始对局\"!" % n)
+	menu.lock_for_host()
 
 ## 加入后:全部锁死,防止等待连接时误开单机局
 func lock_menu_for_join() -> void:
-	lock_menu_for_host()
-	menu_btn_join.disabled = true
-	menu_ip_edit.editable = false
+	menu.lock_for_join()
+
+## 大厅成员变化:刷新成员列表(每行显示昵称与配色)。
+## members: [{name, color}],下标即座位号(0=房主)
+func set_lobby(members: Array, is_host: bool) -> void:
+	menu.show_lobby(members, is_host)
+
+# ---------------------------------------------------------------- 局内 HUD
 
 func set_tutorial_text(t: String) -> void:
 	tutorial_label.visible = t != ""
@@ -375,9 +263,8 @@ func set_skill(text: String, ready: bool) -> void:
 func set_npc_count_display(n: int) -> void:
 	npc_slider.set_value_no_signal(n)
 	npc_count_label.text = "NPC数量: %d" % n
-	if menu_npc_slider != null:
-		menu_npc_slider.set_value_no_signal(n)
-		menu_npc_label.text = "NPC数量: %d" % n
+	if menu != null:
+		menu.set_npc_display(n)
 
 func _set_mouse_ignore(node: Node) -> void:
 	if node is Control:
