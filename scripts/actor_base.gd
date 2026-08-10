@@ -13,6 +13,7 @@ var hold_capacity := 2          # 小件2件,大件占满
 var downed := false
 var immune := false             # 收银通道内免战
 var braced := false             # 冲击准备:被车撞不涨失衡(玩家空格技能)
+var stance := false             # 扎马步(马德胜Ctrl):免疫撞击与肘击失衡+车斗锁死+反击
 var push_velocity := Vector3.ZERO
 var gravity := 9.8
 
@@ -24,6 +25,8 @@ var _saved_mask := 0
 
 var body_root: Node3D           # 可倾倒的视觉根
 var name_label: Label3D         # 头顶名牌(玩家自定义昵称,染本人配色)
+var mark_shell: MeshInstance3D  # 被「上链接」抢货后的追踪标记壳(受害者可见)
+var _mark_time := 0.0
 var hand_l: MeshInstance3D      # 双手小球
 var hand_r: MeshInstance3D
 var hand_pose := "idle"         # idle / push / channel / carry,由子类每帧设置
@@ -102,7 +105,31 @@ func build_body(color: Color, title: String, height := 1.7) -> void:
 	name_label.position = Vector3(0, height + 0.45, 0)
 	add_child(name_label)
 
+	# 追踪标记壳:被李洋「上链接」抢货后,受害者能穿墙看到他4 秒
+	var ms := MeshInstance3D.new()
+	var mb := SphereMesh.new()
+	mb.radius = 0.62
+	mb.height = 1.9
+	var mmat := StandardMaterial3D.new()
+	mmat.albedo_color = Color(1, 0.35, 0.6, 0.34)
+	mmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mmat.cull_mode = BaseMaterial3D.CULL_FRONT
+	mmat.no_depth_test = true
+	mb.material = mmat
+	ms.mesh = mb
+	ms.position = Vector3(0, height * 0.55, 0)
+	ms.visible = false
+	add_child(ms)
+	mark_shell = ms
+
 	add_to_group("characters")
+
+## 被「上链接」抢过货:亮追踪标记(全场可见,是被抢方的反制信息)
+func set_marked(t: float) -> void:
+	_mark_time = maxf(_mark_time, t)
+	if mark_shell != null:
+		mark_shell.visible = true
 
 ## 改名(大厅改档案后即时生效)
 func set_display_name(t: String) -> void:
@@ -121,6 +148,10 @@ func actor_tick(delta: float) -> void:
 		_down_timer -= delta
 		if _down_timer <= 0.0:
 			_recover()
+	if _mark_time > 0.0:
+		_mark_time -= delta
+		if _mark_time <= 0.0 and mark_shell != null:
+			mark_shell.visible = false
 	_update_held_positions()
 	_update_hands(delta)
 
@@ -148,6 +179,13 @@ func _update_hands(delta: float) -> void:
 		"brace":    # 冲击准备:双臂交叉护胸
 			lp = Vector3(0.14, 1.12, -0.42)
 			rp = Vector3(-0.14, 1.2, -0.4)
+		"speed":    # 贴地冲撞:速滑姿态,双手背在身后
+			lp = Vector3(-0.34, 0.72, 0.46)
+			rp = Vector3(0.34, 0.72, 0.46)
+		"grab":     # 上链接:自拍杆式前钩,右手远伸
+			var g := sin(_hand_time * 3.0) * 0.1
+			lp = Vector3(-0.26, 1.0, -0.2)
+			rp = Vector3(0.2, 1.42, -1.15 + g)
 		_:          # 垂在身侧,走路时前后摆
 			var sw := sin(_hand_time) * (0.22 if speed > 0.6 else 0.03)
 			lp = Vector3(-0.42, 0.92, sw)
@@ -236,6 +274,10 @@ func apply_motion(delta: float, wish: Vector3, speed: float) -> void:
 func add_imbalance(amount: float, _source: Node = null) -> void:
 	if downed or immune:
 		return
+	# 扎马步(马德胜):撞击与肘击一律不涨失衡。免疫优先于braced,
+	# 且不限来源类型——它比通用「稳住」更强,代价是2秒完全定身。
+	if stance and amount > 0.0:
+		return
 	# 冲击准备:撞击(购物车来源)不涨失衡
 	if braced and _source is Cart:
 		Main.float_text(self, global_position + Vector3.UP * 2.2, "稳如老狗!!", Color(0.4, 0.9, 1.0), 76)
@@ -250,6 +292,10 @@ func add_imbalance(amount: float, _source: Node = null) -> void:
 ## 被购物车撞:徒步+50并被撞飞
 func hit_by_cart(hit_cart: Cart) -> void:
 	if downed or immune:
+		return
+	# 扎马步:徒步状态下被撞也免疫并反击(技能是"人"的姿态,不依赖有没有推车)
+	if stance:
+		CharSkills.stance_counter(self, hit_cart)
 		return
 	var v := hit_cart.linear_velocity
 	v.y = 0.0
@@ -370,6 +416,11 @@ func try_elbow(dir_override := Vector3.ZERO) -> bool:
 			best = node
 			best_d = d
 	if best:
+		# 扎马步:免疫肘击的失衡与掉货(手上、车里都护住)
+		if best.stance:
+			Main.float_text(best, best.global_position + Vector3.UP * 2.0, "码得住!!(肘不动)", Color(0.5, 0.85, 1.0), 72)
+			best.on_elbowed(self)
+			return true
 		best.add_imbalance(15.0, self)
 		best.drop_one_held(true)
 		best.push_velocity += fwd * 3.0

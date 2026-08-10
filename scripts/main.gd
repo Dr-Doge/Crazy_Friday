@@ -117,9 +117,16 @@ func _start_match(tut: bool) -> void:
 		return
 	game_started = true
 	tutorial = tut
+	# 单人/教学:用本机档案里选定的角色
+	PlayerProfile.ensure_loaded()
+	var env_char := OS.get_environment("WHITEBOX_CHAR")
+	if env_char != "":
+		PlayerProfile.char_id = CharacterDef.valid_id(env_char)
+	seat_chars = [PlayerProfile.char_id]
 	_build_world(randi(), 0 if tut else pending_npc, 1)
 	hud.hide_menu()
 	_set_mouse_captured(true)
+	_log_milestone("单人开局 角色=%s" % PlayerProfile.char_id)
 	if tut:
 		tutorial_guide = TutorialGuide.new(self)
 		tutorial_guide.setup()
@@ -130,7 +137,7 @@ func _start_match(tut: bool) -> void:
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
 func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
-		names: Array = [], colors: Array = []) -> void:
+		names: Array = [], colors: Array = [], chars: Array = []) -> void:
 	if game_started:
 		return
 	game_started = true
@@ -141,6 +148,9 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
 	# 主机下发的全员档案(已消歧),各端一致
 	seat_names = PlayerProfile.resolve_names(names) if not names.is_empty() else []
 	seat_colors = PlayerProfile.resolve_colors(colors) if not colors.is_empty() else []
+	seat_chars = []
+	for c in chars:
+		seat_chars.append(CharacterDef.valid_id(str(c)))
 	_build_world(wseed, npc, nplayers)
 	if net_client:
 		client_view = ClientView.new(self)
@@ -292,6 +302,8 @@ func _make_lists(nplayers: int) -> void:
 ## 各座位的昵称与配色。联机时由主机下发(已消歧),单机时只有本机一人。
 var seat_names: Array[String] = []
 var seat_colors: Array[int] = []
+## 各座位所选角色 id(见 character_def.gd)。联机由主机下发,保证各端一致。
+var seat_chars: Array[String] = []
 
 ## 座位 i 的显示名。没有档案时回落到"玩家N"
 func seat_name(i: int) -> String:
@@ -308,18 +320,28 @@ func seat_color(i: int) -> Color:
 		return PlayerProfile.color_of(seat_colors[i])
 	return PlayerProfile.color_of(i)
 
+## 座位 i 的角色 id。缺档时回落到首个角色
+func seat_char(i: int) -> String:
+	if i >= 0 and i < seat_chars.size():
+		return CharacterDef.valid_id(seat_chars[i])
+	return CharacterDef.ORDER[0]
+
 func _spawn_players(data: Dictionary, nplayers: int) -> void:
 	# 单机:直接用本机档案,让玩家在单人局也能看到自己起的名字与配色
 	if seat_names.is_empty():
 		PlayerProfile.ensure_loaded()
 		seat_names = [PlayerProfile.display_name]
 		seat_colors = [PlayerProfile.color_index]
+	if seat_chars.is_empty():
+		PlayerProfile.ensure_loaded()
+		seat_chars = [PlayerProfile.char_id]
 	for i in nplayers:
 		var p := Player.new()
 		p.main = self
 		p.remote = (i != local_idx)
 		p.avatar_color = seat_color(i)
 		p.seat_label = seat_name(i)
+		p.char_id = seat_char(i)
 		add_child(p)
 		p.global_position = data["player_spawn"] + Vector3(-2.2 * i, 0, 0.9 * (i % 2))
 		var cart := Cart.create(p.avatar_color, "%s的车" % seat_name(i))
@@ -537,8 +559,15 @@ func _process(delta: float) -> void:
 
 	_update_hud()
 
+## 红壳(杀意感知):本机玩家"还缺"的商品在谁车里,那辆车亮红壳。
+##
+## 距离规则(《05·三》与《16·五·5.2》):
+## - 通用版:仅 12 米内亮壳,不显示商品名
+## - 李洋「爆款嗅觉」:全场无距离限制,并在车顶浮出具体商品名
 func _apply_highlights_local() -> void:
 	var missing_hl := missing_list_ids(local_idx)
+	var sniff := CharSkills.has_sniff(player)
+	var origin := player.global_position
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
 		if not is_instance_valid(c):
@@ -546,24 +575,38 @@ func _apply_highlights_local() -> void:
 		if c == player.cart:
 			c.set_highlight(false)
 			continue
-		var hot := false
+		var hot_name := ""
 		for it2 in c.items_in_basket():
 			if missing_hl.has(it2.item_id):
-				hot = true
+				hot_name = it2.display_name
 				break
+		var hot := hot_name != ""
+		if hot and not sniff and origin.distance_to(c.global_position) > CharSkills.SNIFF_RANGE_OTHERS:
+			hot = false
 		c.set_highlight(hot)
+		c.set_hot_name(hot_name if (hot and sniff) else "")
 
+## 发给某客户端的红壳数据:[[车下标, 商品名或""], ...]
+## 商品名只对李洋(爆款嗅觉)非空;非李洋还要过 12 米距离门槛
 func _hot_carts_for(idx: int) -> Array:
 	var missing := missing_list_ids(idx)
+	var p := players[idx]
+	var sniff := CharSkills.has_sniff(p)
 	var out: Array = []
 	for i in net.carts_net.size():
 		var c = net.carts_net[i]
-		if not is_instance_valid(c) or c == players[idx].cart:
+		if not is_instance_valid(c) or c == p.cart:
 			continue
+		var hot_name := ""
 		for it in c.items_in_basket():
 			if missing.has(it.item_id):
-				out.append(i)
+				hot_name = it.display_name
 				break
+		if hot_name == "":
+			continue
+		if not sniff and p.global_position.distance_to(c.global_position) > CharSkills.SNIFF_RANGE_OTHERS:
+			continue
+		out.append([i, hot_name if sniff else ""])
 	return out
 
 # ---------- 客户端渲染 ----------
@@ -619,7 +662,23 @@ func _update_hud_client() -> void:
 
 # ---------- 技能 ----------
 
-## 右键:向镜头方向掷出水瓶,落地生成临时湿滑地面(CD8秒)
+## Ctrl:角色专属技能。实现见 char_skills.gd(主机权威:联机时远程动作也走这里)
+func trigger_char_skill(p: Player = null, dir := Vector3.ZERO) -> void:
+	if p == null:
+		p = player
+	if game_over or p == null:
+		return
+	CharSkills.trigger(self, p, dir)
+
+## 「上链接」抢到货的播报(只在主机侧调用)
+func on_char_grab(thief: Player, victim: Actor, item: Item) -> void:
+	if net_client:
+		return
+	var vname := "大妈" if victim is Granny else seat_name_2nd(players.find(victim))
+	hud.broadcast("直播间提示:%s 对着%s大喊\"上链接\",%s 就这么没了~" % [
+			seat_name(players.find(thief)), vname, item.display_name])
+
+##右键:向镜头方向掷出水瓶,落地生成临时湿滑地面(CD8秒)
 func trigger_throw_bottle(p: Player = null, dir := Vector3.ZERO) -> void:
 	if p == null:
 		p = player
@@ -801,10 +860,32 @@ func _update_timer_hud() -> void:
 			hud.set_phase("打烊冲刺——全场挤向收银台")
 
 func _update_skill_hud() -> void:
-	var s1 := "Q 雷达:就绪" if player.locate_cd <= 0.0 else "Q 雷达:%d秒" % int(ceil(player.locate_cd))
+	var s1 := "Q雷达:就绪" if player.locate_cd <= 0.0 else "Q 雷达:%d秒" % int(ceil(player.locate_cd))
 	var s2 := "右键 水瓶:就绪" if player.bottle_cd <= 0.0 else "右键 水瓶:%d秒" % int(ceil(player.bottle_cd))
-	var s3 := "空格 稳住:就绪" if player.brace_cd <= 0.0 else ("空格 稳住:格挡中!" if player.braced else "空格 稳住:%d秒" % int(ceil(player.brace_cd)))
-	hud.set_skill(s1 + " · " + s2 + " · " + s3, player.locate_cd <= 0.0 and player.bottle_cd <= 0.0 and player.brace_cd <= 0.0)
+	var s3 := "空格稳住:就绪" if player.brace_cd <= 0.0 else ("空格 稳住:格挡中!" if player.braced else "空格 稳住:%d秒" % int(ceil(player.brace_cd)))
+	var sk := CharacterDef.skill_name(player.char_id)
+	var s4 := "Ctrl %s:就绪" % sk
+	if player.stance_time > 0.0:
+		s4 = "Ctrl %s:扎住了!" % sk
+	elif player.stun_time > 0.0:
+		s4 = "Ctrl %s:收不住脚(%.1f秒)" % [sk, player.stun_time]
+	elif player.char_cd > 0.0:
+		s4 = "Ctrl %s:%d秒" % [sk, int(ceil(player.char_cd))]
+	var ready: bool = player.locate_cd <= 0.0 and player.bottle_cd <= 0.0 \
+			and player.brace_cd <= 0.0 and player.char_cd <= 0.0
+	hud.set_skill(s1 + " · " + s2 + " · " + s3 + " · " + s4, ready)
+	# 马德胜「余光」:屏幕边缘的威胁方向预警(只给信息,不给数值)
+	hud.set_threats(CharSkills.threats_for(self, player), cam_yaw)
+	# 李洋「上链接」的受害者:4秒内穿墙看到抢你货的人
+	_update_track_mark()
+
+## 被抢货后的追踪标记:只有受害者本机能看到那个红壳
+func _update_track_mark() -> void:
+	for p in players:
+		if not is_instance_valid(p) or p.mark_shell == null:
+			continue
+		var show_it: bool = player.track_time > 0.0 and player.track_target == p
+		p.mark_shell.visible = show_it
 
 func _update_hud() -> void:
 	_update_timer_hud()
@@ -979,6 +1060,8 @@ func apply_remote_action(seat: int, kind: String, dir: Vector3) -> void:
 			trigger_locate_skill(p)
 		"throw":
 			trigger_throw_bottle(p, dir)
+		"char_skill":
+			trigger_char_skill(p, dir)
 
 func net_item_gone_notify(it: Item) -> void:
 	if net_mp and not net_client:
@@ -1017,6 +1100,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			net.send_action("locate")
 		elif event.is_action_pressed("throw"):
 			net.send_action("throw", cam_rig.forward())
+		elif event.is_action_pressed("char_skill"):
+			net.send_action("char_skill", cam_rig.forward())
 		elif event.is_action_pressed("elbow"):
 			net.send_action("elbow", cam_rig.forward())
 		return

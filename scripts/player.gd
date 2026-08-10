@@ -21,6 +21,25 @@ var brace_cd := 0.0
 var locate_cd := 0.0        # 技能CD按人各算(联机双人)
 var bottle_cd := 0.0
 
+# ---------- 角色(见 character_def.gd / char_skills.gd) ----------
+var char_id := CharacterDef.ORDER[0]
+var char_cd := 0.0          # Ctrl 角色技能冷却
+
+# 赵冬梅「贴地冲撞」状态
+var dash_windup := 0.0      #蓄力剩余(全场可见的前摇)
+var dash_time := 0.0        # 突进剩余
+var dash_dir := Vector3.ZERO
+var dash_hit := false       # 本次突进是否已命中(决定落空硬直)
+var stun_time := 0.0        # 落空硬直:不能移动/肘击
+
+# 马德胜「扎马步」状态(stance 本身在 Actor 基类上,供撞击结算读取)
+var stance_time := 0.0
+
+# 李洋「上链接」状态
+var grab_anim := 0.0        # 出杆动作计时(手部表现)
+var track_time := 0.0       # 被抢货后:追踪标记剩余时长
+var track_target: Actor = null   # 追踪对象(抢你货的人)
+
 # 联机:远程玩家由主机模拟,输入来自网络(含客户端镜头朝向)
 var remote := false
 var net_move := Vector2.ZERO
@@ -36,7 +55,6 @@ func set_net_input(mv: Vector2, sp: bool, br: bool, ih: bool, cam_yaw: float) ->
 	net_brace = br
 	net_interact = ih
 	net_cam_yaw = cam_yaw
-
 var main: Main
 
 # 交互引导(由HUD显示)
@@ -50,6 +68,7 @@ var _channel_time := 0.0
 var _channel_need := 0.0
 
 func _ready() -> void:
+	char_id = CharacterDef.valid_id(char_id)
 	build_body(avatar_color, seat_label)
 	hold_capacity = 2
 
@@ -61,6 +80,7 @@ func _physics_process(delta: float) -> void:
 	prompt_text = ""
 	channel_progress = -1.0
 	if downed or finished or (main != null and main.game_over):
+		_reset_char_states()
 		apply_motion(delta, Vector3.ZERO, 0.0)
 		return
 
@@ -71,12 +91,23 @@ func _physics_process(delta: float) -> void:
 
 	locate_cd = maxf(0.0, locate_cd - delta)
 	bottle_cd = maxf(0.0, bottle_cd - delta)
+	char_cd = maxf(0.0, char_cd - delta)
+	grab_anim = maxf(0.0, grab_anim - delta)
+	_tick_char_skill(delta)
+
+	# 突进/硬直/扎马步期间接管移动:三者互斥,且都不接受方向输入
+	if dash_time > 0.0 or dash_windup > 0.0 or stun_time > 0.0 or stance_time > 0.0:
+		_drive_char_state(delta)
+		_update_interactions()
+		return
 
 	# 冲刺:按下Shift立即提速,耗体力
 	var moving := attached or input.length() > 0.1
 	var sprint := sprint_key and stamina > 1.0 and moving
 	if sprint:
-		stamina = maxf(0.0, stamina - 22.0 * delta)
+		# 赵冬梅「压弯」:冲刺体力消耗 -25%(只碰资源耐久,不碰移速)
+		var burn := 22.0 * (CharSkills.ZHAO_STAMINA_MULT if CharSkills.has_carve(self) else 1.0)
+		stamina = maxf(0.0, stamina - burn * delta)
 	else:
 		stamina = minf(100.0, stamina + 15.0 * delta)
 
@@ -106,7 +137,9 @@ func _physics_process(delta: float) -> void:
 		apply_motion(delta, wish, speed)
 
 	# 手部姿态
-	if braced:
+	if grab_anim > 0.0:
+		hand_pose = "grab"
+	elif braced:
 		hand_pose = "brace"
 	elif attached:
 		hand_pose = "push"
@@ -119,6 +152,76 @@ func _physics_process(delta: float) -> void:
 
 	_update_channel(delta, input)
 	_update_interactions()
+
+# ---------- 角色技能状态机(见 char_skills.gd) ----------
+
+## 推进技能计时:蓄力→突进→硬直,以及扎马步、被抢追踪标记
+func _tick_char_skill(delta: float) -> void:
+	if track_time > 0.0:
+		track_time = maxf(0.0, track_time - delta)
+		if track_time <= 0.0:
+			track_target = null
+	if stance_time > 0.0:
+		stance_time -= delta
+		if stance_time <= 0.0:
+			stance_time = 0.0
+			stance = false
+	if stun_time > 0.0:
+		stun_time = maxf(0.0, stun_time - delta)
+	if dash_windup > 0.0:
+		dash_windup -= delta
+		if dash_windup <= 0.0:
+			dash_windup = 0.0
+			CharSkills.dash_launch(main, self)
+		return
+	if dash_time > 0.0:
+		# 推车突进的命中由 cart 的碰撞回调结算,徒步突进在这里判定
+		if not attached:
+			CharSkills.dash_check_hit(main, self)
+		dash_time = maxf(0.0, dash_time - delta)
+		if dash_time <= 0.0:
+			CharSkills.dash_finish(main, self)
+
+## 技能占用期间的移动:三种状态都不接受方向输入
+func _drive_char_state(delta: float) -> void:
+	if stance_time > 0.0:
+		hand_pose = "brace"
+		if attached and is_instance_valid(cart):
+			# 定身:不施力,并主动压住残余速度(人车一体扎住)
+			cart.linear_velocity = cart.linear_velocity * 0.6
+			cart.angular_velocity = cart.angular_velocity * 0.3
+			global_position = cart.handle_pos()
+			body_root.global_rotation = Vector3(0, cart.global_rotation.y, 0)
+			velocity = Vector3.ZERO
+		else:
+			apply_motion(delta, Vector3.ZERO, 0.0)
+		return
+	if dash_time > 0.0 and not attached:
+		hand_pose = "speed"
+		apply_motion(delta, dash_dir, CharSkills.DASH_SPEED)
+		return
+	# 蓄力 / 硬直 / 推车突进:原地或维持车上姿态
+	hand_pose = "speed" if dash_windup > 0.0 or dash_time > 0.0 else "idle"
+	if attached and is_instance_valid(cart):
+		_hold_cart_handle()
+	else:
+		apply_motion(delta, Vector3.ZERO, 0.0)
+
+## 人挂在车把上(不施力)
+func _hold_cart_handle() -> void:
+	global_position = cart.handle_pos()
+	body_root.global_rotation = Vector3(0, cart.global_rotation.y, 0)
+	velocity = Vector3.ZERO
+
+## 倒地/完赛时清掉技能状态,避免"定身/硬直"跨状态残留
+func _reset_char_states() -> void:
+	dash_windup = 0.0
+	dash_time = 0.0
+	stun_time = 0.0
+	stance_time = 0.0
+	stance = false
+	if is_instance_valid(cart):
+		cart.grip_mult = 1.0
 
 ## 大件减速:抱着电视速度减半
 func speed_factor() -> float:
@@ -136,9 +239,12 @@ func _drive_cart(delta: float, input: Vector2, sprint: bool) -> void:
 		detach_cart()
 		return
 	var throttle := -input.y   # W=+1 前进,S=-1
-	var steer := input.x       # A=-1 D=+1
+	var steer := input.x# A=-1 D=+1
 	cart.sprinting = sprint and throttle > 0.1
 	cart.sprint_level = 1.0 if cart.sprinting else move_toward(cart.sprint_level, 0.0, delta * 3.0)
+	# 赵冬梅「压弯」:侧向抓地×1.2(更不漂),每帧设置以便松手/换人后自动复位
+	var carve := CharSkills.has_carve(self)
+	cart.grip_mult = CharSkills.ZHAO_GRIP_MULT if carve else 1.0
 	var lf := cart.load_factor()   # 满载→推力体感下降、转向变笨
 	var fwd := -cart.global_transform.basis.z
 	fwd.y = 0.0
@@ -157,9 +263,12 @@ func _drive_cart(delta: float, input: Vector2, sprint: bool) -> void:
 	if absf(steer) > 0.05:
 		# 转向力与车速强挂钩:静止时几乎不转(修"原地漂移"),越快越听方向
 		# 倒车时转向反打:按A行进轨迹仍向屏幕左弯(倒库直觉)
-		var steer_eff := clampf(absf(fwd_speed) / 3.5, 0.12, 1.0)
+		# 「压弯」:转向力×1.25,且低速转向下限抬到0.20(慢速也掰得动车头)
+		var floor_eff := CharSkills.ZHAO_STEER_FLOOR if carve else 0.12
+		var steer_eff := clampf(absf(fwd_speed) / 3.5, floor_eff, 1.0)
 		var steer_sign := -1.0 if fwd_speed < -0.2 else 1.0
-		cart.apply_torque(Vector3(0, -steer * steer_sign * DRIVE_STEER * cart.mass * 0.12 * steer_eff * (0.4 + 0.6 * lf), 0))
+		var steer_force := DRIVE_STEER * (CharSkills.ZHAO_STEER_MULT if carve else 1.0)
+		cart.apply_torque(Vector3(0, -steer * steer_sign * steer_force * cart.mass * 0.12 * steer_eff * (0.4 + 0.6 * lf), 0))
 
 	# 人挂在车把上
 	global_position = cart.handle_pos()
@@ -195,16 +304,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		main.trigger_locate_skill()
 	elif event.is_action_pressed("throw"):
 		main.trigger_throw_bottle()
+	elif event.is_action_pressed("char_skill"):
+		# Ctrl:角色专属技能(赵冬梅冲撞 / 马德胜扎马步 / 李洋上链接)
+		main.trigger_char_skill(self, _aim_dir())
 	elif event.is_action_pressed("elbow"):
 		# 肘击自动朝镜头面朝的方向
-		var cam_fwd := Vector3.ZERO
-		if main != null:
-			cam_fwd = Basis(Vector3.UP, main.cam_yaw) * Vector3.FORWARD
-		do_elbow(cam_fwd)
+		do_elbow(_aim_dir())
+
+## 出手方向:一律用镜头朝向(与肘击口径一致)
+func _aim_dir() -> Vector3:
+	if main != null:
+		return Basis(Vector3.UP, main.cam_yaw) * Vector3.FORWARD
+	return Vector3.ZERO
 
 ## 肘击统一入口(本地/联机远程共用):结算体力,不够抡不动
 func do_elbow(dir: Vector3) -> void:
 	if downed or finished:
+		return
+	# 突进/蓄力/硬直/扎马步期间抡不动(技能占用双手)
+	if dash_windup > 0.0 or dash_time > 0.0 or stun_time > 0.0 or stance_time > 0.0:
 		return
 	if stamina < ELBOW_STAMINA:
 		Main.float_text(self, global_position + Vector3.UP * 2.2, "胳膊抡不动了...(体力不足)", Color(0.8, 0.8, 0.8))

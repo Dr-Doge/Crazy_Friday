@@ -26,13 +26,20 @@ func apply_state(d: Dictionary) -> void:
 	for k in d:
 		state[k] = d[k]
 
+## hot_carts: [[车下标, 商品名或""], ...] —— 名字非空时(李洋「爆款嗅觉」)车顶显示品名
 func set_hud(new_rows: Array, new_score: int, hot_carts: Array) -> void:
 	rows = new_rows
 	score = new_score
+	var by_idx := {}
+	for e in hot_carts:
+		if e is Array and e.size() >= 2:
+			by_idx[int(e[0])] = str(e[1])
 	for i in _m.net.carts_net.size():
 		var c = _m.net.carts_net[i]
 		if is_instance_valid(c):
-			c.set_highlight(hot_carts.has(i))
+			var on: bool = by_idx.has(i)
+			c.set_highlight(on)
+			c.set_hot_name(str(by_idx.get(i, "")) if on else "")
 
 func interpolate(delta: float) -> void:
 	if state.is_empty():
@@ -63,6 +70,12 @@ func _players(k: float, delta: float) -> void:
 		p.locate_cd = a[9]
 		p.bottle_cd = a[10]
 		p.brace_cd = a[11]
+		# 角色技能状态(HUD 显示用;客户端不做判定)
+		if a.size() > 14:
+			p.char_cd = a[12]
+			p.stance_time = a[13]
+			p.stance = a[13] > 0.0
+			p.stun_time = a[14]
 		p.puppet_update(delta)
 
 ## 购物车:三轴旋转都要插值(会翻车,不能只插y)

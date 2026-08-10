@@ -1,8 +1,8 @@
 class_name PlayerProfile
-## 本机玩家档案:昵称 + 配色。存在 user://profile.cfg,下次启动自动带出。
+## 本机玩家档案:昵称 + 配色 + 所选角色。存在 user://profile.cfg,下次启动自动带出。
 ##
 ## 联机时这份档案会随"加入房间"上报给主机,主机在开局时把全员档案
-## 分发给所有人,保证每台机器上看到的名字与颜色完全一致。
+## 分发给所有人,保证每台机器上看到的名字、颜色与角色完全一致。
 
 const PATH := "user://profile.cfg"
 const MAX_NAME_LEN := 8
@@ -29,6 +29,8 @@ const DEFAULT_NAMES: Array[String] = [
 
 static var display_name := ""
 static var color_index := 0
+## 所选角色 id(见 character_def.gd)。只影响外貌与技能,不影响基础数值。
+static var char_id := CharacterDef.ORDER[0]
 static var _loaded := false
 
 ## 读档(幂等)。没有存档或名字为空时给一个随机默认档案。
@@ -40,6 +42,7 @@ static func ensure_loaded() -> void:
 	if cfg.load(PATH) == OK:
 		display_name = sanitize(str(cfg.get_value("profile", "name", "")))
 		color_index = clampi(int(cfg.get_value("profile", "color", 0)), 0, COLORS.size() - 1)
+		char_id = CharacterDef.valid_id(str(cfg.get_value("profile", "char", "")))
 	if display_name == "":
 		display_name = DEFAULT_NAMES.pick_random()
 		color_index = randi() % COLORS.size()
@@ -48,6 +51,7 @@ static func save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("profile", "name", display_name)
 	cfg.set_value("profile", "color", color_index)
+	cfg.set_value("profile", "char", char_id)
 	cfg.save(PATH)
 
 static func set_name_and_save(raw: String) -> String:
@@ -59,6 +63,10 @@ static func set_name_and_save(raw: String) -> String:
 
 static func set_color_and_save(idx: int) -> void:
 	color_index = clampi(idx, 0, COLORS.size() - 1)
+	save()
+
+static func set_char_and_save(id: String) -> void:
+	char_id = CharacterDef.valid_id(id)
 	save()
 
 static func color() -> Color:

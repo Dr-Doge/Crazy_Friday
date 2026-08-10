@@ -34,7 +34,13 @@ var sprinting := false
 var sprint_level := 0.0             # 0-1,玩家蓄力冲刺进度,决定限速上限
 var basket_area: Area3D
 var alert_label: Label3D            # 被偷提示"!"
+var hot_label: Label3D              # 「爆款嗅觉」:车顶浮出的具体商品名(仅李洋可见)
 var highlight_mesh: MeshInstance3D  # 红色高亮壳(玩家目标商品在此车中)
+## 侧向抓地系数(赵冬梅「压弯」被动×1.2;由推车人每帧设置,松手即复位)
+var grip_mult := 1.0
+## 车头撞击倍率与其剩余时长(赵冬梅「贴地冲撞」推车突进时 ×1.5)
+var hit_mult := 1.0
+var hit_mult_time := 0.0
 var _recent_hits := {}
 var _mass_timer := 0.0
 var _alert_timer := 0.0
@@ -151,6 +157,22 @@ static func create(color: Color, title: String) -> Cart:
 	c.add_child(al)
 	c.alert_label = al
 
+	# 「爆款嗅觉」(李洋被动):车顶浮出这车里有你要的哪一件
+	var hb_lb := Label3D.new()
+	hb_lb.text = ""
+	hb_lb.font = Catalog.ui_font_bold()
+	hb_lb.font_size = 58
+	hb_lb.pixel_size = 0.005
+	hb_lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	hb_lb.no_depth_test = true
+	hb_lb.modulate = Color(1, 0.45, 0.62)
+	hb_lb.outline_size = 16
+	hb_lb.outline_modulate = Color(0.1, 0, 0.05, 0.9)
+	hb_lb.position = Vector3(0,2.6, 0)
+	hb_lb.visible = false
+	c.add_child(hb_lb)
+	c.hot_label = hb_lb
+
 	# 车斗感应区:统计斗内商品
 	var area := Area3D.new()
 	area.monitoring = true
@@ -189,6 +211,19 @@ static func create(color: Color, title: String) -> Cart:
 func set_highlight(on: bool) -> void:
 	if highlight_mesh:
 		highlight_mesh.visible = on
+	if not on and hot_label != null:
+		hot_label.visible = false
+
+## 「爆款嗅觉」:除红壳外再显示具体商品名(只有李洋会收到 name != "")
+func set_hot_name(text: String) -> void:
+	if hot_label == null:
+		return
+	hot_label.text = text
+	hot_label.visible = text != ""
+
+## 扎马步中:车斗锁死(甩货与肘飞一律失败)
+func is_locked() -> bool:
+	return attached_agent != null and attached_agent.stance
 
 func handle_pos() -> Vector3:
 	return to_global(Vector3(0, 0, 1.28))
@@ -238,15 +273,21 @@ func _physics_process(delta: float) -> void:
 			it.linear_velocity = linear_velocity + rel.normalized() * ITEM_REL_SPEED_CAP
 
 	# 驾驶中给侧向抓地,让推车有"车"的循迹感而不是溜冰
+	# grip_mult:赵冬梅「压弯」被动 ×1.2(抗漂),由player.gd 每帧设置
+	if hit_mult_time > 0.0:
+		hit_mult_time -= delta
+		if hit_mult_time <= 0.0:
+			hit_mult = 1.0
 	if attached_agent != null:
 		var side := global_transform.basis.x
 		side.y = 0.0
 		if side.length() > 0.01:
 			side = side.normalized()
 			var lat := side.dot(linear_velocity)
-			apply_central_force(-side * lat * mass * LATERAL_GRIP)
+			apply_central_force(-side * lat * mass * LATERAL_GRIP * grip_mult)
 	else:
 		sprint_level = move_toward(sprint_level, 0.0, 2.0 * delta)
+		grip_mult = 1.0
 
 	# 限速:软限制,避免硬钳制造成的高速抖动
 	var hv := Vector3(linear_velocity.x, 0, linear_velocity.z)
@@ -301,6 +342,9 @@ func right_up() -> void:
 
 ## 被肘击时从车斗里肘飞随机一件
 func eject_random_item() -> Item:
+	# 扎马步:车斗锁死,一件都肘不出来
+	if is_locked():
+		return null
 	var items := items_in_basket()
 	if items.is_empty():
 		return null
@@ -315,6 +359,9 @@ func eject_random_item() -> Item:
 
 ## 倒地/翻车时甩货
 func spill(fraction: float) -> void:
+	# 扎马步:车斗锁死,撞不散
+	if is_locked():
+		return
 	for it in items_in_basket():
 		if randf() < fraction:
 			# 豁免期 + 恢复常规重力,保证甩出去的货不被车斗重新吸住
@@ -344,6 +391,12 @@ func _on_body_entered(body: Node) -> void:
 
 	if body is Cart:
 		var victim: Actor = body.attached_agent
+		# 一次碰撞只结算一次,抑制对方处理器重复触发
+		body._recent_hits[get_instance_id()] = now
+		# 扎马步(马德胜):受方免疫且反弹失衡给攻方,本次撞击不再走常规结算
+		if victim != null and victim.stance:
+			CharSkills.stance_counter(victim, self)
+			return
 		var local: Vector3 = body.to_local(global_position)
 		var amount := 0.0
 		var kind := ""
@@ -356,14 +409,16 @@ func _on_body_entered(body: Node) -> void:
 		else:
 			amount = 15.0
 			kind = "对撞"
+		# 贴地冲撞(赵冬梅)推车突进窗口内:车头撞击×1.5
+		if hit_mult > 1.0:
+			amount *= hit_mult
+			kind = "冲撞" + kind
 		# 撞击双方都按部位吃失衡:攻方吃"车头撞击"+15,守方按被撞部位
 		# 注意:add_imbalance可能当场击倒攻方并导致人车分离,先留住局部引用
 		var atk: Actor = attached_agent
 		if atk != null:
 			atk.add_imbalance(15.0, body)
 			Main.float_text(atk, atk.global_position + Vector3.UP * 2.2, "%s 车头+15" % Main.bam(), Color(1, 0.6, 0.25), 68)
-		# 一次碰撞只结算一次,抑制对方处理器重复触发
-		body._recent_hits[get_instance_id()] = now
 		if victim != null:
 			victim.add_imbalance(amount, self)
 			Main.float_text(victim, victim.global_position + Vector3.UP * 2.2, "%s %s+%d" % [Main.bam(), kind, int(amount)], Color(1, 0.5, 0.2), 80)

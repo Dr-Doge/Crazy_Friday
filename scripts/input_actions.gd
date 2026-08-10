@@ -19,6 +19,7 @@ const KEYS := {
 	"drive": [KEY_F],
 	"locate": [KEY_Q],
 	"brace": [KEY_SPACE],
+	"char_skill": [KEY_CTRL],
 	"debug_time": [KEY_T],
 	"dev_mode": [KEY_F1],
 	"debug_sale": [KEY_F3],

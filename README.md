@@ -197,7 +197,7 @@ powershell -ExecutionPolicy Bypass -File tools\smoke_test.ps1 -Mode mp -Clients 
 
 ## 本版暂未实现(下一轮迭代候选)
 
-- 保安NPC、查询机、补货时刻、免费试吃、广播寻物
+- 保安NPC、查询机、免费试吃、广播寻物
 - 大件"架车顶重心暴涨"的专门规则(现在大件只是很大很重的物理箱)
 - 高层货位攀爬、人工收银通道(0.5秒/件)
 - 真布娃娃物理(现为白盒倒地表演)、监控集锦回放

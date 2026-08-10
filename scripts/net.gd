@@ -6,7 +6,8 @@ class_name Net extends Node
 const PORT := 7788
 const MAX_CLIENTS := 5     # 主机+5客户端=6人
 const SYNC_INTERVAL := 3   # 每3个物理帧同步一次(约20Hz)
-const NET_VERSION := 3     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
+const NET_VERSION := 4     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
+                           # v4:大厅与开局包新增"所选角色";红壳数据带商品名
 
 var main: Main
 var is_host := false
@@ -97,7 +98,7 @@ func _on_connected_ok() -> void:
 	main.hud.set_menu_status("已连上主机!正在同步你的角色档案...")
 	push_profile()
 
-## 把本机档案(昵称+配色)上报给主机。在大厅里改名换色也调这个。
+## 把本机档案(昵称+配色+所选角色)上报给主机。在大厅里改档案也调这个。
 func push_profile() -> void:
 	if is_host:
 		# 主机自己就是权威,直接刷新大厅
@@ -109,16 +110,18 @@ func push_profile() -> void:
 		return
 	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return
-	rpc_id(1, "client_profile", PlayerProfile.display_name, PlayerProfile.color_index)
+	rpc_id(1, "client_profile", PlayerProfile.display_name, PlayerProfile.color_index,
+			PlayerProfile.char_id)
 
 @rpc("any_peer", "call_remote", "reliable")
-func client_profile(pname: String, color: int) -> void:
+func client_profile(pname: String, color: int, char_id: String = "") -> void:
 	if not is_host or active:
 		return
 	var pid := multiplayer.get_remote_sender_id()
 	lobby_profiles[pid] = {
 		"name": PlayerProfile.sanitize(pname),
 		"color": clampi(color, 0, PlayerProfile.COLORS.size() - 1),
+		"char": CharacterDef.valid_id(char_id),
 	}
 	_lobby_update()
 
@@ -151,17 +154,19 @@ func _lobby_update() -> void:
 	for pid in peers:
 		rpc_id(pid, "ev_lobby", members)
 
-## [{name, color}] 按座位顺序;尚未上报档案的显示占位
+## [{name, color, char}] 按座位顺序;尚未上报档案的显示占位
 func lobby_members() -> Array:
 	var out: Array = [{
 		"name": PlayerProfile.display_name,
 		"color": PlayerProfile.color_index,
+		"char": PlayerProfile.char_id,
 	}]
 	for pid in peers:
 		var prof: Dictionary = lobby_profiles.get(pid, {})
 		out.append({
 			"name": str(prof.get("name", "连接中…")),
 			"color": int(prof.get("color", 0)),
+			"char": CharacterDef.valid_id(str(prof.get("char", ""))),
 		})
 	return out
 
@@ -182,16 +187,18 @@ func start_game() -> void:
 	var members := lobby_members()
 	var raw_names: Array = []
 	var raw_colors: Array = []
+	var chars: Array = []
 	for m in members:
 		raw_names.append(m["name"])
 		raw_colors.append(m["color"])
+		chars.append(CharacterDef.valid_id(str(m.get("char", ""))))
 	var names := PlayerProfile.resolve_names(raw_names)
 	var colors := PlayerProfile.resolve_colors(raw_colors)
 	for i in peers.size():
 		rpc_id(peers[i], "client_start", world_seed, main.pending_npc, NET_VERSION,
-				i + 1, total, names, colors)
+				i + 1, total, names, colors, chars)
 	print("[Net] 进入对局 身份=主机 玩家数=", total)
-	main.start_mp(true, world_seed, main.pending_npc, 0, total, names, colors)
+	main.start_mp(true, world_seed, main.pending_npc, 0, total, names, colors, chars)
 
 func _on_peer_left(id: int) -> void:
 	if is_host:
@@ -214,7 +221,7 @@ func shutdown() -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func client_start(world_seed: int, npc: int, ver: int, my_seat: int, total: int,
-		names: Array, colors: Array) -> void:
+		names: Array, colors: Array, chars: Array = []) -> void:
 	print("[Net] 收到开局指令 seed=", world_seed, " npc=", npc, " ver=", ver, " 座位=", my_seat, " 总人数=", total)
 	if ver != NET_VERSION:
 		main.hud.set_menu_status("联机失败:各电脑的游戏版本不一致!\n请把同一份exe拷给所有人后重试")
@@ -224,7 +231,7 @@ func client_start(world_seed: int, npc: int, ver: int, my_seat: int, total: int,
 		return
 	active = true
 	print("[Net] 进入对局 身份=客户端 座位=", my_seat)
-	main.start_mp(false, world_seed, npc, my_seat, total, names, colors)
+	main.start_mp(false, world_seed, npc, my_seat, total, names, colors, chars)
 
 ## 开局后由main调用:登记同步对象表(两端顺序一致)
 func register_world() -> void:
@@ -345,7 +352,8 @@ func _gather_players() -> Dictionary:
 		ps.append([p.global_position, p.body_root.rotation.y, p.hand_pose,
 				p.imbalance, p.stamina, p.downed, p.braced,
 				p.channel_progress, p.body_root.rotation.x,
-				p.locate_cd, p.bottle_cd, p.brace_cd])
+				p.locate_cd, p.bottle_cd, p.brace_cd,
+				p.char_cd, p.stance_time, p.stun_time])
 		_sync_text("pp%d" % i, "pp", i, p.prompt_text)
 	return {"p": ps}
 
