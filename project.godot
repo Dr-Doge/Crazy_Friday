@@ -23,6 +23,7 @@ window/size/viewport_height=900
 [physics]
 
 common/physics_interpolation=true
+3d/physics_engine="Jolt Physics"
 
 [rendering]
 

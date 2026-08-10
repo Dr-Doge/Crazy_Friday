@@ -341,7 +341,7 @@ func _update_held_positions() -> void:
 			it.global_position = global_position + Vector3.UP * 1.1 + fwd * 0.62
 		else:
 			it.global_position = base + fwd * 0.42 + Vector3.UP * y
-			y += it.box_size.y + 0.05
+			y += it.collider_half_height() * 2.0 + 0.05
 		it.global_rotation = Vector3(0, body_root.global_rotation.y, 0)
 
 ## 肘击:无冷却(手速就是攻速),命中+15失衡,击落对方手中随机1件,并从对方车斗肘飞随机1件

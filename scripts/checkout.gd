@@ -222,15 +222,26 @@ func _next_belt_pos() -> Vector3:
 
 ## 通道内的静态 CSG 构件(围栏/收银带)
 func _csg_box(node_name: String, pos: Vector3, size: Vector3, color: Color) -> CSGBox3D:
+	var body := StaticBody3D.new()
+	body.name = node_name
+	body.collision_layer = Catalog.L_WORLD
+	body.collision_mask = 0
+	body.position = pos
+	add_child(body)
+
+	var cs := CollisionShape3D.new()
+	cs.name = "Collider"
+	var bs := BoxShape3D.new()
+	bs.size = size
+	cs.shape = bs
+	body.add_child(cs)
+
 	var b := CSGBox3D.new()
-	b.name = node_name
+	b.name = "Visual"
 	b.size = size
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	b.material = mat
-	b.use_collision = true
-	b.collision_layer = Catalog.L_WORLD
-	b.collision_mask = 0
-	b.position = pos
-	add_child(b)
+	b.use_collision = false   # 碰撞由父级 StaticBody3D 的凸体提供
+	body.add_child(b)
 	return b

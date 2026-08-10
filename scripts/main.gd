@@ -123,6 +123,10 @@ func _start_match(tut: bool) -> void:
 	if tut:
 		tutorial_guide = TutorialGuide.new(self)
 		tutorial_guide.setup()
+	# 测试钩子:车斗物理压力测试(回归"薄商品被挤出车外/穿模")
+	if OS.get_environment("WHITEBOX_PHYSTEST") != "":
+		phys_stress = PhysStress.new(self)
+		phys_stress.setup()
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
 func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
@@ -248,7 +252,7 @@ func _spawn_stock(data: Dictionary) -> void:
 				var tp: Vector3 = _large_slots.pop_front()
 				var tv := Item.create(id)
 				add_child(tv)
-				tv.set_shelved(Vector3(tp.x, 0.4 + tv.box_size.y * 0.5 + 0.05, tp.z))
+				tv.set_shelved(Vector3(tp.x, 0.4 + tv.collider_half_height() + 0.05, tp.z))
 				all_items.append(tv)
 			continue
 		var slots: Array = zone_slots[info["zone"]]
@@ -258,7 +262,9 @@ func _spawn_stock(data: Dictionary) -> void:
 			var pos: Vector3 = slots.pop_back()
 			var it := Item.create(id)
 			add_child(it)
-			it.set_shelved(pos + Vector3(0, it.box_size.y * 0.5, 0))
+			# 用物理半高而非视觉半高:扁平商品的碰撞体被加厚过(见 Item.MIN_COLLIDER_THICKNESS),
+			# 若按视觉半高摆放,碰撞体下半会陷进货架板里,解算时被弹出去
+			it.set_shelved(pos + Vector3(0, it.collider_half_height(), 0))
 			all_items.append(it)
 
 ## 每名玩家一张代购清单:2硬需求+4常规+1大件。这是客户下的单,不是自己要用的东西
@@ -399,6 +405,9 @@ func _make_client_puppets() -> void:
 ## 仅教学模式下创建;九步指引的全部逻辑在 tutorial.gd
 var tutorial_guide: TutorialGuide
 
+## 仅 WHITEBOX_PHYSTEST 下创建:车斗物理压力测试,见 phys_stress.gd
+var phys_stress: PhysStress
+
 # ---------- 环境与相机 ----------
 
 func _setup_environment() -> void:
@@ -468,6 +477,9 @@ func _process(delta: float) -> void:
 		return
 	_tick_locate(delta)
 
+	if phys_stress != null:
+		phys_stress.tick(delta)
+
 	if tutorial:
 		tutorial_guide.tick(delta)
 	else:
@@ -499,10 +511,10 @@ func _process(delta: float) -> void:
 			_spawn_random_slippery(1, 25.0)
 			hud.broadcast("保洁阿姨已上线:拖把所到之处寸步难行,请各位顾客小心地滑~")
 
-	# 兜底:掉出世界的散货拉回入口
+	# 兜底:掉出世界的散货拉回入口。0.5秒一扫(穿模已在物理层修掉,这里只是保险)
 	_void_sweep_timer -= delta
 	if _void_sweep_timer <= 0.0:
-		_void_sweep_timer = 2.0
+		_void_sweep_timer = 0.5
 		for it in all_items:
 			if is_instance_valid(it) and it.state == Item.ItemState.FREE and it.global_position.y < -5.0:
 				it.set_free_at(MapLayout.respawn_pos(0.8))

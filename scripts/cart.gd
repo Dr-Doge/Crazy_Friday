@@ -8,6 +8,26 @@ const ITEM_GRAVITY_FULL := 6.0      # 车内商品大重力(失衡0时)
 const ITEM_GRAVITY_LOOSE := 0.55    # 失衡拉满时车内商品几乎没抓地,一撞就飞
 const LATERAL_GRIP := 6.0           # 驾驶时的侧向抓地,产生"车"的循迹感(越大越不漂)
 
+## 车内商品相对车斗的最大速度(米/秒)。
+##
+## 这是防穿模的**治本一环**:实测显示扁平商品被挤压时能被弹射到 21 m/s,
+## 而 60Hz 下这意味着单帧位移 0.36 米——远超车斗任何一块板的厚度,
+## 必然穿透。车内货物本就该"跟着车走",给相对速度设上限不影响手感,
+## 反而强化"大重力粘在车里"的设计意图。
+## 注意:被甩出/肘飞的商品处于豁免期(Item.fling_grace),不受此限制。
+const ITEM_REL_SPEED_CAP := 7.0
+
+## 车斗板厚。原为底板0.06/侧壁 0.05,薄到无法拦住高速小物件;
+## 加厚后即使偶发高速也有足够的穿透余量。
+const FLOOR_T := 0.18
+const WALL_T := 0.12
+
+## 车斗内腔(加厚只向外扩,这些值保持不变→装货容积与手感不变)
+const FLOOR_TOP := 0.58      # 内底面高度,装货的基准面
+const WALL_H := 0.62         # 侧壁高
+const INNER_HALF_X := 0.49   # 内半宽
+const INNER_HALF_Z := 0.715  # 内半长
+
 var cart_owner: Node3D = null       # 车主(null=无主车)
 var attached_agent: Actor = null    # 正在推车的人
 var sprinting := false
@@ -38,14 +58,22 @@ static func create(color: Color, title: String) -> Cart:
 	pm.bounce = 0.05
 	c.physics_material_override = pm
 
-	# 车斗:底板+四壁(网格与碰撞一致),加大版
+	# 车斗:底板+四壁(网格与碰撞一致)。
+	# 板一律"向外加厚",保持内腔尺寸不变(内底面 FLOOR_TOP、内半宽/半长如下),
+	# 这样加厚不会改变装货容积,也不影响 basket_area 的覆盖关系。
+	var fz := FLOOR_TOP - FLOOR_T * 0.5              # 底板中心
+	var wy := FLOOR_TOP -0.03 + WALL_H * 0.5        # 侧壁中心(略埋进底板,防缝隙)
+	var hx := INNER_HALF_X + WALL_T * 0.5            # 左右壁中心
+	var hz := INNER_HALF_Z + WALL_T * 0.5            # 前后壁中心
+	var outer_x := INNER_HALF_X * 2.0 + WALL_T * 2.0
+	var outer_z := INNER_HALF_Z * 2.0 + WALL_T * 2.0
 	var parts := [
-		[Vector3(0, 0.55, 0), Vector3(1.05, 0.06, 1.5)],       # 底板
-		[Vector3(0, 0.86, -0.74), Vector3(1.05, 0.62, 0.05)],  # 前壁
-		[Vector3(0, 0.86, 0.74), Vector3(1.05, 0.62, 0.05)],   # 后壁
-		[Vector3(-0.515, 0.86, 0), Vector3(0.05, 0.62, 1.5)],  # 左壁
-		[Vector3(0.515, 0.86, 0), Vector3(0.05, 0.62, 1.5)],   # 右壁
-		[Vector3(0, 1.25, 0.92), Vector3(1.1, 0.07, 0.07)],    # 车把
+		[Vector3(0, fz, 0), Vector3(outer_x, FLOOR_T, outer_z)],        # 底板
+		[Vector3(0, wy, -hz), Vector3(outer_x, WALL_H, WALL_T)],        # 前壁
+		[Vector3(0, wy, hz), Vector3(outer_x, WALL_H, WALL_T)],         # 后壁
+		[Vector3(-hx, wy, 0), Vector3(WALL_T, WALL_H, outer_z)],        # 左壁
+		[Vector3(hx, wy, 0), Vector3(WALL_T, WALL_H, outer_z)],         # 右壁
+		[Vector3(0, 1.25, 0.92), Vector3(1.1, 0.07, 0.07)],             # 车把
 	]
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.75, 0.78, 0.82)
@@ -197,8 +225,17 @@ func _physics_process(delta: float) -> void:
 	var imb := attached_agent.imbalance if attached_agent != null else 0.0
 	var gscale := lerpf(ITEM_GRAVITY_FULL, ITEM_GRAVITY_LOOSE, clampf(imb / 100.0, 0.0, 1.0))
 	for it in _grav_items:
-		if is_instance_valid(it) and it.state == Item.ItemState.FREE:
-			it.gravity_scale = gscale
+		if not is_instance_valid(it) or it.state != Item.ItemState.FREE:
+			continue
+		# 刚被甩出/肘飞的货处于豁免期:别把它重新吸回车里
+		if it.fling_grace > 0.0:
+			continue
+		it.gravity_scale = gscale
+		# 限制相对车斗的速度。挤压弹射能把扁平商品加速到 20+ m/s,
+		# 那样单帧位移会远超板厚而直接穿模飞出地图(v0.14实测缺陷)。
+		var rel := it.linear_velocity - linear_velocity
+		if rel.length() > ITEM_REL_SPEED_CAP:
+			it.linear_velocity = linear_velocity + rel.normalized() * ITEM_REL_SPEED_CAP
 
 	# 驾驶中给侧向抓地,让推车有"车"的循迹感而不是溜冰
 	if attached_agent != null:
@@ -268,7 +305,7 @@ func eject_random_item() -> Item:
 	if items.is_empty():
 		return null
 	var it: Item = items.pick_random()
-	it.gravity_scale = 1.0
+	it.mark_flung()
 	var dir := Vector3(randf_range(-1.0, 1.0), 0, randf_range(-1.0, 1.0))
 	if dir.length() < 0.1:
 		dir = Vector3(1, 0, 0)
@@ -280,7 +317,8 @@ func eject_random_item() -> Item:
 func spill(fraction: float) -> void:
 	for it in items_in_basket():
 		if randf() < fraction:
-			it.gravity_scale = 1.0   # 飞出瞬间恢复常规重力,保证能飞出车斗
+			# 豁免期 + 恢复常规重力,保证甩出去的货不被车斗重新吸住
+			it.mark_flung()
 			it.apply_central_impulse(Vector3(randf_range(-2.5, 2.5), randf_range(3.0, 5.0), randf_range(-2.5, 2.5)) * it.mass)
 	apply_torque_impulse(Vector3(randf_range(-14, 14), randf_range(-8, 8), randf_range(-14, 14)))
 

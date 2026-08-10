@@ -229,19 +229,39 @@ static func _group(parent: Node3D, name: String) -> Node3D:
 	parent.add_child(n)
 	return n
 
-## 实心CSG 方盒:use_collision 自带碰撞体。
+## 实心构件:CSG 负责**视觉**,碰撞另挂 StaticBody3D + BoxShape3D(凸体)。
+##
+## 【为什么不用 CSGShape3D.use_collision】
+## 它生成的是 ConcavePolygonShape3D(三角网格)。trimesh 是无厚度的单面碰撞体,
+## 动态刚体高速运动或被挤压时极易穿透——v0.14 实测中商品会直接穿过地板
+## 掉到 y=-7 以下飞出地图。BoxShape3D 是凸体,有完整的内外判定与穿透恢复,
+## 对刚体堆叠(本作车斗与货架的核心场景)可靠得多。
+##
+## 换正式模型时:把Visual 子节点替换掉即可,Collider 保留(或改成模型自带碰撞)。
 ## pos.y == 0 表示"贴地摆放",自动抬升半个高度。
 static func _csg_box(parent: Node3D, name: String, pos: Vector3, size: Vector3,
 		color: Color) -> CSGBox3D:
+	var at := pos + Vector3(0, size.y * 0.5, 0) if pos.y == 0.0 else pos
+	var body := StaticBody3D.new()
+	body.name = name
+	body.collision_layer = Catalog.L_WORLD
+	body.collision_mask = 0
+	body.position = at
+	parent.add_child(body)
+
+	var cs := CollisionShape3D.new()
+	cs.name = "Collider"
+	var bs := BoxShape3D.new()
+	bs.size = size
+	cs.shape = bs
+	body.add_child(cs)
+
 	var b := CSGBox3D.new()
-	b.name = name
+	b.name = "Visual"
 	b.size = size
 	b.material = _mat(color)
-	b.use_collision = true
-	b.collision_layer = Catalog.L_WORLD
-	b.collision_mask = 0
-	b.position = pos + Vector3(0, size.y * 0.5, 0) if pos.y == 0.0 else pos
-	parent.add_child(b)
+	b.use_collision = false     # 碰撞由父级 StaticBody3D 提供
+	body.add_child(b)
 	return b
 
 ## 无碰撞的薄地贴/透明装饰

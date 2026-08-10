@@ -30,7 +30,7 @@
 #>
 [CmdletBinding()]
 param(
-	[ValidateSet('single', 'tutorial', 'mp', 'all')]
+	[ValidateSet('single', 'tutorial', 'mp', 'phys', 'all')]
 	[string]$Mode = 'single',
 
 	[ValidateRange(1, 5)]
@@ -261,6 +261,13 @@ if ($Mode -in @('single', 'all')) {
 if ($Mode -in @('tutorial', 'all')) {
 	$all += Invoke-SingleCase -Name 'tutorial' -EnvVars @{ WHITEBOX_TUTORIAL = '1' } `
 		-FrameCount $QUICK_FRAMES -Expect @('白盒Demo') -Note "(教学关 $QUICK_FRAMES 帧)"
+}
+if ($Mode -in @('phys', 'all')) {
+	# 车斗物理回归:守住"薄商品被挤出车外/穿模掉出地图"。
+	# 判定由游戏内断言给出(见 phys_stress.gd),这里只认RESULT=PASS。
+	$all += Invoke-SingleCase -Name 'phys' -EnvVars @{ WHITEBOX_PHYSTEST = '1'; WHITEBOX_NPC = '0' } `
+		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 240 `
+		-Note '(车斗物理压力测试:静置/正常推行/激烈对抗三阶段)'
 }
 if ($Mode -in @('mp', 'all')) {
 	$all += Invoke-MpCase -ClientCount $Clients -FrameCount $mpFrames
