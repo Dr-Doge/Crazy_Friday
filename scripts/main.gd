@@ -83,6 +83,8 @@ func _ready() -> void:
 	hud.host_pressed.connect(_menu_host)
 	hud.join_pressed.connect(_menu_join)
 	hud.begin_pressed.connect(net_begin_match)
+	hud.leave_room_pressed.connect(_menu_leave_room)
+	hud.quit_pressed.connect(func() -> void: get_tree().quit())
 	if OS.get_environment("WHITEBOX_NPC") != "":
 		pending_npc = clampi(int(OS.get_environment("WHITEBOX_NPC")), 0, 10)
 	hud.set_npc_count_display(pending_npc)
@@ -134,6 +136,10 @@ func _start_match(tut: bool) -> void:
 	if OS.get_environment("WHITEBOX_PHYSTEST") != "":
 		phys_stress = PhysStress.new(self)
 		phys_stress.setup()
+	# 测试钩子:角色技能自检(无头下没人按键,技能代码否则零覆盖)
+	if OS.get_environment("WHITEBOX_CHARTEST") != "":
+		char_probe = CharProbe.new(self)
+		char_probe.setup()
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
 func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
@@ -208,6 +214,15 @@ func _menu_join(ip: String) -> void:
 		)
 	else:
 		hud.set_menu_status("连接失败,IP格式有误?")
+		hud.reset_menu_network()
+
+## 离开房间:断开连接、清空大厅状态,菜单退回联机页
+func _menu_leave_room() -> void:
+	if game_started:
+		return
+	net.leave_lobby()
+	hud.reset_menu_network()
+	hud.set_menu_status("已离开房间")
 
 # ---------- 世界构建(所有随机都在seed之后,两端一致) ----------
 
@@ -430,6 +445,9 @@ var tutorial_guide: TutorialGuide
 ## 仅 WHITEBOX_PHYSTEST 下创建:车斗物理压力测试,见 phys_stress.gd
 var phys_stress: PhysStress
 
+## 仅 WHITEBOX_CHARTEST 下创建:角色技能自检,见 char_probe.gd
+var char_probe: CharProbe
+
 # ---------- 环境与相机 ----------
 
 func _setup_environment() -> void:
@@ -501,6 +519,8 @@ func _process(delta: float) -> void:
 
 	if phys_stress != null:
 		phys_stress.tick(delta)
+	if char_probe != null:
+		char_probe.tick(delta)
 
 	if tutorial:
 		tutorial_guide.tick(delta)
@@ -670,13 +690,38 @@ func trigger_char_skill(p: Player = null, dir := Vector3.ZERO) -> void:
 		return
 	CharSkills.trigger(self, p, dir)
 
-## 「上链接」抢到货的播报(只在主机侧调用)
+##「上链接」抢到货的播报与标记下发(只在主机侧调用)。
+##注意:victim 可能是大妈或测试靶子,而 players 是 Array[Player]——
+## 不先判类型就 find() 会触发 TypedArray 校验报错(踩过)
 func on_char_grab(thief: Player, victim: Actor, item: Item) -> void:
 	if net_client:
 		return
-	var vname := "大妈" if victim is Granny else seat_name_2nd(players.find(victim))
+	var thief_seat := players.find(thief)
+	var vname := "大妈"
+	var victim_seat := -1
+	if victim is Player:
+		victim_seat = players.find(victim)
+		vname = seat_name_2nd(victim_seat)
 	hud.broadcast("直播间提示:%s 对着%s大喊\"上链接\",%s 就这么没了~" % [
-			seat_name(players.find(thief)), vname, item.display_name])
+			seat_name(thief_seat), vname, item.display_name])
+	# 标记是低频事件,走可靠 RPC 而不是塞进 20Hz 状态包
+	if net_mp:
+		if victim_seat > 0:
+			var vpid := net.peer_of_seat(victim_seat)
+			if net.peer_alive(vpid):
+				net.rpc_id(vpid, "ev_mark", "track", thief_seat, CharSkills.GRAB_MARK)
+		if thief_seat > 0:
+			var tpid := net.peer_of_seat(thief_seat)
+			if net.peer_alive(tpid):
+				net.rpc_id(tpid, "ev_mark", "exposed", victim_seat, CharSkills.GRAB_MARK)
+
+## 客户端收到标记事件
+func client_mark(kind: String, seat: int, dur: float) -> void:
+	if kind == "track":
+		player.track_time = dur
+		player.track_target = players[seat] if seat >= 0 and seat < players.size() else null
+	else:
+		player.exposed_time = dur
 
 ##右键:向镜头方向掷出水瓶,落地生成临时湿滑地面(CD8秒)
 func trigger_throw_bottle(p: Player = null, dir := Vector3.ZERO) -> void:
@@ -873,6 +918,11 @@ func _update_skill_hud() -> void:
 		s4 = "Ctrl %s:%d秒" % [sk, int(ceil(player.char_cd))]
 	var ready: bool = player.locate_cd <= 0.0 and player.bottle_cd <= 0.0 \
 			and player.brace_cd <= 0.0 and player.char_cd <= 0.0
+	# 「上链接」的双向反馈:抢人者知道自己暴露,被抢者知道能看见对方
+	if player.exposed_time > 0.0:
+		s4 += "⚠ 位置暴露 %.1f秒!" % player.exposed_time
+	elif player.track_time > 0.0:
+		s4 += "  👁 已锁定抢你货的人 %.1f秒" % player.track_time
 	hud.set_skill(s1 + " · " + s2 + " · " + s3 + " · " + s4, ready)
 	# 马德胜「余光」:屏幕边缘的威胁方向预警(只给信息,不给数值)
 	hud.set_threats(CharSkills.threats_for(self, player), cam_yaw)

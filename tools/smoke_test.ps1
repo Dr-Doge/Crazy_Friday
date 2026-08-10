@@ -30,7 +30,7 @@
 #>
 [CmdletBinding()]
 param(
-	[ValidateSet('single', 'tutorial', 'mp', 'phys', 'all')]
+	[ValidateSet('single', 'tutorial', 'mp', 'phys', 'char', 'all')]
 	[string]$Mode = 'single',
 
 	[ValidateRange(1, 5)]
@@ -268,6 +268,15 @@ if ($Mode -in @('phys', 'all')) {
 	$all += Invoke-SingleCase -Name 'phys' -EnvVars @{ WHITEBOX_PHYSTEST = '1'; WHITEBOX_NPC = '0' } `
 		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 240 `
 		-Note '(车斗物理压力测试:静置/正常推行/激烈对抗三阶段)'
+}
+if ($Mode -in @('char', 'all')) {
+	# 角色技能自检:无头下没人按键,不跑这一项则三个角色技能零覆盖。
+	# 判定由游戏内断言给出(见 char_probe.gd),这里只认 RESULT=PASS。
+	# 帧数给足:无头无渲染时帧率极高(上千 fps),自检按"游戏内秒数"推进,
+	# 帧数给小了会在断言跑完前被 --quit-after 截断(踩过)。
+	$all += Invoke-SingleCase -Name 'char' -EnvVars @{ WHITEBOX_CHARTEST = '1'; WHITEBOX_NPC = '0' } `
+		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
+		-Note '(角色技能自检:三主动 + 三被动)'
 }
 if ($Mode -in @('mp', 'all')) {
 	$all += Invoke-MpCase -ClientCount $Clients -FrameCount $mpFrames

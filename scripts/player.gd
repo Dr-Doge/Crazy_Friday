@@ -39,6 +39,7 @@ var stance_time := 0.0
 var grab_anim := 0.0        # 出杆动作计时(手部表现)
 var track_time := 0.0       # 被抢货后:追踪标记剩余时长
 var track_target: Actor = null   # 追踪对象(抢你货的人)
+var exposed_time := 0.0     # 抢了别人之后:自己被对方追踪的剩余时长
 
 # 联机:远程玩家由主机模拟,输入来自网络(含客户端镜头朝向)
 var remote := false
@@ -157,6 +158,8 @@ func _physics_process(delta: float) -> void:
 
 ## 推进技能计时:蓄力→突进→硬直,以及扎马步、被抢追踪标记
 func _tick_char_skill(delta: float) -> void:
+	if exposed_time > 0.0:
+		exposed_time = maxf(0.0, exposed_time - delta)
 	if track_time > 0.0:
 		track_time = maxf(0.0, track_time - delta)
 		if track_time <= 0.0:

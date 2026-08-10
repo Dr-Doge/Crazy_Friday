@@ -236,12 +236,14 @@ static func _do_grab(m, p: Player, fwd: Vector3) -> void:
 	else:
 		# 手已满:货落在脚边,仍然完成了"断人补给"
 		got.set_free_at(p.global_position + Vector3.UP * 0.9 + fwd * 0.6)
-	# 被抢方获得追踪标记:他能穿墙看到李洋在哪(这是他的免费反制)
+	# 被抢方获得追踪标记:他能穿墙看到李洋在哪(这是他的免费反制);
+	# 李洋自己则进入"暴露"状态,HUD 会提醒他赶紧跑。
+	# 联机侧的推送在 main.on_char_grab() 里完成(主机权威)。
 	if best is Player:
 		var vp: Player = best
 		vp.track_time = GRAB_MARK
 		vp.track_target = p
-	p.set_marked(GRAB_MARK)
+	p.exposed_time = GRAB_MARK
 	Main.float_text(best, best.global_position + Vector3.UP * 2.3,
 			"上链接!! %s 被抢走" % got.display_name, Color(1, 0.4, 0.6), 80)
 	best.on_elbowed(p)

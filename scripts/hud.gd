@@ -8,6 +8,8 @@ signal start_tutorial_pressed
 signal host_pressed
 signal join_pressed(ip: String)
 signal begin_pressed          # 主机大厅:开始对局
+signal leave_room_pressed     # 大厅:离开房间
+signal quit_pressed           # 主界面:退出游戏
 
 var time_label: Label
 var phase_label: Label
@@ -30,6 +32,10 @@ var channel_bg: ColorRect
 var channel_fill: ColorRect
 var result_overlay: Control
 var result_vbox: VBoxContainer
+var threat_layer: Control          # 「余光」被动:屏幕边缘威胁方向箭头
+var threat_arrows: Array[Label] = []
+## 局内 HUD 元素:开始界面阶段一律隐藏(开局前显示计时与体力条毫无意义)
+var _ingame_nodes: Array[Control] = []
 
 var _bc_queue: Array = []
 var _mq_active := false
@@ -141,7 +147,7 @@ func _ready() -> void:
 
 	# 右下:操作说明(精简三行)
 	var hint := Label.new()
-	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n左键 肘击 · 右键 掷水瓶 · Q 找货雷达 · 空格 稳住(格挡撞击)\nEsc 鼠标 · F1 开发者 · T/F3/F4 调试"
+	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n左键 肘击 · 右键 掷水瓶 · Q 找货雷达 · 空格 稳住· Ctrl 角色技能\nEsc鼠标 · F1 开发者 · T/F3/F4 调试"
 	hint.add_theme_font_override("font", Catalog.ui_font_bold())
 	hint.add_theme_font_size_override("font_size", 30)
 	hint.add_theme_color_override("font_color", Color(1, 0.25, 0.18))
@@ -149,6 +155,23 @@ func _ready() -> void:
 	hint.add_theme_constant_override("outline_size", 6)
 	root.add_child(hint)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+
+	# 「余光」威胁箭头层(马德胜被动):按方向摆在屏幕边缘,只给信息不给数值
+	threat_layer = Control.new()
+	threat_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	threat_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(threat_layer)
+	for i in CharSkills.THREAT_MAX:
+		var ar := Label.new()
+		ar.text = "▲"
+		ar.add_theme_font_size_override("font_size", 76)
+		ar.add_theme_color_override("font_color", Color(1, 0.25, 0.2))
+		ar.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+		ar.add_theme_constant_override("outline_size", 10)
+		ar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ar.visible = false
+		threat_layer.add_child(ar)
+		threat_arrows.append(ar)
 
 	# 结算面板
 	result_overlay = Control.new()
@@ -225,31 +248,73 @@ func _ready() -> void:
 	menu.host_pressed.connect(func() -> void: host_pressed.emit())
 	menu.join_pressed.connect(func(ip: String) -> void: join_pressed.emit(ip))
 	menu.begin_pressed.connect(func() -> void: begin_pressed.emit())
+	menu.leave_room_pressed.connect(func() -> void: leave_room_pressed.emit())
+	menu.quit_pressed.connect(func() -> void: quit_pressed.emit())
 	menu.npc_changed.connect(func(n: int) -> void: npc_count_changed.emit(n))
 	root.add_child(menu)
+
+	# 菜单阶段隐藏所有局内 HUD(逐个 append:数组字面量无法直接赋给 Array[Control])
+	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, hint, threat_layer]:
+		_ingame_nodes.append(n)
+	_set_ingame_visible(false)
+
+func _set_ingame_visible(on: bool) -> void:
+	for n in _ingame_nodes:
+		if is_instance_valid(n):
+			n.visible = on
 
 # ---------------------------------------------------------------- 菜单转发
 
 func hide_menu() -> void:
 	menu.visible = false
+	_set_ingame_visible(true)
 
 func set_menu_status(t: String) -> void:
 	menu.set_status(t)
 
-## 建房后:锁单机入口,但保留"加入对方房间"(join会正确切换身份)
+## 建房后:锁住"再建房",并把界面切到房间页
 func lock_menu_for_host() -> void:
 	menu.lock_for_host()
 
-## 加入后:全部锁死,防止等待连接时误开单机局
+## 加入后:等待连接期间锁死操作
 func lock_menu_for_join() -> void:
 	menu.lock_for_join()
 
-## 大厅成员变化:刷新成员列表(每行显示昵称与配色)。
-## members: [{name, color}],下标即座位号(0=房主)
+## 联机失败/离开房间:菜单退回联机页,解锁按钮
+func reset_menu_network() -> void:
+	menu.reset_network()
+
+## 大厅成员变化:刷新成员列表(每行显示昵称、配色与角色)。
+## members: [{name, color, char}],下标即座位号(0=房主)
 func set_lobby(members: Array, is_host: bool) -> void:
 	menu.show_lobby(members, is_host)
 
 # ---------------------------------------------------------------- 局内 HUD
+
+## 「余光」:把威胁方向画到屏幕边缘。threats 来自 CharSkills.threats_for()
+func set_threats(threats: Array, cam_yaw: float) -> void:
+	var vp := get_viewport().get_visible_rect().size
+	var center := vp * 0.5
+	var radius := minf(vp.x, vp.y) * 0.36
+	for i in threat_arrows.size():
+		var ar := threat_arrows[i]
+		if i >= threats.size():
+			ar.visible = false
+			continue
+		var t: Dictionary = threats[i]
+		# 世界朝向→ 相对镜头的屏幕角度(0=正上方即镜头正前方)
+		var rel: float = wrapf(float(t["yaw"]) - cam_yaw, -PI, PI)
+		var dir := Vector2(sin(rel), -cos(rel))
+		ar.visible = true
+		ar.reset_size()
+		ar.position = center + dir * radius - ar.size * 0.5
+		ar.pivot_offset = ar.size * 0.5
+		ar.rotation = atan2(dir.y, dir.x) + PI * 0.5
+		var imminent: bool = bool(t["imminent"])
+		var near: float = clampf(1.0 - float(t["dist"]) / CharSkills.THREAT_RANGE, 0.2, 1.0)
+		ar.add_theme_color_override("font_color",
+				Color(1, 1, 1) if imminent else Color(1, 0.3, 0.22, 0.35 + 0.65 * near))
+		ar.scale = Vector2.ONE * (1.25 if imminent else 0.85 + 0.3 * near)
 
 func set_tutorial_text(t: String) -> void:
 	tutorial_label.visible = t != ""

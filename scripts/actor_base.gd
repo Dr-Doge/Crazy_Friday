@@ -25,8 +25,7 @@ var _saved_mask := 0
 
 var body_root: Node3D           # 可倾倒的视觉根
 var name_label: Label3D         # 头顶名牌(玩家自定义昵称,染本人配色)
-var mark_shell: MeshInstance3D  # 被「上链接」抢货后的追踪标记壳(受害者可见)
-var _mark_time := 0.0
+var mark_shell: MeshInstance3D  # 被「上链接」抢货后的追踪标记壳(只在受害者本机点亮)
 var hand_l: MeshInstance3D      # 双手小球
 var hand_r: MeshInstance3D
 var hand_pose := "idle"         # idle / push / channel / carry,由子类每帧设置
@@ -105,7 +104,9 @@ func build_body(color: Color, title: String, height := 1.7) -> void:
 	name_label.position = Vector3(0, height + 0.45, 0)
 	add_child(name_label)
 
-	# 追踪标记壳:被李洋「上链接」抢货后,受害者能穿墙看到他4 秒
+	# 追踪标记壳:被李洋「上链接」抢货后,受害者能穿墙看到他4秒。
+	# 可见性**只由观察者本机决定**(Main._update_track_mark):
+	# 同一个人在受害者屏幕上亮红壳,在其他人屏幕上什么都没有。
 	var ms := MeshInstance3D.new()
 	var mb := SphereMesh.new()
 	mb.radius = 0.62
@@ -125,12 +126,6 @@ func build_body(color: Color, title: String, height := 1.7) -> void:
 
 	add_to_group("characters")
 
-## 被「上链接」抢过货:亮追踪标记(全场可见,是被抢方的反制信息)
-func set_marked(t: float) -> void:
-	_mark_time = maxf(_mark_time, t)
-	if mark_shell != null:
-		mark_shell.visible = true
-
 ## 改名(大厅改档案后即时生效)
 func set_display_name(t: String) -> void:
 	if name_label != null:
@@ -148,10 +143,6 @@ func actor_tick(delta: float) -> void:
 		_down_timer -= delta
 		if _down_timer <= 0.0:
 			_recover()
-	if _mark_time > 0.0:
-		_mark_time -= delta
-		if _mark_time <= 0.0 and mark_shell != null:
-			mark_shell.visible = false
 	_update_held_positions()
 	_update_hands(delta)
 

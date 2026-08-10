@@ -128,6 +128,7 @@ func client_profile(pname: String, color: int, char_id: String = "") -> void:
 func _on_connect_fail() -> void:
 	print("[Net] 连接失败")
 	main.hud.set_menu_status("连接失败,请确认对方已创建房间且IP正确")
+	main.hud.reset_menu_network()
 
 func _on_peer_connected(id: int) -> void:
 	if not is_host:
@@ -218,6 +219,24 @@ func _on_peer_left(id: int) -> void:
 func shutdown() -> void:
 	if multiplayer.multiplayer_peer != null:
 		multiplayer.multiplayer_peer = null
+
+## 开局前离开房间:彻底放弃当前身份(房主/客户端),回到可重新选择的干净状态。
+## 与 shutdown() 的区别是它还要摘掉回调并清空大厅数据——
+## 否则再次建房/加入时会残留上一次的 peers 与 is_host(踩过的坑)。
+func leave_lobby() -> void:
+	if active:
+		return
+	if multiplayer.peer_connected.is_connected(_on_peer_connected):
+		multiplayer.peer_connected.disconnect(_on_peer_connected)
+	if multiplayer.peer_disconnected.is_connected(_on_peer_left):
+		multiplayer.peer_disconnected.disconnect(_on_peer_left)
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer = null
+	is_host = false
+	peers = []
+	seat_peers = []
+	lobby_profiles = {}
+	print("[Net] 已离开房间")
 
 @rpc("authority", "call_remote", "reliable")
 func client_start(world_seed: int, npc: int, ver: int, my_seat: int, total: int,
@@ -427,6 +446,11 @@ func ev_hud(rows: Array, score: int, hot_carts: Array) -> void:
 @rpc("authority", "call_remote", "reliable")
 func ev_locate(idxs: Array) -> void:
 	main.client_locate(idxs)
+
+## 「上链接」的追踪标记:kind="track"(你被抢了,能看见他) / "exposed"(你抢了人,位置暴露)
+@rpc("authority", "call_remote", "reliable")
+func ev_mark(kind: String, seat: int, dur: float) -> void:
+	main.client_mark(kind, seat, dur)
 
 @rpc("authority", "call_remote", "reliable")
 func ev_spawn_items(ids: Array, poss: Array) -> void:
