@@ -6,7 +6,7 @@ const SPRINT_MULT := 1.55
 const PUSH_FORCE := 620.0
 const DRIVE_STEER := 110.0    # 驾驶转向力(过高会原地打转)
 const BRAKE_MULT := 1.5       # S刹车强度
-const REVERSE_MULT := 0.45    # 倒车推力比例
+const REVERSE_MULT := 1.0     # 倒车推力比例(与前进一致)
 const SEARCH_TIME := 0.8   # 货架搜货
 const STEAL_TIME := 1.2    # 偷别人车里的货
 const ELBOW_STAMINA := 4.0 # 肘击耗体力:一管体力=25次肘击
@@ -16,14 +16,14 @@ var settled_once := false   # 是否已结算
 var finished := false       # 本局已完赛(结算/打烊/掉线),停止操控
 var avatar_color := Color(0.25, 0.5, 0.9)
 var seat_label := "你"      # 头顶名牌(玩家自定义的昵称)
-var brace_time := 0.0       # 空格:冲击准备剩余时长
+var brace_time := 0.0       # Ctrl:冲击准备剩余时长
 var brace_cd := 0.0
 var locate_cd := 0.0        # 技能CD按人各算(联机双人)
 var bottle_cd := 0.0
 
 # ---------- 角色(见 character_def.gd / char_skills.gd) ----------
 var char_id := CharacterDef.ORDER[0]
-var char_cd := 0.0          # Ctrl 角色技能冷却
+var char_cd := 0.0          # 空格 角色技能冷却
 
 # 赵冬梅「贴地冲撞」状态
 var dash_windup := 0.0      #蓄力剩余(全场可见的前摇)
@@ -94,6 +94,14 @@ func _physics_process(delta: float) -> void:
 	bottle_cd = maxf(0.0, bottle_cd - delta)
 	char_cd = maxf(0.0, char_cd - delta)
 	grab_anim = maxf(0.0, grab_anim - delta)
+	# 开发者模式:所有技能无冷却。统一在这里清零,覆盖全部赋值点。
+	# 注意只清 CD,不清 dash_windup/stun_time/stance_time——那些是技能的
+	# 表现与代价,清掉会让状态机可重入。
+	if Main.dev_no_cd:
+		locate_cd = 0.0
+		bottle_cd = 0.0
+		char_cd = 0.0
+		brace_cd = 0.0
 	_tick_char_skill(delta)
 
 	# 突进/硬直/扎马步期间接管移动:三者互斥,且都不接受方向输入
@@ -112,7 +120,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		stamina = minf(100.0, stamina + 15.0 * delta)
 
-	# 空格:冲击准备1秒——期间被车撞不涨失衡(内置2.5秒冷却防常驻)
+	# Ctrl:冲击准备1秒——期间被车撞不涨失衡(内置2.5秒冷却防常驻)
 	brace_cd = maxf(0.0, brace_cd - delta)
 	if brace_time > 0.0:
 		brace_time -= delta
@@ -201,6 +209,8 @@ func _drive_char_state(delta: float) -> void:
 		return
 	if dash_time > 0.0 and not attached:
 		hand_pose = "speed"
+		# 必须走 apply_motion(move_and_slide):move_and_collide 不会滑动,
+		# 一旦向下的分量碰到地板就会整体中止位移,横向也就跟着没了。
 		apply_motion(delta, dash_dir, CharSkills.DASH_SPEED)
 		return
 	# 蓄力 / 硬直 / 推车突进:原地或维持车上姿态
@@ -308,7 +318,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("throw"):
 		main.trigger_throw_bottle()
 	elif event.is_action_pressed("char_skill"):
-		# Ctrl:角色专属技能(赵冬梅冲撞 / 马德胜扎马步 / 李洋上链接)
+		# 空格:角色专属技能(赵冬梅冲撞 / 马德胜扎马步 / 李洋上链接)
 		main.trigger_char_skill(self, _aim_dir())
 	elif event.is_action_pressed("elbow"):
 		# 肘击自动朝镜头面朝的方向

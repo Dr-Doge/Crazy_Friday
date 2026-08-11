@@ -391,7 +391,7 @@ func _char_detail_text(cid: String, compact: bool) -> String:
 	var out := "[color=#%s][b]%s「%s」[/b][/color]  [color=#aaaaaa]%s · %s[/color]\n" % [
 			acc, d["name"], d["nick"], d["job"], d["role"]]
 	out += "[color=#dddd88]\"%s\"[/color]\n\n" % d["quote"]
-	out += "[color=#ffd24d][b]Ctrl 主技能 · %s[/b][/color]  [color=#aaaaaa](冷却 %d 秒)[/color]\n" % [
+	out += "[color=#ffd24d][b]空格 主技能 · %s[/b][/color]  [color=#aaaaaa](冷却 %d 秒)[/color]\n" % [
 			d["skill"], int(d["skill_cd"])]
 	out += "[color=#ffffff]%s[/color]\n" % d["skill_line"]
 	if not compact:

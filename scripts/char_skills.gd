@@ -10,16 +10,19 @@ class_name CharSkills
 # ---------------- 赵冬梅「铁腿」· 贴地冲撞 ----------------
 
 const DASH_WINDUP := 0.2# 下蹲蓄力(全场可见,给对手反应窗口)
-const DASH_TIME := 0.45         # 突进持续
-const DASH_SPEED := 11.0        # 突进速度(约5米/0.45秒)
+## 突进持续。距离 = 速度 × 时长,所以"距离翻倍"是速度与时长各 ×1.41,
+## 而不是速度直接 ×2:后者会让单帧位移过大而穿透货架/车斗薄壁。
+const DASH_TIME := 0.64
+const DASH_SPEED := 19.8        # 徒步突进速度(0.64秒约12.7m,约6个购物车身位)
+const DASH_CART_SPEED := 15.5   # 推车突进的车速(0.64秒约9.9m;并临时放开车的软限速)
+const DASH_KNOCKBACK := 9.0     # 撞飞徒步者的水平推速(与突进速度解耦,免得调速把人打飞出地图)
 const DASH_SELF_IMB := 20.0     # 代价:无论命中与否
 const DASH_STUN := 1.2# 落空硬直
-const DASH_HIT_RANGE := 2.0# 徒步突进的命中判定半径
+const DASH_HIT_RANGE := 2.2# 徒步突进的命中判定半径
 const DASH_HIT_PED := 55.0      # 撞徒步者
 const DASH_HIT_DRIVER := 40.0   # 撞推车者
 const DASH_SPILL := 0.2# 撞推车者的甩货比例
 const DASH_CART_MULT := 1.5     # 推车时车头撞击倍率
-const DASH_CART_IMPULSE := 9.0  # 推车突进的冲量(每千克)
 
 # ---------------- 马德胜「老码」· 扎马步 ----------------
 
@@ -53,7 +56,7 @@ const SNIFF_RANGE_OTHERS := 12.0  # 通用版:12米内只亮红壳(《05·三》
 
 # ================================================================ 主动技能
 
-## 角色技能统一入口(Ctrl / 联机 char_skill 动作)。
+## 角色技能统一入口(空格 / 联机 char_skill 动作)。
 ## m: Main, p: Player, dir: 出手方向(镜头朝向;联机为客户端上报的朝向)
 static func trigger(m, p: Player, dir: Vector3) -> void:
 	if p == null or p.downed or p.finished or m.game_over:
@@ -98,10 +101,22 @@ static func dash_launch(m, p: Player) -> void:
 	# 代价先付:无论命中与否都吃20失衡
 	p.add_imbalance(DASH_SELF_IMB, null)
 	if p.attached and is_instance_valid(p.cart):
-		# 连人带车突进:给车一记大冲量,并在窗口内提高车头撞击倍率
-		p.cart.apply_central_impulse(p.dash_dir * DASH_CART_IMPULSE * p.cart.mass)
-		p.cart.hit_mult_time = DASH_TIME + 0.5
-		p.cart.hit_mult = DASH_CART_MULT
+		# 连人带车突进。这里**不能用冲量**:车有 linear_damp=1.6,且 cart.gd
+		# 的 _physics_process 里有一道 cap=6.0+2.8*sprint_level 的软限速,
+		# 冲量给出的速度会在几帧内被钳回常规上限——这正是"按了技能只往前
+		# 蠕动一小段、且改 DASH_SPEED 完全没反应"的根因(推车分支压根不读 DASH_SPEED)。
+		# 所以:直接给定速度 + 在突进窗口内临时抬高限速上限。
+		var c: Cart = p.cart
+		# 「内切」:先把车头掰到突进方向,否则 LATERAL_GRIP 的侧向抓地会把这一冲抹平
+		c.global_rotation = Vector3(0, atan2(-p.dash_dir.x, -p.dash_dir.z), 0)
+		c.angular_velocity = Vector3.ZERO
+		c.linear_velocity = p.dash_dir * DASH_CART_SPEED + Vector3(0, c.linear_velocity.y, 0)
+		c.lift_speed_cap(DASH_CART_SPEED, DASH_TIME + 0.3)
+		# 15.5m/s 下单帧位移约 0.26m,已接近车斗壁厚,开连续碰撞检测防穿透
+		c.continuous_cd = true
+		c.reset_physics_interpolation()
+		c.hit_mult_time = DASH_TIME + 0.5
+		c.hit_mult = DASH_CART_MULT
 		p.dash_hit = true   # 推车突进的结算交给cart 的碰撞回调,不判定落空硬直
 	Main.float_text(m, p.global_position + Vector3.UP * 2.2, "内切!!", Color(1, 0.5, 0.15), 76)
 
@@ -132,7 +147,7 @@ static func dash_check_hit(m, p: Player) -> void:
 		Main.float_text(best, best.global_position + Vector3.UP * 2.2,
 				"%s 贴地冲撞+%d!" % [Main.bam(), int(DASH_HIT_DRIVER)], Color(1, 0.45, 0.15), 80)
 	else:
-		best.push_velocity += p.dash_dir * DASH_SPEED * 1.1 + Vector3.UP * 2.2
+		best.push_velocity += p.dash_dir * DASH_KNOCKBACK + Vector3.UP * 2.2
 		best.add_imbalance(DASH_HIT_PED, null)
 		Main.float_text(best, best.global_position + Vector3.UP * 2.2,
 				"%s 贴地冲撞+%d %s" % [Main.bam(), int(DASH_HIT_PED), Main.BAM_PED.pick_random()],
@@ -188,7 +203,7 @@ static func stance_counter(victim: Actor, attacker_cart: Cart) -> bool:
 			Main.instance.shake_for(atk, 0.7)
 	return true
 
-## 李洋:上链接(锥形夺取1件)
+## 李洋:上链接(自动瞄准:宽锥优先→全向兜底,钩走1件货)
 static func _do_grab(m, p: Player, fwd: Vector3) -> void:
 	p.char_cd = CharacterDef.skill_cd(p.char_id)
 	p.grab_anim = 0.35
@@ -197,20 +212,50 @@ static func _do_grab(m, p: Player, fwd: Vector3) -> void:
 	if not p.attached:
 		p.body_root.global_rotation = Vector3(0, atan2(-fwd.x, -fwd.z), 0)
 
+	# 自动瞄准:先搜宽锥(±70°)内的有货目标,按正前方+近者加权;锥内无货则兜底取全向最近者
+	const WIDE_COS := 0.342  # cos(70°) ≈ 0.342
 	var best: Actor = null
-	var best_d := GRAB_RANGE
+	var best_score := -999.0
+	var fallback: Actor = null
+	var fallback_d := GRAB_RANGE
 	for node in p.get_tree().get_nodes_in_group("characters"):
 		if node == p or not (node is Actor):
 			continue
 		var a: Actor = node
 		if a.immune:      # 收银通道内不可被抢(《05·五》免战区)
 			continue
+		# 对方必须"有货可抢":手里有东西,或推的车斗里不空
+		if a.held.is_empty():
+			var vc2: Cart = a.get_pushed_cart()
+			if vc2 == null or vc2.items_in_basket().is_empty():
+				continue
 		var to: Vector3 = a.global_position - p.global_position
 		to.y = 0.0
 		var d := to.length()
-		if d < best_d and d > 0.01 and fwd.dot(to.normalized()) > GRAB_COS:
-			best = a
-			best_d = d
+		if d > GRAB_RANGE or d < 0.01:
+			continue
+		var dir_to := to.normalized()
+		var dot := fwd.dot(dir_to)
+		if dot > WIDE_COS:
+			# 宽锥内:打分=方向对齐×2 - 距离×0.15(正前方又近的分最高)
+			var score := dot * 2.0 - d * 0.15
+			if score > best_score:
+				best = a
+				best_score = score
+		# 同时记录全向最近者,用于锥内无货时的兜底
+		if d < fallback_d:
+			fallback = a
+			fallback_d = d
+
+	if best == null:
+		best = fallback
+		# 兜底:自动转身面向目标再钩,不用手动瞄
+		if best != null and not p.attached:
+			var to_target := best.global_position - p.global_position
+			to_target.y = 0.0
+			if to_target.length() > 0.01:
+				p.body_root.global_rotation = Vector3(0, atan2(-to_target.x, -to_target.z), 0)
+
 	if best == null:
 		Main.float_text(m, p.global_position + Vector3.UP * 2.4, "上链接!……没人上车", Color(0.85, 0.75, 0.5), 70)
 		return

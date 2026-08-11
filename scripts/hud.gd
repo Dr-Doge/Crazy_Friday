@@ -3,6 +3,7 @@ class_name Hud extends CanvasLayer
 ## 开始界面与联机大厅在 start_menu.gd,本类只做信号转发。
 
 signal npc_count_changed(count: int)
+signal no_cd_changed(on: bool)   # 开发者模式:所有技能无冷却
 signal start_game_pressed
 signal start_tutorial_pressed
 signal host_pressed
@@ -19,7 +20,13 @@ var list_rows: Array[RichTextLabel] = []
 var dev_panel: PanelContainer
 var npc_slider: HSlider
 var npc_count_label: Label
+var no_cd_check: CheckBox     # 开发者模式:所有技能无 CD
 var skill_label: Label
+var cd_wheel: Control         # 角色技能冷却圆环(塞尔达体力轮风格)
+var _cd_ratio := 0.0
+var _cd_ready := true
+var _cd_pulse := 0.0
+var _cd_fade := 0.0           # ready后渐隐计时
 var marquee: Label            # 大喇叭滚动横幅
 var menu: StartMenu           # 开始界面 + 联机大厅
 var tutorial_label: Label     # 教学指引大字
@@ -111,6 +118,12 @@ func _ready() -> void:
 	skill_label.add_theme_color_override("font_color", Color(0.55, 0.95, 0.6))
 	skill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bars.add_child(skill_label)
+	# 技能冷却圆环(塞尔达体力轮风格:满时淡隐,cd中亮起并随进度消减)
+	cd_wheel = Control.new()
+	cd_wheel.custom_minimum_size = Vector2(0, 56)
+	cd_wheel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cd_wheel.draw.connect(_draw_cd_wheel)
+	bars.add_child(cd_wheel)
 	stamina_fill = _make_bar(bars, "体力槽 (Shift冲刺消耗)", Color(0.35, 0.85, 0.4))
 	imbalance_fill = _make_bar(bars, "失衡值 (满100倒地翻车)", Color(0.95, 0.45, 0.2))
 	var bars_wrap := CenterContainer.new()
@@ -147,7 +160,7 @@ func _ready() -> void:
 
 	# 右下:操作说明(精简三行)
 	var hint := Label.new()
-	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n左键 肘击 · 右键 掷水瓶 · Q 找货雷达 · 空格 稳住· Ctrl 角色技能\nEsc鼠标 · F1 开发者 · T/F3/F4 调试"
+	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n左键 肘击 · 右键 掷水瓶 · Q 找货雷达 · 空格 角色技能· Ctrl 稳住\nEsc鼠标 · F1 开发者 · T/F3/F4 调试"
 	hint.add_theme_font_override("font", Catalog.ui_font_bold())
 	hint.add_theme_font_size_override("font_size", 30)
 	hint.add_theme_color_override("font_color", Color(1, 0.25, 0.18))
@@ -218,6 +231,13 @@ func _ready() -> void:
 		npc_count_changed.emit(int(v))
 	)
 	dv.add_child(npc_slider)
+	# 所有技能无冷却
+	no_cd_check = CheckBox.new()
+	no_cd_check.text = "所有技能无 CD 冷却"
+	no_cd_check.button_pressed = Main.dev_no_cd
+	no_cd_check.add_theme_font_size_override("font_size", 22)
+	no_cd_check.toggled.connect(func(on: bool) -> void: no_cd_changed.emit(on))
+	dv.add_child(no_cd_check)
 	var dhint := Label.new()
 	dhint.text = "F1 关闭面板"
 	dhint.add_theme_font_size_override("font_size", 18)
@@ -320,6 +340,41 @@ func set_tutorial_text(t: String) -> void:
 	tutorial_label.visible = t != ""
 	tutorial_label.text = t
 
+## 技能冷却:ratio = char_cd / skill_cd (0=就绪,1=满冷却)
+func set_skill_cd(ratio: float) -> void:
+	_cd_ratio = ratio
+	_cd_ready = ratio < 0.01
+	if _cd_ready and _cd_fade < 2.0:
+		_cd_fade += 0.016
+	else:
+		_cd_fade = 0.0
+	cd_wheel.queue_redraw()
+
+## 塞尔达体力轮风格:环形冷却条。满时淡隐,cd中随剩余时间消减
+func _draw_cd_wheel() -> void:
+	var ctrl := cd_wheel
+	var center := Vector2(ctrl.size.x * 0.5, 28)
+	var r := 22.0          # 外半径
+	var w := 4.5            # 环宽
+	var inner := r - w
+
+	# 底色环(深灰,半透明)
+	ctrl.draw_arc(center, r, 0, TAU, 48, Color(0.12, 0.12, 0.12, 0.55), w, true)
+
+	if _cd_ready:
+		# 就绪:满环绿色,随 fade 渐隐,微微呼吸
+		var a := clampf(1.0 - _cd_fade * 0.5, 0.15, 1.0)
+		var pulse := 1.0 + 0.04 * sin(_cd_pulse * 3.5)
+		ctrl.draw_arc(center, r, 0, TAU, 48, Color(0.25, 0.88, 0.45, a), w * pulse, true)
+	else:
+		# 冷却中:弧从正上方顺时针消减,颜色绿→黄→红
+		var fill := 1.0 - _cd_ratio
+		var from := -PI * 0.5
+		var to := from + fill * TAU
+		var hue := fill * 0.33   # 0→0.33 (红→绿)
+		var c := Color.from_hsv(hue, 0.75, 0.92)
+		ctrl.draw_arc(center, r, from, to, 48, c, w, true)
+
 func set_skill(text: String, ready: bool) -> void:
 	skill_label.text = text
 	skill_label.add_theme_color_override("font_color",
@@ -363,6 +418,9 @@ func _process(delta: float) -> void:
 		Main.instance._shot_path = ""
 		get_tree().quit()
 	_mq_time += delta
+	_cd_pulse += delta
+	if is_instance_valid(cd_wheel):
+		cd_wheel.queue_redraw()
 	if _mq_active:
 		# 破屏滚动+轻微歪扭抖动(精神污染)
 		marquee.position.x -= MQ_SPEED * delta

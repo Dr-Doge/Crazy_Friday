@@ -86,10 +86,10 @@ func _tick_skills(p: Player) -> void:
 	if p.bottle_cd > 0.0:
 		marks["rmb"] = true
 	if p.braced:
-		marks["space"] = true
-	_say("⑧ 试用技能:Q 找货雷达%s · 右键 掷水瓶%s · 空格 稳住%s" % [
-			_mark("q"), _mark("rmb"), _mark("space")])
-	if marks.get("q", false) and marks.get("rmb", false) and marks.get("space", false):
+		marks["ctrl"] = true
+	_say("⑧ 试用技能:Q 找货雷达%s · 右键 掷水瓶%s · Ctrl 稳住%s" % [
+			_mark("q"), _mark("rmb"), _mark("ctrl")])
+	if marks.get("q", false) and marks.get("rmb", false) and marks.get("ctrl", false):
 		step = 8
 
 func _mark(key: String) -> String:

@@ -273,13 +273,21 @@ func _decide() -> void:
 		if sc2 != null:
 			_go_steal(sc2)
 			return
-	# 找清单上的货:货架上的→地上散落的
+	# 找清单上的货:货架与地上散落一起比,优先取距离近的
 	var wi := _find_wanted_shelved()
-	if wi != null:
+	var wf := _find_wanted_free()
+	if wi != null and wf != null:
+		var d_shelf := global_position.distance_to(wi.global_position)
+		var d_free := global_position.distance_to(wf.global_position)
+		if d_free < d_shelf:
+			_go_shop(wf)
+		else:
+			_go_shop(wi)
+		return
+	elif wi != null:
 		_go_shop(wi)
 		return
-	var wf := _find_wanted_free()
-	if wf != null:
+	elif wf != null:
 		_go_shop(wf)
 		return
 	# 清单没得抢了:随便扫点货(库存流失压力),车里太满就不拿了
@@ -758,7 +766,7 @@ func _find_wanted_shelved() -> Item:
 
 func _find_wanted_free() -> Item:
 	var best: Item = null
-	var best_d := 12.0
+	var best_d := 999.0
 	for node in get_tree().get_nodes_in_group("items"):
 		var it: Item = node
 		if not is_instance_valid(it) or it.state != Item.ItemState.FREE or not _wanted(it.item_id):

@@ -8,6 +8,11 @@ const CLOSING_WARN := 120.0      # 剩2分钟进入打烊冲刺
 
 static var instance: Main
 
+## 开发者模式:所有技能无冷却(F1 面板开关)。
+## 做成 static 是为了让 player.gd 在不持有 Main 引用时也能读到;
+## 每帧在 Player._physics_process 里统一清零,因此无论 CD 在哪里被赋值都能覆盖。
+static var dev_no_cd := false
+
 # 碰撞拟声词库(浮夸搞笑)
 const BAM := ["哐当!!", "咣!!!", "duang~!!", "嘭!!!", "咔嚓!!", "哐叽!!", "biu嘭!!"]
 const BAM_PED := ["人仰马翻!", "撞了个满怀!", "鞋都撞飞了!", "菜篮子保卫战失败!", "原地起飞!"]
@@ -78,6 +83,7 @@ func _ready() -> void:
 	hud = Hud.new()
 	add_child(hud)
 	hud.npc_count_changed.connect(_set_npc_count)
+	hud.no_cd_changed.connect(func(on: bool) -> void: Main.dev_no_cd = on)
 	hud.start_game_pressed.connect(func() -> void: _start_match(false))
 	hud.start_tutorial_pressed.connect(func() -> void: _start_match(true))
 	hud.host_pressed.connect(_menu_host)
@@ -374,17 +380,25 @@ func _spawn_one_granny() -> void:
 	var pos: Vector3 = _granny_spawns[_granny_seq % _granny_spawns.size()]
 	_granny_seq += 1
 	var normals := Catalog.ids_of_cat(Catalog.CAT_NORMAL)
-	# 与所有玩家清单的重叠池(大件除外):保证对抗
+	# 与所有玩家清单的重叠池(常规品+大件都参与对抗)
 	var overlap_pool: Array = []
+	var large_pool: Array = []
 	for pd in pdata:
 		for entry in pd["list"]:
-			if entry["cat"] != Catalog.CAT_LARGE and not overlap_pool.has(entry["id"]):
+			if entry["cat"] == Catalog.CAT_LARGE:
+				if not large_pool.has(entry["id"]):
+					large_pool.append(entry["id"])
+			elif not overlap_pool.has(entry["id"]):
 				overlap_pool.append(entry["id"])
 	var g := Granny.new()
 	g.main = self
 	g.body_color = Color.from_hsv(randf(), 0.45, 0.85)
 	overlap_pool.shuffle()
 	var list: Array = [overlap_pool[0], overlap_pool[1], overlap_pool[2]]
+	# 每位大妈有概率(60%)额外追加一件大件到清单,保证大件货也有人抢
+	large_pool.shuffle()
+	if not large_pool.is_empty() and randf() < 0.6:
+		list.append(large_pool[0])
 	normals.shuffle()
 	for id in normals:
 		if list.size() >= 5:
@@ -682,7 +696,7 @@ func _update_hud_client() -> void:
 
 # ---------- 技能 ----------
 
-## Ctrl:角色专属技能。实现见 char_skills.gd(主机权威:联机时远程动作也走这里)
+## 空格:角色专属技能。实现见 char_skills.gd(主机权威:联机时远程动作也走这里)
 func trigger_char_skill(p: Player = null, dir := Vector3.ZERO) -> void:
 	if p == null:
 		p = player
@@ -907,17 +921,20 @@ func _update_timer_hud() -> void:
 func _update_skill_hud() -> void:
 	var s1 := "Q雷达:就绪" if player.locate_cd <= 0.0 else "Q 雷达:%d秒" % int(ceil(player.locate_cd))
 	var s2 := "右键 水瓶:就绪" if player.bottle_cd <= 0.0 else "右键 水瓶:%d秒" % int(ceil(player.bottle_cd))
-	var s3 := "空格稳住:就绪" if player.brace_cd <= 0.0 else ("空格 稳住:格挡中!" if player.braced else "空格 稳住:%d秒" % int(ceil(player.brace_cd)))
+	var s3 := "Ctrl稳住:就绪" if player.brace_cd <= 0.0 else ("Ctrl 稳住:格挡中!" if player.braced else "Ctrl 稳住:%d秒" % int(ceil(player.brace_cd)))
 	var sk := CharacterDef.skill_name(player.char_id)
-	var s4 := "Ctrl %s:就绪" % sk
+	var max_cd := CharacterDef.skill_cd(player.char_id)
+	var s4 := "空格 %s:就绪" % sk
 	if player.stance_time > 0.0:
-		s4 = "Ctrl %s:扎住了!" % sk
+		s4 = "空格 %s:扎住了!" % sk
 	elif player.stun_time > 0.0:
-		s4 = "Ctrl %s:收不住脚(%.1f秒)" % [sk, player.stun_time]
+		s4 = "空格 %s:收不住脚(%.1f秒)" % [sk, player.stun_time]
 	elif player.char_cd > 0.0:
-		s4 = "Ctrl %s:%d秒" % [sk, int(ceil(player.char_cd))]
+		s4 = "空格 %s:%d秒" % [sk, int(ceil(player.char_cd))]
 	var ready: bool = player.locate_cd <= 0.0 and player.bottle_cd <= 0.0 \
 			and player.brace_cd <= 0.0 and player.char_cd <= 0.0
+	# 技能冷却圆环(塞尔达体力轮风格)
+	hud.set_skill_cd(clampf(player.char_cd / maxf(max_cd, 1.0), 0.0, 1.0))
 	# 「上链接」的双向反馈:抢人者知道自己暴露,被抢者知道能看见对方
 	if player.exposed_time > 0.0:
 		s4 += "⚠ 位置暴露 %.1f秒!" % player.exposed_time

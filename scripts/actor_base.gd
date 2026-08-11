@@ -12,8 +12,8 @@ var held: Array[Item] = []
 var hold_capacity := 2          # 小件2件,大件占满
 var downed := false
 var immune := false             # 收银通道内免战
-var braced := false             # 冲击准备:被车撞不涨失衡(玩家空格技能)
-var stance := false             # 扎马步(马德胜Ctrl):免疫撞击与肘击失衡+车斗锁死+反击
+var braced := false             # 冲击准备:被车撞不涨失衡(玩家Ctrl技能)
+var stance := false             # 扎马步(马德胜空格):免疫撞击与肘击失衡+车斗锁死+反击
 var push_velocity := Vector3.ZERO
 var gravity := 9.8
 
