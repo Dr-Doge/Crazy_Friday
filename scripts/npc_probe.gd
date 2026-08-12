@@ -1,6 +1,6 @@
 class_name NpcProbe extends RefCounted
-## NPC争抢与HUD状态槽回归探针。
-## WHITEBOX_NPCTEST=1 下确定性覆盖满值状态条、抢玩家、NPC互抢与互肘。
+## NPC仇恨与HUD状态槽回归探针。
+## WHITEBOX_NPCTEST=1 下确定性覆盖满值状态条、需求车攻击与无关货物不攻击。
 
 var _m: Main
 var _t := 0.0
@@ -10,7 +10,8 @@ var _notes: Array[String] = []
 var _g1: Granny
 var _g2: Granny
 var _player_item: Item
-var _rival_item: Item
+var _unrelated_item: Item
+var _stopped_after_loss := false
 
 func _init(m: Main) -> void:
 	_m = m
@@ -27,15 +28,11 @@ func setup() -> void:
 	_prepare_actor(_m.player)
 	_prepare_actor(_g1)
 	_prepare_actor(_g2)
-	_m.player.global_position = Vector3(0, 0.2, 12)
-	_g1.global_position = Vector3(1.3, 0.2, 12)
-	_g2.global_position = Vector3(-1.3, 0.2, 12)
+	_place_cart_actor(_m.player, Vector3(0, 0.2, 12))
+	_g1.global_position = Vector3(1.3, 0.2, 13.28)
 	_g1.shopping_list = ["thermos"]
 	_g1.acquired.clear()
-	_player_item = _give_item(_m.player, "thermos")
-	var first_target := _g1._find_brawl_target()
-	_check(first_target == _m.player, "NPC决策：主动锁定手持目标货的玩家")
-	_g1._start_brawl(first_target)
+	_unrelated_item = _put_in_cart(_m.player.cart, "chips")
 	print("[npc] 自检开始")
 
 func _prepare_actor(a: Actor) -> void:
@@ -44,25 +41,39 @@ func _prepare_actor(a: Actor) -> void:
 	a.drop_all_held(false)
 	a.imbalance = 0.0
 	a.downed = false
+	if a is Granny:
+		a.state = Granny.GState.IDLE
+		a.target_actor = null
+		a.target_cart = null
+		a.chase_target = null
 
-func _give_item(a: Actor, id: String) -> Item:
+func _place_cart_actor(a: Actor, pos: Vector3) -> void:
+	var c := a.cart
+	c.right_up()
+	c.global_position = pos
+	c.linear_velocity = Vector3.ZERO
+	c.angular_velocity = Vector3.ZERO
+	a.attach_cart()
+
+func _put_in_cart(c: Cart, id: String) -> Item:
 	var it := Item.create(id)
 	_m.add_child(it)
 	_m.all_items.append(it)
-	it.set_held()
-	a.take_item(it)
+	it.set_free_at(c.to_global(Vector3(0, 1.25, 0)))
 	return it
 
 func tick(delta: float) -> void:
 	_t += delta
 	var schedule := [
 		[0.4, _check_hud],
-		[1.8, _check_player_snatch],
-		[2.0, _setup_rival_snatch],
-		[3.6, _check_rival_snatch],
-		[3.8, _setup_elbow],
-		[5.2, _check_elbow],
-		[5.5, _report],
+		[0.6, _check_no_blind_aggro],
+		[0.8, _setup_player_aggro],
+		[1.1, _start_player_aggro],
+		[1.3, _check_lost_reason],
+		[1.4, _setup_player_attack],
+		[1.7, _start_player_attack],
+		[2.8, _check_player_attack],
+		[3.1, _report],
 	]
 	while _step < schedule.size() and _t >= float(schedule[_step][0]):
 		var fn: Callable = schedule[_step][1]
@@ -79,9 +90,6 @@ func _fail(msg: String) -> void:
 	_fails.append(msg)
 	_notes.append("  FAIL " + msg)
 
-func _owns(g: Granny, it: Item) -> bool:
-	return g.held.has(it) or (is_instance_valid(g.cart) and g.cart.items_in_basket().has(it))
-
 func _check_hud() -> void:
 	_m.hud.set_bars(100.0, 100.0)
 	var sf := _m.hud.stamina_fill
@@ -91,37 +99,44 @@ func _check_hud() -> void:
 	_check(absf(sf.size.x - sw) < 0.6, "HUD：100体力填满背景内沿(%.1f/%.1f)" % [sf.size.x, sw])
 	_check(absf(imf.size.x - iw) < 0.6, "HUD：100失衡填满背景内沿(%.1f/%.1f)" % [imf.size.x, iw])
 
-func _check_player_snatch() -> void:
-	_check(_owns(_g1, _player_item) and not _m.player.held.has(_player_item),
-			"NPC：主动追近并抢走玩家手中目标商品")
+func _check_no_blind_aggro() -> void:
+	_check(_m.player.cart.items_in_basket().has(_unrelated_item), "测试前置：玩家车内存在无关商品")
+	_check(_g1._find_brawl_target() == null,
+			"NPC仇恨：玩家车内没有需求品时不锁定、不主动攻击")
 
-func _setup_rival_snatch() -> void:
-	_prepare_actor(_g1)
-	_prepare_actor(_g2)
-	_g1.global_position = Vector3(0, 0.2, 12)
-	_g2.global_position = Vector3(1.3, 0.2, 12)
-	_g1.shopping_list = ["chips"]
-	_g1.acquired.clear()
-	_rival_item = _give_item(_g2, "chips")
-	var rival_target := _g1._find_brawl_target()
-	_check(rival_target == _g2, "NPC决策：主动锁定手持目标货的其他NPC")
-	_g1._start_brawl(rival_target)
+func _setup_player_aggro() -> void:
+	_player_item = _put_in_cart(_m.player.cart, "thermos")
 
-func _check_rival_snatch() -> void:
-	_check(_owns(_g1, _rival_item) and not _g2.held.has(_rival_item),
-			"NPC：会从另一名NPC手中争抢商品")
+func _start_player_aggro() -> void:
+	_check(_m.player.cart.items_in_basket().has(_player_item), "测试前置：玩家车内存在NPC需求品")
+	var target := _g1._find_brawl_target()
+	_check(target == _m.player, "NPC仇恨：只因玩家车内存在需求品而锁定玩家")
+	if target != null:
+		_g1._start_brawl(target)
+		_player_item.set_held()
+		_m.player.take_item(_player_item)
+		_g1._brawl_state(0.05)
+		_stopped_after_loss = _g1.state != Granny.GState.BRAWL and _g1.target_actor == null
 
-func _setup_elbow() -> void:
-	_prepare_actor(_g1)
-	_prepare_actor(_g2)
-	_g1.global_position = Vector3(0, 0.2, 12)
-	_g2.global_position = Vector3(1.3, 0.2, 12)
-	_g1.shopping_list = ["king_crab"]
-	_g1.acquired.clear()
-	_g1._start_brawl(_g2)
+func _check_lost_reason() -> void:
+	_check(_stopped_after_loss,
+			"NPC仇恨：需求品离开对方车斗后立即停止主动攻击")
 
-func _check_elbow() -> void:
-	_check(_g2.imbalance > 0.0 or _g2.downed, "NPC：无货可直接抢时会肘击另一名NPC")
+func _setup_player_attack() -> void:
+	_m.player.held.erase(_player_item)
+	_player_item.queue_free()
+	_player_item = _put_in_cart(_m.player.cart, "thermos")
+	_m.player.imbalance = 0.0
+
+func _start_player_attack() -> void:
+	var target := _g1._find_brawl_target()
+	_check(target == _m.player, "NPC仇恨：需求品重新入车后可再次建立仇恨")
+	if target != null:
+		_g1._start_brawl(target)
+
+func _check_player_attack() -> void:
+	_check(_m.player.imbalance > 0.0 or _m.player.downed,
+			"NPC：锁定需求车后会主动靠近并攻击玩家")
 
 func _report() -> void:
 	for line in _notes:

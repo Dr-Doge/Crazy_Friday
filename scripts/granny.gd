@@ -272,8 +272,8 @@ func _decide() -> void:
 			if rc.attached_agent is Player:
 				say_from_pool(SAY_HUNT)
 			return
-	# 徒步争抢:优先盯住手里/车里有我想要商品的人；即使不是目标货，
-	# 玩家和满载对手也会因“不能让别人占便宜”进入候选。
+	# 徒步争抢只由明确的购物需求触发：对手正在推的车内必须有我尚缺的商品。
+	# 满载、高失衡或玩家身份只能用于同类目标间排序，不能凭空产生仇恨。
 	if _aggression_timer <= 0.0:
 		_aggression_timer = randf_range(4.0, 8.0)
 		var rival := _find_brawl_target()
@@ -574,13 +574,13 @@ func _chase_state(delta: float) -> void:
 	else:
 		apply_motion(delta, to.normalized(), RUSH_SPEED)
 
-## 徒步抢夺与互殴。先抢对方手中商品；抢不到时连续肘击，既能打落手持货，
-## 也能把正在推车的对手车斗商品肘飞。所有结算复用 Actor.try_elbow，玩家/NPC同规则。
+## 徒步争抢。仅在目标正推着含需求品的购物车时持续追打；货物离开车斗即停手。
+## 贴身先拿对方手中恰好需要的货，否则肘击并尝试打落车内商品。
 func _brawl_state(delta: float) -> void:
 	action_timer -= delta
 	var rival: Actor = target_actor
 	if action_timer <= 0.0 or rival == null or not is_instance_valid(rival) \
-			or rival.downed or rival.immune:
+			or rival.downed or rival.immune or not _actor_cart_has_wanted(rival):
 		target_actor = null
 		state = GState.IDLE
 		return
@@ -605,7 +605,7 @@ func _brawl_state(delta: float) -> void:
 	try_elbow(to)
 	say_from_pool(SAY_SLAM)
 
-## 贴身直接抢手中货：目标清单商品必抢，其他商品也有45%概率顺手夺走。
+## 贴身只抢自己尚缺的手持货；不因已经开打就顺手拿无关商品。
 func _try_snatch_from(victim: Actor) -> bool:
 	if victim.held.is_empty():
 		return false
@@ -614,13 +614,6 @@ func _try_snatch_from(victim: Actor) -> bool:
 		if is_instance_valid(it) and _wanted(it.item_id) and can_hold(it):
 			pick = it
 			break
-	if pick == null:
-		if randf() > 0.45:
-			return false
-		for it in victim.held:
-			if is_instance_valid(it) and can_hold(it):
-				pick = it
-				break
 	if pick == null:
 		return false
 	victim.held.erase(pick)
@@ -773,6 +766,10 @@ func _cart_has_wanted(c: Cart) -> bool:
 			return true
 	return false
 
+func _actor_cart_has_wanted(rival: Actor) -> bool:
+	var rival_cart := rival.get_pushed_cart()
+	return rival_cart != null and _cart_has_wanted(rival_cart)
+
 func _register_acquired(it: Item) -> void:
 	if shopping_list.has(it.item_id):
 		acquired[it.item_id] = true
@@ -826,26 +823,18 @@ func _find_brawl_target() -> Actor:
 		var d := global_position.distance_to(rival.global_position)
 		if d > AGGRO_RANGE:
 			continue
-		var goods := rival.held.size()
-		var wanted_goods := 0
-		for it in rival.held:
-			if is_instance_valid(it) and _wanted(it.item_id):
-				wanted_goods += 1
 		var rival_cart := rival.get_pushed_cart()
-		if rival_cart != null:
-			var cart_items := rival_cart.items_in_basket()
-			goods += cart_items.size()
-			for it in cart_items:
-				if _wanted(it.item_id):
-					wanted_goods += 1
-		# 没货的人通常不值得浪费时间；但玩家偶尔会因挡路/挑衅被盯上。
-		if goods == 0 and not (rival is Player and randf() < 0.28):
+		if rival_cart == null:
 			continue
-		var score := float(wanted_goods * 45 + goods * 5) - d * 2.2
-		if rival is Player:
-			score += 8.0
+		var wanted_goods := 0
+		for it in rival_cart.items_in_basket():
+			if _wanted(it.item_id):
+				wanted_goods += 1
+		if wanted_goods == 0:
+			continue
+		var score := float(wanted_goods * 45) - d * 2.2
 		if rival.imbalance >= 55.0:
-			score += 6.0   # 争强好胜：优先补刀已经站不稳的对手
+			score += 6.0   # 都有需求货时，优先争抢已经站不稳的对手
 		if score > best_score:
 			best = rival
 			best_score = score
