@@ -62,6 +62,7 @@ func tick(delta: float) -> void:
 		[2.6, _s_carve_setup], [3.4, _s_carve_check],
 		[3.8, _s_stance_fire], [4.4, _s_stance_check],
 		[5.2, _s_sense_setup], [5.8, _s_sense_check],
+		[6.1, _s_remote_running_check],
 		[6.4, _s_grab_setup], [7.0, _s_grab_fire], [7.6, _s_grab_check],
 		[8.0, _s_sniff_setup], [8.8, _s_sniff_check],
 		[9.2, _s_report],
@@ -210,6 +211,22 @@ func _s_sense_setup() -> void:
 
 func _s_sense_check() -> void:
 	pass
+
+## 联机遥控玩家不能读取主机键盘状态，否则湿滑区抓地等依赖“是否冲刺”的逻辑会串台。
+func _s_remote_running_check() -> void:
+	var p: Player = _m.player
+	var old_remote := p.remote
+	var old_sprint := p.net_sprint
+	var old_stamina := p.stamina
+	p.remote = true
+	p.stamina = 100.0
+	p.net_sprint = true
+	_check(p.is_running(), "联机输入:遥控玩家按网络冲刺状态判定为奔跑")
+	p.net_sprint = false
+	_check(not p.is_running(), "联机输入:遥控玩家不受主机键盘冲刺键串扰")
+	p.remote = old_remote
+	p.net_sprint = old_sprint
+	p.stamina = old_stamina
 
 # ---------------------------------------------------------------- ⑤ 上链接
 

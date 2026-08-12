@@ -42,12 +42,17 @@ static func local_ips() -> String:
 			ips.append(a)
 	return ", ".join(ips) if not ips.is_empty() else "127.0.0.1"
 
+## 实际监听/连接端口。WHITEBOX_PORT 是自动化多实例钩子，建房端与加入端
+## 必须读取同一个值；旧实现只有 create_server 使用它，客户端仍固定连 7788。
+static func configured_port() -> int:
+	var raw := OS.get_environment("WHITEBOX_PORT")
+	if raw == "":
+		return PORT
+	return clampi(int(raw), 1, 65535)
+
 func host_room() -> String:
 	var p := ENetMultiplayerPeer.new()
-	var port := PORT
-	var env_port := OS.get_environment("WHITEBOX_PORT")
-	if env_port != "":
-		port = int(env_port)   # 单机多实例测试用
+	var port := configured_port()
 	var err := p.create_server(port, MAX_CLIENTS)
 	if err != OK:
 		print("[Net] 创建服务器失败 err=", err)
@@ -74,7 +79,8 @@ func join_room(ip: String) -> bool:
 	peers = []
 	seat_peers = []
 	var p := ENetMultiplayerPeer.new()
-	if p.create_client(ip.strip_edges(), PORT) != OK:
+	var port := configured_port()
+	if p.create_client(ip.strip_edges(), port) != OK:
 		return false
 	multiplayer.multiplayer_peer = p
 	if not multiplayer.connected_to_server.is_connected(_on_connected_ok):
@@ -83,7 +89,7 @@ func join_room(ip: String) -> bool:
 		multiplayer.connection_failed.connect(_on_connect_fail)
 	if not multiplayer.server_disconnected.is_connected(_on_server_lost):
 		multiplayer.server_disconnected.connect(_on_server_lost)
-	print("[Net] 开始连接 ", ip.strip_edges(), ":", PORT)
+	print("[Net] 开始连接 ", ip.strip_edges(), ":", port)
 	return true
 
 ## 客户端:主机没了→回开始界面

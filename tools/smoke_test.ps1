@@ -63,13 +63,35 @@ function Find-Godot {
 
 	$roots = @($env:USERPROFILE, "$env:USERPROFILE\Downloads", "$env:USERPROFILE\Desktop") |
 		Where-Object { $_ -and (Test-Path $_) }
-	# console 版排前面:GUI 版是 Windows 子系统程序,启动即detach,拿不到输出与退出码
-	$found = Get-ChildItem -Path $roots -Filter 'Godot*_console.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-		Select-Object -First 1
-	if (-not $found) {
-		$found = Get-ChildItem -Path $roots -Filter 'Godot*.exe' -File -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-			Where-Object { $_.Length -gt 50MB } | Select-Object -First 1
+	# 优先选择 project.godot 声明的引擎系列,再优先 console 版。
+	# 旧实现直接取文件系统扫描到的第一个 console.exe,本机同时装有4.6/4.7时
+	# 会悄悄用4.6跑绿,无法证明目标基线4.7真的通过。
+	$requiredVersion = '4.7'
+	$projectFile = Join-Path $ProjectRoot 'project.godot'
+	if (Test-Path $projectFile) {
+		$projectText = Get-Content -LiteralPath $projectFile -Raw -Encoding UTF8
+		if ($projectText -match 'config/features=PackedStringArray\("([0-9]+\.[0-9]+)"') {
+			$requiredVersion = $Matches[1]
+		}
 	}
+	$candidates = @(
+		Get-ChildItem -Path $roots -Filter 'Godot*_console.exe' -File -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+			# console.exe 只是启动器，必须有同目录同名的主程序；残缺解压目录不能入选。
+			Where-Object {
+				$mainName = $_.Name -replace '_console\.exe$', '.exe'
+				Test-Path -LiteralPath (Join-Path $_.DirectoryName $mainName) -PathType Leaf
+			}
+	)
+	$candidates += @(
+		Get-ChildItem -Path $roots -Filter 'Godot*.exe' -File -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+			Where-Object { $_.Length -gt 50MB }
+	)
+	$versionPattern = 'v' + [regex]::Escape($requiredVersion) + '([.-]|$)'
+	$found = $candidates | Sort-Object `
+		@{ Expression = { if ($_.Name -match $versionPattern) { 0 } else { 1 } } }, `
+		@{ Expression = { if ($_.Name -like '*_console.exe') { 0 } else { 1 } } }, `
+		@{ Expression = { $_.LastWriteTime }; Descending = $true } |
+		Select-Object -First 1
 	if (-not $found) {
 		throw "未找到 Godot 可执行文件。请用 -Godot <路径> 指定,或设置环境变量 GODOT_BIN。"
 	}

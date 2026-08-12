@@ -74,6 +74,10 @@ func _ready() -> void:
 	hold_capacity = 2
 
 func is_running() -> bool:
+	# 主机模拟远程玩家时不能读取房主本机的 Shift。湿滑地面等权威逻辑
+	# 会调用此函数，必须使用该远程玩家最新上报的持续输入。
+	if remote:
+		return net_sprint and stamina > 1.0
 	return Input.is_action_pressed("sprint") and stamina > 1.0
 
 func _physics_process(delta: float) -> void:
