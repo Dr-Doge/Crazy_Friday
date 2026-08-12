@@ -68,7 +68,7 @@ func _players(k: float, delta: float) -> void:
 		p.channel_progress = a[7]
 		p.body_root.rotation.x = lerpf(p.body_root.rotation.x, a[8], k)
 		p.locate_cd = a[9]
-		p.bottle_cd = a[10]
+		p.prop_cd = a[10]
 		p.brace_cd = a[11]
 		# 角色技能状态(HUD 显示用;客户端不做判定)
 		if a.size() > 14:

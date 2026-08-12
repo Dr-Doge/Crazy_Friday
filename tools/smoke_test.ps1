@@ -30,7 +30,7 @@
 #>
 [CmdletBinding()]
 param(
-	[ValidateSet('single', 'tutorial', 'mp', 'phys', 'char', 'all')]
+	[ValidateSet('single', 'tutorial', 'mp', 'phys', 'char', 'npc', 'prop', 'all')]
 	[string]$Mode = 'single',
 
 	[ValidateRange(1, 5)]
@@ -299,6 +299,17 @@ if ($Mode -in @('char', 'all')) {
 	$all += Invoke-SingleCase -Name 'char' -EnvVars @{ WHITEBOX_CHARTEST = '1'; WHITEBOX_NPC = '0' } `
 		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
 		-Note '(角色技能自检:三主动 + 三被动)'
+}
+if ($Mode -in @('npc', 'all')) {
+	# NPC争抢回归:主动抢玩家、NPC互抢/互肘，以及HUD满槽宽度一致性。
+	$all += Invoke-SingleCase -Name 'npc' -EnvVars @{ WHITEBOX_NPCTEST = '1'; WHITEBOX_NPC = '2' } `
+		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
+		-Note '(NPC争抢/互殴 + HUD满槽自检)'
+}
+if ($Mode -in @('prop', 'all')) {
+	$all += Invoke-SingleCase -Name 'prop' -EnvVars @{ WHITEBOX_PROPTEST = '1'; WHITEBOX_NPC = '0' } `
+		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
+		-Note '(场内商品道具:洗衣液/保温杯/软糖)'
 }
 if ($Mode -in @('mp', 'all')) {
 	$all += Invoke-MpCase -ClientCount $Clients -FrameCount $mpFrames

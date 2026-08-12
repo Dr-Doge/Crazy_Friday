@@ -40,7 +40,7 @@ func look(rel: Vector2) -> void:
 func add_shake(v: float) -> void:
 	shake = minf(shake + v, SHAKE_MAX)
 
-## 镜头朝向的水平前向:徒步移动、肘击、掷水瓶都以此为准
+## 镜头朝向的水平前向:徒步移动、肘击、商品道具投掷都以此为准
 func forward() -> Vector3:
 	return Basis(Vector3.UP, yaw) * Vector3.FORWARD
 

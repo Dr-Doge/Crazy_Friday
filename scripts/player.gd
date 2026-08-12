@@ -19,7 +19,7 @@ var seat_label := "你"      # 头顶名牌(玩家自定义的昵称)
 var brace_time := 0.0       # Ctrl:冲击准备剩余时长
 var brace_cd := 0.0
 var locate_cd := 0.0        # 技能CD按人各算(联机双人)
-var bottle_cd := 0.0
+var prop_cd := 0.0          # 右键场内商品道具冷却
 
 # ---------- 角色(见 character_def.gd / char_skills.gd) ----------
 var char_id := CharacterDef.ORDER[0]
@@ -34,12 +34,6 @@ var stun_time := 0.0        # 落空硬直:不能移动/肘击
 
 # 马德胜「扎马步」状态(stance 本身在 Actor 基类上,供撞击结算读取)
 var stance_time := 0.0
-
-# 李洋「上链接」状态
-var grab_anim := 0.0        # 出杆动作计时(手部表现)
-var track_time := 0.0       # 被抢货后:追踪标记剩余时长
-var track_target: Actor = null   # 追踪对象(抢你货的人)
-var exposed_time := 0.0     # 抢了别人之后:自己被对方追踪的剩余时长
 
 # 联机:远程玩家由主机模拟,输入来自网络(含客户端镜头朝向)
 var remote := false
@@ -95,15 +89,14 @@ func _physics_process(delta: float) -> void:
 	var brace_key := net_brace if remote else Input.is_action_pressed("brace")
 
 	locate_cd = maxf(0.0, locate_cd - delta)
-	bottle_cd = maxf(0.0, bottle_cd - delta)
+	prop_cd = maxf(0.0, prop_cd - delta)
 	char_cd = maxf(0.0, char_cd - delta)
-	grab_anim = maxf(0.0, grab_anim - delta)
 	# 开发者模式:所有技能无冷却。统一在这里清零,覆盖全部赋值点。
 	# 注意只清 CD,不清 dash_windup/stun_time/stance_time——那些是技能的
 	# 表现与代价,清掉会让状态机可重入。
 	if Main.dev_no_cd:
 		locate_cd = 0.0
-		bottle_cd = 0.0
+		prop_cd = 0.0
 		char_cd = 0.0
 		brace_cd = 0.0
 	_tick_char_skill(delta)
@@ -150,9 +143,7 @@ func _physics_process(delta: float) -> void:
 		apply_motion(delta, wish, speed)
 
 	# 手部姿态
-	if grab_anim > 0.0:
-		hand_pose = "grab"
-	elif braced:
+	if braced:
 		hand_pose = "brace"
 	elif attached:
 		hand_pose = "push"
@@ -168,14 +159,8 @@ func _physics_process(delta: float) -> void:
 
 # ---------- 角色技能状态机(见 char_skills.gd) ----------
 
-## 推进技能计时:蓄力→突进→硬直,以及扎马步、被抢追踪标记
+## 角色技能计时:贴地冲撞的蓄力→突进→硬直，以及扎马步
 func _tick_char_skill(delta: float) -> void:
-	if exposed_time > 0.0:
-		exposed_time = maxf(0.0, exposed_time - delta)
-	if track_time > 0.0:
-		track_time = maxf(0.0, track_time - delta)
-		if track_time <= 0.0:
-			track_target = null
 	if stance_time > 0.0:
 		stance_time -= delta
 		if stance_time <= 0.0:
@@ -267,9 +252,10 @@ func _drive_cart(delta: float, input: Vector2, sprint: bool) -> void:
 	fwd.y = 0.0
 	fwd = fwd.normalized()
 	var fwd_speed := fwd.dot(cart.linear_velocity)
+	var movement_mult := movement_factor()
 
 	if throttle > 0.05:
-		cart.apply_central_force(fwd * PUSH_FORCE * throttle * (1.7 if sprint else 1.0))
+		cart.apply_central_force(fwd * PUSH_FORCE * throttle * (1.7 if sprint else 1.0) * movement_mult)
 	elif throttle < -0.05:
 		if fwd_speed > 0.6:
 			# 刹车
@@ -284,7 +270,7 @@ func _drive_cart(delta: float, input: Vector2, sprint: bool) -> void:
 		var floor_eff := CharSkills.ZHAO_STEER_FLOOR if carve else 0.12
 		var steer_eff := clampf(absf(fwd_speed) / 3.5, floor_eff, 1.0)
 		var steer_sign := -1.0 if fwd_speed < -0.2 else 1.0
-		var steer_force := DRIVE_STEER * (CharSkills.ZHAO_STEER_MULT if carve else 1.0)
+		var steer_force := DRIVE_STEER * (CharSkills.ZHAO_STEER_MULT if carve else 1.0) * movement_mult
 		cart.apply_torque(Vector3(0, -steer * steer_sign * steer_force * cart.mass * 0.12 * steer_eff * (0.4 + 0.6 * lf), 0))
 
 	# 人挂在车把上
@@ -319,10 +305,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_drop_held()
 	elif event.is_action_pressed("locate"):
 		main.trigger_locate_skill()
-	elif event.is_action_pressed("throw"):
-		main.trigger_throw_bottle()
+	elif event.is_action_pressed("use_prop"):
+		main.trigger_use_prop(self, _aim_dir())
 	elif event.is_action_pressed("char_skill"):
-		# 空格:角色专属技能(赵冬梅冲撞 / 马德胜扎马步 / 李洋上链接)
+		# 空格:角色专属技能(赵冬梅冲撞 / 马德胜扎马步 / 李洋促销圈)
 		main.trigger_char_skill(self, _aim_dir())
 	elif event.is_action_pressed("elbow"):
 		# 肘击自动朝镜头面朝的方向

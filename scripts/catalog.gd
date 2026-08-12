@@ -57,14 +57,14 @@ const ITEMS := {
 	"hair_dryer": {"name": "负离子吹风机", "cat": CAT_NORMAL, "zone": ZONE_APPLIANCE, "stock": 3, "size": Vector3(0.3, 0.25, 0.15), "color": Color(0.85, 0.6, 0.75), "price": 129, "disc": 0.4},
 	# ---- 常规品:日用百货 ----
 	"tissue":    {"name": "十卷装卫生纸", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 4, "size": Vector3(0.5, 0.28, 0.3), "color": Color(0.95, 0.95, 0.92), "price": 35, "disc": 0.3},
-	"detergent": {"name": "薰衣草洗衣液", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.28, 0.4, 0.22), "color": Color(0.45, 0.5, 0.9), "price": 49, "disc": 0.35},
-	"thermos":   {"name": "焖烧保温杯", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.18, 0.35, 0.18), "color": Color(0.75, 0.55, 0.85), "price": 79, "disc": 0.4},
+	"detergent": {"name": "薰衣草洗衣液", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.28, 0.4, 0.22), "color": Color(0.45, 0.5, 0.9), "price": 49, "disc": 0.35, "prop": "slip", "prop_cd": 7.0},
+	"thermos":   {"name": "焖烧保温杯", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.18, 0.35, 0.18), "color": Color(0.75, 0.55, 0.85), "price": 79, "disc": 0.4, "prop": "impact", "prop_cd": 4.0},
 	"shampoo":   {"name": "生姜防脱洗发水", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.22, 0.32, 0.18), "color": Color(0.4, 0.7, 0.55), "price": 59, "disc": 0.3},
 	"rice_bag":  {"name": "十斤装东北大米", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.45, 0.15, 0.6), "color": Color(0.9, 0.85, 0.7), "price": 69, "disc": 0.2},
 	# ---- 常规品:零食玩具 ----
 	"chips": {"name": "巨型桶装薯片", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 4, "size": Vector3(0.3, 0.4, 0.24), "color": Color(0.95, 0.85, 0.3), "price": 29, "disc": 0.25},
 	"cola":  {"name": "可乐24罐整箱", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 4, "size": Vector3(0.4, 0.25, 0.3), "color": Color(0.7, 0.2, 0.25), "price": 45, "disc": 0.3},
-	"candy": {"name": "什锦软糖桶", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 3, "size": Vector3(0.28, 0.3, 0.28), "color": Color(0.95, 0.6, 0.75), "price": 19, "disc": 0.2},
+	"candy": {"name": "什锦软糖桶", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 3, "size": Vector3(0.28, 0.3, 0.28), "color": Color(0.95, 0.6, 0.75), "price": 19, "disc": 0.2, "prop": "sticky", "prop_cd": 6.0},
 	"teddy": {"name": "限量款玩具熊", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 2, "size": Vector3(0.4, 0.45, 0.35), "color": Color(0.8, 0.6, 0.4), "price": 99, "disc": 0.45},
 	"lego":  {"name": "积木天空城堡", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 2, "size": Vector3(0.5, 0.35, 0.3), "color": Color(0.4, 0.75, 0.5), "price": 199, "disc": 0.35},
 	"drone": {"name": "迷你航拍无人机", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 2, "size": Vector3(0.35, 0.18, 0.35), "color": Color(0.5, 0.55, 0.6), "price": 299, "disc": 0.4},
@@ -83,6 +83,22 @@ const L_ITEM := 8
 
 static var _font: SystemFont
 static var _font_bold: SystemFont
+
+static func prop_kind(id: String) -> String:
+	return str(ITEMS.get(id, {}).get("prop", ""))
+
+static func is_prop(id: String) -> bool:
+	return prop_kind(id) != ""
+
+static func prop_cd(id: String) -> float:
+	return float(ITEMS.get(id, {}).get("prop_cd", 0.0))
+
+static func prop_effect_name(id: String) -> String:
+	match prop_kind(id):
+		"slip": return "大范围泼洒"
+		"impact": return "远投钝击"
+		"sticky": return "黏地减速"
+	return "不可使用"
 
 # 中文UI字体:Godot默认字体无CJK,回落到系统字体
 static func ui_font() -> SystemFont:

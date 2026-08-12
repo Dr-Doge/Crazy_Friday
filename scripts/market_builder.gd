@@ -37,7 +37,7 @@ static func build(root: Node3D) -> Dictionary:
 	_build_premium(market, solid_rects, slots)
 	var tv_slots := _build_large_pads(market, solid_rects)
 
-	# 地滑区由 main 在运行时随机生成(开局3块 + 保洁定时拖地 + 玩家水瓶)
+	# 地滑区由 main 在运行时随机生成(开局3块 + 保洁定时拖地 + 洗衣液道具)
 
 	return {
 		"slots": slots,

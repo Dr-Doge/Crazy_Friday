@@ -30,7 +30,7 @@ const KEYS := {
 ## 鼠标绑定表
 const MOUSE_BUTTONS := {
 	"elbow": MOUSE_BUTTON_LEFT,
-	"throw": MOUSE_BUTTON_RIGHT,
+	"use_prop": MOUSE_BUTTON_RIGHT,
 }
 
 ## 幂等:已注册过则直接返回

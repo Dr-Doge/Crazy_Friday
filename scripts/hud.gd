@@ -160,7 +160,7 @@ func _ready() -> void:
 
 	# 右下:操作说明(精简三行)
 	var hint := Label.new()
-	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n左键 肘击 · 右键 掷水瓶 · Q 找货雷达 · 空格 角色技能· Ctrl 稳住\nEsc鼠标 · F1 开发者 · T/F3/F4 调试"
+	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n左键 肘击 · 右键 使用手中道具商品 · Q 找货雷达 · 空格 角色技能· Ctrl 稳住\nEsc鼠标 · F1 开发者 · T/F3/F4 调试"
 	hint.add_theme_font_override("font", Catalog.ui_font_bold())
 	hint.add_theme_font_size_override("font_size", 30)
 	hint.add_theme_color_override("font_color", Color(1, 0.25, 0.18))
@@ -455,8 +455,20 @@ func set_phase(text: String) -> void:
 	phase_label.text = text
 
 func set_bars(stamina: float, imbalance: float) -> void:
-	stamina_fill.size = Vector2((BAR_W - 4.0) * clampf(stamina / 100.0, 0, 1), BAR_H - 4.0)
-	imbalance_fill.size = Vector2((BAR_W - 4.0) * clampf(imbalance / 100.0, 0, 1), BAR_H - 4.0)
+	_set_bar_fill(stamina_fill, stamina)
+	_set_bar_fill(imbalance_fill, imbalance)
+
+## VBox 会把状态槽背景拉伸到最宽子项（通常是上方技能说明）的宽度。
+## 填充条必须按背景的实际布局宽度计算，不能继续使用 BAR_W 固定值，否则
+## 数值到 100 时右侧仍会留下一大段看似“没满”的空槽。
+func _set_bar_fill(fill: ColorRect, value: float) -> void:
+	var bg := fill.get_parent() as Control
+	var inner_w := BAR_W - 4.0
+	var inner_h := BAR_H - 4.0
+	if bg != null and bg.size.x > 4.0:
+		inner_w = bg.size.x - 4.0
+		inner_h = maxf(0.0, bg.size.y - 4.0)
+	fill.size = Vector2(inner_w * clampf(value / 100.0, 0.0, 1.0), inner_h)
 
 func set_prompt(text: String, progress: float) -> void:
 	prompt_label.text = text

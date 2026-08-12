@@ -31,12 +31,12 @@ const STANCE_MIN_IMB := 30.0    # 反击下限(撞速2.5m/s)
 const STANCE_MAX_IMB := 50.0    # 反击上限(撞速 8.8m/s)
 const STANCE_KICKBACK := 4.5    # 反弹冲量(每千克)
 
-# ---------------- 李洋「上链接」· 上链接 ----------------
+# ---------------- 李洋「上链接」· 全网最低价 ----------------
 
-const GRAB_RANGE := 3.5
-const GRAB_COS := 0.707         # ±45°锥形
-const GRAB_SELF_IMB := 25.0
-const GRAB_MARK := 4.0          # 被抢方获得的追踪标记时长
+const PROMO_RADIUS := 6.0
+const PROMO_TIME := 8.0
+const PROMO_SLOW := 0.55        # 对手保留55%移动能力(即减速45%)
+const PROMO_SELF_IMB := 20.0
 
 # ---------------- 被动数值(受《16·一·1.4》红线约束) ----------------
 
@@ -85,7 +85,7 @@ static func trigger(m, p: Player, dir: Vector3) -> void:
 		CharacterDef.MA:
 			_start_stance(m, p)
 		CharacterDef.LI:
-			_do_grab(m, p, fwd)
+			_drop_promo_link(m, p)
 
 ## 赵冬梅:进入蓄力,0.2秒后真正突进(蓄力期全场可见,是对手的反应窗口)
 static func _start_dash(m, p: Player, fwd: Vector3) -> void:
@@ -203,98 +203,19 @@ static func stance_counter(victim: Actor, attacker_cart: Cart) -> bool:
 			Main.instance.shake_for(atk, 0.7)
 	return true
 
-## 李洋:上链接(自动瞄准:宽锥优先→全向兜底,钩走1件货)
-static func _do_grab(m, p: Player, fwd: Vector3) -> void:
+## 李洋:全网最低价。原地生成直播促销区，施法者本人免疫。
+static func _drop_promo_link(m, p: Player) -> void:
 	p.char_cd = CharacterDef.skill_cd(p.char_id)
-	p.grab_anim = 0.35
-	# 代价先付:重心前倾,一钩子把自己也带歪
-	p.add_imbalance(GRAB_SELF_IMB, null)
-	if not p.attached:
-		p.body_root.global_rotation = Vector3(0, atan2(-fwd.x, -fwd.z), 0)
-
-	# 自动瞄准:先搜宽锥(±70°)内的有货目标,按正前方+近者加权;锥内无货则兜底取全向最近者
-	const WIDE_COS := 0.342  # cos(70°) ≈ 0.342
-	var best: Actor = null
-	var best_score := -999.0
-	var fallback: Actor = null
-	var fallback_d := GRAB_RANGE
-	for node in p.get_tree().get_nodes_in_group("characters"):
-		if node == p or not (node is Actor):
-			continue
-		var a: Actor = node
-		if a.immune:      # 收银通道内不可被抢(《05·五》免战区)
-			continue
-		# 对方必须"有货可抢":手里有东西,或推的车斗里不空
-		if a.held.is_empty():
-			var vc2: Cart = a.get_pushed_cart()
-			if vc2 == null or vc2.items_in_basket().is_empty():
-				continue
-		var to: Vector3 = a.global_position - p.global_position
-		to.y = 0.0
-		var d := to.length()
-		if d > GRAB_RANGE or d < 0.01:
-			continue
-		var dir_to := to.normalized()
-		var dot := fwd.dot(dir_to)
-		if dot > WIDE_COS:
-			# 宽锥内:打分=方向对齐×2 - 距离×0.15(正前方又近的分最高)
-			var score := dot * 2.0 - d * 0.15
-			if score > best_score:
-				best = a
-				best_score = score
-		# 同时记录全向最近者,用于锥内无货时的兜底
-		if d < fallback_d:
-			fallback = a
-			fallback_d = d
-
-	if best == null:
-		best = fallback
-		# 兜底:自动转身面向目标再钩,不用手动瞄
-		if best != null and not p.attached:
-			var to_target := best.global_position - p.global_position
-			to_target.y = 0.0
-			if to_target.length() > 0.01:
-				p.body_root.global_rotation = Vector3(0, atan2(-to_target.x, -to_target.z), 0)
-
-	if best == null:
-		Main.float_text(m, p.global_position + Vector3.UP * 2.4, "上链接!……没人上车", Color(0.85, 0.75, 0.5), 70)
-		return
-
-	var got: Item = null
-	if not best.held.is_empty():
-		got = best.drop_one_held(false)
-	else:
-		var vc: Cart = best.get_pushed_cart()
-		if vc != null:
-			var top := vc.take_top_item()
-			if top != null:
-				top.mark_flung()
-				got = top
-			vc.show_steal_alert()
-	if got == null:
-		Main.float_text(m, p.global_position + Vector3.UP * 2.4, "上链接!……对方两手空空", Color(0.85, 0.75, 0.5), 70)
-		return
-
-	if p.can_hold(got):
-		got.set_held()
-		p.take_item(got)
-	else:
-		# 手已满:货落在脚边,仍然完成了"断人补给"
-		got.set_free_at(p.global_position + Vector3.UP * 0.9 + fwd * 0.6)
-	# 被抢方获得追踪标记:他能穿墙看到李洋在哪(这是他的免费反制);
-	# 李洋自己则进入"暴露"状态,HUD 会提醒他赶紧跑。
-	# 联机侧的推送在 main.on_char_grab() 里完成(主机权威)。
-	if best is Player:
-		var vp: Player = best
-		vp.track_time = GRAB_MARK
-		vp.track_target = p
-	p.exposed_time = GRAB_MARK
-	Main.float_text(best, best.global_position + Vector3.UP * 2.3,
-			"上链接!! %s 被抢走" % got.display_name, Color(1, 0.4, 0.6), 80)
-	best.on_elbowed(p)
+	p.add_imbalance(PROMO_SELF_IMB, null)
+	var pos := p.global_position
+	if p.attached and is_instance_valid(p.cart):
+		pos = p.cart.global_position
+	m.spawn_slow_zone(pos, PROMO_RADIUS, PROMO_TIME, PROMO_SLOW, p,
+			"🔥 直播间专享链接 🔥\n全网最低价!", Color(1.0, 0.18, 0.55))
+	Main.float_text(m, p.global_position + Vector3.UP * 2.5,
+			"家人们!全网最低价!!", Color(1.0, 0.35, 0.65), 40)
 	if m != null:
-		m.shake_for(best, 0.45)
-		m.on_char_grab(p, best, got)
+		m.hud.broadcast("直播间提示:%s 发布了限时促销链接——围观可以,别想走太快~" % m.seat_name(m.players.find(p)))
 
 # ================================================================ 被动
 

@@ -70,7 +70,7 @@ static func create(id: String) -> Item:
 	it.add_child(col)
 
 	var lb := Label3D.new()
-	lb.text = data["name"]
+	lb.text = ("右键道具 · " if Catalog.is_prop(id) else "") + str(data["name"])
 	lb.font = Catalog.ui_font()
 	lb.font_size = 54
 	lb.pixel_size = 0.004

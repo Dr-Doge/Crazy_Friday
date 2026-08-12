@@ -16,6 +16,8 @@ var braced := false             # 冲击准备:被车撞不涨失衡(玩家Ctrl�
 var stance := false             # 扎马步(马德胜空格):免疫撞击与肘击失衡+车斗锁死+反击
 var push_velocity := Vector3.ZERO
 var gravity := 9.8
+var slow_time := 0.0             # 促销圈/软糖地形的减速刷新窗口
+var slow_factor := 1.0           # 1=正常；多个区域重叠时取最强减速
 
 # 购物车挂接(玩家与大妈共用)
 var cart: Cart = null
@@ -25,7 +27,6 @@ var _saved_mask := 0
 
 var body_root: Node3D           # 可倾倒的视觉根
 var name_label: Label3D         # 头顶名牌(玩家自定义昵称,染本人配色)
-var mark_shell: MeshInstance3D  # 被「上链接」抢货后的追踪标记壳(只在受害者本机点亮)
 var hand_l: MeshInstance3D      # 双手小球
 var hand_r: MeshInstance3D
 var hand_pose := "idle"         # idle / push / channel / carry,由子类每帧设置
@@ -104,26 +105,6 @@ func build_body(color: Color, title: String, height := 1.7) -> void:
 	name_label.position = Vector3(0, height + 0.45, 0)
 	add_child(name_label)
 
-	# 追踪标记壳:被李洋「上链接」抢货后,受害者能穿墙看到他4秒。
-	# 可见性**只由观察者本机决定**(Main._update_track_mark):
-	# 同一个人在受害者屏幕上亮红壳,在其他人屏幕上什么都没有。
-	var ms := MeshInstance3D.new()
-	var mb := SphereMesh.new()
-	mb.radius = 0.62
-	mb.height = 1.9
-	var mmat := StandardMaterial3D.new()
-	mmat.albedo_color = Color(1, 0.35, 0.6, 0.34)
-	mmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mmat.cull_mode = BaseMaterial3D.CULL_FRONT
-	mmat.no_depth_test = true
-	mb.material = mmat
-	ms.mesh = mb
-	ms.position = Vector3(0, height * 0.55, 0)
-	ms.visible = false
-	add_child(ms)
-	mark_shell = ms
-
 	add_to_group("characters")
 
 ## 改名(大厅改档案后即时生效)
@@ -143,6 +124,10 @@ func actor_tick(delta: float) -> void:
 		_down_timer -= delta
 		if _down_timer <= 0.0:
 			_recover()
+	if slow_time > 0.0:
+		slow_time = maxf(0.0, slow_time - delta)
+		if slow_time <= 0.0:
+			slow_factor = 1.0
 	_update_held_positions()
 	_update_hands(delta)
 
@@ -173,10 +158,6 @@ func _update_hands(delta: float) -> void:
 		"speed":    # 贴地冲撞:速滑姿态,双手背在身后
 			lp = Vector3(-0.34, 0.72, 0.46)
 			rp = Vector3(0.34, 0.72, 0.46)
-		"grab":     # 上链接:自拍杆式前钩,右手远伸
-			var g := sin(_hand_time * 3.0) * 0.1
-			lp = Vector3(-0.26, 1.0, -0.2)
-			rp = Vector3(0.2, 1.42, -1.15 + g)
 		_:          # 垂在身侧,走路时前后摆
 			var sw := sin(_hand_time) * (0.22 if speed > 0.6 else 0.03)
 			lp = Vector3(-0.42, 0.92, sw)
@@ -237,7 +218,7 @@ func puppet_update(delta: float) -> void:
 
 ## 子类通用移动:wish为水平方向单位向量
 func apply_motion(delta: float, wish: Vector3, speed: float) -> void:
-	var horiz := wish * speed + push_velocity
+	var horiz := wish * speed * movement_factor() + push_velocity
 	velocity.x = horiz.x
 	velocity.z = horiz.z
 	if is_on_floor():
@@ -261,6 +242,13 @@ func apply_motion(delta: float, wish: Vector3, speed: float) -> void:
 	if not downed and wish.length() > 0.1:
 		var target_yaw := atan2(-wish.x, -wish.z)
 		body_root.rotation.y = lerp_angle(body_root.rotation.y, target_yaw, 10.0 * delta)
+
+func apply_slow(factor: float, duration: float) -> void:
+	slow_factor = minf(slow_factor if slow_time > 0.0 else 1.0, clampf(factor, 0.1, 1.0))
+	slow_time = maxf(slow_time, duration)
+
+func movement_factor() -> float:
+	return slow_factor if slow_time > 0.0 else 1.0
 
 func add_imbalance(amount: float, _source: Node = null) -> void:
 	if downed or immune:

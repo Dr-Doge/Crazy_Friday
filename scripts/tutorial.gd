@@ -22,14 +22,14 @@ var _sprint := 0.0
 func _init(m) -> void:
 	_m = m
 
-## 布置练手道具:一辆无主车+ 车里两件散货(供第⑦步偷)
+## 布置练手道具:一辆无主车+ 两件可用商品(供第⑦步偷、第⑧步右键使用)
 func setup() -> void:
 	var c := Cart.create(Color(0.6, 0.6, 0.6), "无主购物车(练手)")
 	_m.add_child(c)
 	c.global_position = DUMMY_CART_POS
-	var normals := Catalog.ids_of_cat(Catalog.CAT_NORMAL)
-	for i in 2:
-		var it := Item.create(normals.pick_random())
+	var tutorial_props := ["candy", "thermos"]
+	for i in tutorial_props.size():
+		var it := Item.create(tutorial_props[i])
 		_m.add_child(it)
 		it.set_free_at(DUMMY_CART_POS + Vector3(0, 1.0 + i * 0.5, 0))
 		_m.all_items.append(it)
@@ -83,11 +83,11 @@ func tick(delta: float) -> void:
 func _tick_skills(p: Player) -> void:
 	if p.locate_cd > 0.0:
 		marks["q"] = true
-	if p.bottle_cd > 0.0:
+	if p.prop_cd > 0.0:
 		marks["rmb"] = true
 	if p.braced:
 		marks["ctrl"] = true
-	_say("⑧ 试用技能:Q 找货雷达%s · 右键 掷水瓶%s · Ctrl 稳住%s" % [
+	_say("⑧ 试用技能:Q 找货雷达%s · 右键 使用刚偷到的道具商品%s · Ctrl 稳住%s" % [
 			_mark("q"), _mark("rmb"), _mark("ctrl")])
 	if marks.get("q", false) and marks.get("rmb", false) and marks.get("ctrl", false):
 		step = 8

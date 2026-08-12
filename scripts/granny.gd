@@ -1,6 +1,6 @@
 class_name Granny extends Actor
-## 大妈NPC:人手一辆购物车。开车扫货、按清单抢购、偷无主车、
-## 开车冲撞载有目标商品的对手(玩家或其他大妈)、打烊前去收银台结算。
+## 大妈NPC:人手一辆购物车。开车扫货、按清单抢购、偷车、
+## 开车冲撞或徒步肘击对手(玩家与其他大妈)、抢夺手中商品，打烊前结算。
 
 enum GState {
 	IDLE,        # 决策
@@ -10,7 +10,8 @@ enum GState {
 	STEAL_CH,    # 翻别人车斗1.2秒
 	LOAD,        # 把手里的货装进自己车0.6秒
 	RAM,         # 开车冲撞目标车
-	CHASE,       # 追逐偷了她东西的玩家,夺回商品
+	CHASE,       # 追逐偷了她东西的对手,夺回商品
+	BRAWL,       # 徒步追打有货的对手,肘击或直接抢走手中商品
 	Q_DRIVE,     # 直线开进收银通道(闸机前排队)
 	SCANNING,    # 通道内等扫码
 	EXIT_DRIVE,  # 扫完开出通道
@@ -26,6 +27,9 @@ const STEAL_RANGE := 9.0
 const RAM_RANGE := 18.0     # 别人车里有想要的货时,这个距离内会开车冲撞(对全场生效)
 const RAM_CD_HIT := 6.0     # 冲撞得手后的冷却(越短越凶)
 const RAM_CD_FAIL := 3.5    # 冲撞失败/放弃的冷却
+const AGGRO_RANGE := 10.0    # 徒步争抢搜索半径
+const AGGRO_TIME := 6.0      # 单次追打最长时间，避免全场只顾打架
+const ELBOW_CD := 0.9        # NPC肘击间隔
 const EXIT_X := MapLayout.EXIT_X   # 收银后离场出口的x位置
 
 # 大妈语录(带方言味,对玩家操作做反应)
@@ -52,11 +56,14 @@ var path_idx := 0
 var final_dest := Vector3.ZERO
 var target_item: Item = null
 var target_cart: Cart = null
+var target_actor: Actor = null
 var target_checkout: Checkout = null
 var action_timer := 0.0
 var steal_timer := 0.0
 var checkout_deadline := 0.0   # 剩余时间低于此值就去结算
 var _charge_cd := 0.0
+var _aggression_timer := 0.0
+var _elbow_cd := 0.0
 var _after_drive := ""         # DRIVE到达后: "shop"/"steal"/"queue"/""
 var _after_walk := ""          # WALK到达后: "take"/"steal"/"return"
 var _lane_pts: Array = []
@@ -78,6 +85,7 @@ func _ready() -> void:
 	collision_mask = Catalog.L_WORLD | Catalog.L_CART
 	hold_capacity = 2
 	steal_timer = randf_range(12.0, STEAL_SCAN_INTERVAL)
+	_aggression_timer = randf_range(2.5, 6.0)
 	# 只在临近打烊才去结算(剩50-110秒),保证全场大部分时间都在场上和玩家博弈,
 	# 且终局所有人挤向收银台——排队区互撞的名场面
 	checkout_deadline = randf_range(50.0, 110.0)
@@ -117,22 +125,20 @@ func say_from_pool(pool: Array) -> void:
 	bubble.text = "「%s」" % pool.pick_random()
 	bubble.visible = true
 
-func on_cart_hit(by: Cart) -> void:
-	if by.attached_agent is Player:
-		say_from_pool(SAY_HURT)
+func on_cart_hit(_by: Cart) -> void:
+	say_from_pool(SAY_HURT)
 
-func on_elbowed(by: Actor) -> void:
-	if by is Player:
-		say_from_pool(SAY_ELBOWED)
+func on_elbowed(_by: Actor) -> void:
+	say_from_pool(SAY_ELBOWED)
 
 func is_running() -> bool:
-	return state == GState.RAM or state == GState.CHASE
+	return state in [GState.RAM, GState.CHASE, GState.BRAWL]
 
-## 玩家从她车里偷走商品:该商品重新变回"想要"(acquired擦除),并当场追逐夺回。
-## 追不上/商品进了玩家车斗,常规决策的冲撞/偷窃会自然接管——不死盯玩家。
-var chase_target: Player = null
+## 对手从她这里偷走商品:该商品重新变回"想要"(acquired擦除),并当场追逐夺回。
+## 追不上/商品进了对手车斗,常规决策的冲撞/偷窃会自然接管——记仇但不死盯。
+var chase_target: Actor = null
 
-func on_robbed(item: Item, thief: Player) -> void:
+func on_robbed(item: Item, thief: Actor) -> void:
 	acquired.erase(item.item_id)
 	_update_want_label()
 	say_from_pool(SAY_STOLEN)
@@ -150,6 +156,8 @@ func _physics_process(delta: float) -> void:
 		return
 	steal_timer -= delta
 	_charge_cd = maxf(0.0, _charge_cd - delta)
+	_aggression_timer = maxf(0.0, _aggression_timer - delta)
+	_elbow_cd = maxf(0.0, _elbow_cd - delta)
 	_say_cd = maxf(0.0, _say_cd - delta)
 	if _say_time > 0.0:
 		_say_time -= delta
@@ -166,6 +174,7 @@ func _physics_process(delta: float) -> void:
 		_state_time = 0.0
 		target_item = null
 		target_cart = null
+		target_actor = null
 		_charge_cd = maxf(_charge_cd, 2.0)
 		state = GState.IDLE
 
@@ -231,6 +240,8 @@ func _physics_process(delta: float) -> void:
 			_ram_state(delta)
 		GState.CHASE:
 			_chase_state(delta)
+		GState.BRAWL:
+			_brawl_state(delta)
 		GState.Q_DRIVE:
 			_queue_state(delta)
 		GState.SCANNING:
@@ -260,6 +271,14 @@ func _decide() -> void:
 			state = GState.RAM
 			if rc.attached_agent is Player:
 				say_from_pool(SAY_HUNT)
+			return
+	# 徒步争抢:优先盯住手里/车里有我想要商品的人；即使不是目标货，
+	# 玩家和满载对手也会因“不能让别人占便宜”进入候选。
+	if _aggression_timer <= 0.0:
+		_aggression_timer = randf_range(4.0, 8.0)
+		var rival := _find_brawl_target()
+		if rival != null:
+			_start_brawl(rival)
 			return
 	# 偷:没人看的车里有我要的货
 	var sc := _find_steal_cart(true, RAM_RANGE)
@@ -318,6 +337,15 @@ func _go_steal(c: Cart) -> void:
 	_after_drive = "steal"
 	_drive_path_to(c.global_position)
 	state = GState.DRIVE
+
+func _start_brawl(rival: Actor) -> void:
+	target_actor = rival
+	action_timer = AGGRO_TIME
+	_elbow_cd = randf_range(0.1, 0.35)
+	if attached:
+		detach_cart()
+	state = GState.BRAWL
+	say_from_pool(SAY_HUNT if rival is Player else SAY_SLAM)
 
 func _start_checkout() -> void:
 	var best: Checkout = null
@@ -483,6 +511,8 @@ func _do_steal() -> void:
 		_register_acquired(pick)
 		target_cart.show_steal_alert()
 		main.on_granny_stole(target_cart)
+		if target_cart.cart_owner is Granny and is_instance_valid(target_cart.cart_owner):
+			target_cart.cart_owner.on_robbed(pick, self)
 
 func _ram_state(delta: float) -> void:
 	action_timer -= delta
@@ -506,10 +536,10 @@ func _ram_state(delta: float) -> void:
 		return
 	_drive_toward(delta, target_cart.global_position, true)
 
-## 追逐偷货的玩家:抓到就把商品抢回来
+## 追逐偷货的玩家或NPC:抓到就把商品抢回来
 func _chase_state(delta: float) -> void:
 	action_timer -= delta
-	var p := chase_target
+	var p: Actor = chase_target
 	if action_timer <= 0.0 or p == null or not is_instance_valid(p) or p.immune or p.downed:
 		_charge_cd = 2.0
 		state = GState.IDLE
@@ -543,6 +573,71 @@ func _chase_state(delta: float) -> void:
 		_drive_toward(delta, p.global_position, true)
 	else:
 		apply_motion(delta, to.normalized(), RUSH_SPEED)
+
+## 徒步抢夺与互殴。先抢对方手中商品；抢不到时连续肘击，既能打落手持货，
+## 也能把正在推车的对手车斗商品肘飞。所有结算复用 Actor.try_elbow，玩家/NPC同规则。
+func _brawl_state(delta: float) -> void:
+	action_timer -= delta
+	var rival: Actor = target_actor
+	if action_timer <= 0.0 or rival == null or not is_instance_valid(rival) \
+			or rival.downed or rival.immune:
+		target_actor = null
+		state = GState.IDLE
+		return
+	var to := rival.global_position - global_position
+	to.y = 0.0
+	var d := to.length()
+	if d > AGGRO_RANGE + 4.0:
+		target_actor = null
+		state = GState.IDLE
+		return
+	if d > 1.65:
+		apply_motion(delta, to.normalized(), RUSH_SPEED)
+		return
+	apply_motion(delta, Vector3.ZERO, 0.0)
+	if _elbow_cd > 0.0:
+		return
+	_elbow_cd = ELBOW_CD
+	if _try_snatch_from(rival):
+		target_actor = null
+		state = GState.IDLE
+		return
+	try_elbow(to)
+	say_from_pool(SAY_SLAM)
+
+## 贴身直接抢手中货：目标清单商品必抢，其他商品也有45%概率顺手夺走。
+func _try_snatch_from(victim: Actor) -> bool:
+	if victim.held.is_empty():
+		return false
+	var pick: Item = null
+	for it in victim.held:
+		if is_instance_valid(it) and _wanted(it.item_id) and can_hold(it):
+			pick = it
+			break
+	if pick == null:
+		if randf() > 0.45:
+			return false
+		for it in victim.held:
+			if is_instance_valid(it) and can_hold(it):
+				pick = it
+				break
+	if pick == null:
+		return false
+	victim.held.erase(pick)
+	pick.set_held()
+	take_item(pick)
+	_register_acquired(pick)
+	victim.add_imbalance(12.0, self)
+	var shove := victim.global_position - global_position
+	shove.y = 0.0
+	if shove.length() > 0.1:
+		victim.push_velocity += shove.normalized() * 2.8
+	Main.float_text(victim, victim.global_position + Vector3.UP * 2.2,
+			"大妈抢走了%s!!" % pick.display_name, Color(1, 0.45, 0.25), 72)
+	victim.on_elbowed(self)
+	if victim is Granny:
+		victim.on_robbed(pick, self)
+	return true
 
 func _queue_state(delta: float) -> void:
 	action_timer -= delta
@@ -717,6 +812,45 @@ func _find_ram_target() -> Cart:
 			best_d = d
 	return best
 
+func _find_brawl_target() -> Actor:
+	var best: Actor = null
+	var best_score := -9999.0
+	for node in get_tree().get_nodes_in_group("characters"):
+		if node == self or not (node is Actor):
+			continue
+		var rival: Actor = node
+		if rival.downed or rival.immune or (rival is Player and rival.finished):
+			continue
+		if rival is Granny and rival._in_checkout_chain():
+			continue
+		var d := global_position.distance_to(rival.global_position)
+		if d > AGGRO_RANGE:
+			continue
+		var goods := rival.held.size()
+		var wanted_goods := 0
+		for it in rival.held:
+			if is_instance_valid(it) and _wanted(it.item_id):
+				wanted_goods += 1
+		var rival_cart := rival.get_pushed_cart()
+		if rival_cart != null:
+			var cart_items := rival_cart.items_in_basket()
+			goods += cart_items.size()
+			for it in cart_items:
+				if _wanted(it.item_id):
+					wanted_goods += 1
+		# 没货的人通常不值得浪费时间；但玩家偶尔会因挡路/挑衅被盯上。
+		if goods == 0 and not (rival is Player and randf() < 0.28):
+			continue
+		var score := float(wanted_goods * 45 + goods * 5) - d * 2.2
+		if rival is Player:
+			score += 8.0
+		if rival.imbalance >= 55.0:
+			score += 6.0   # 争强好胜：优先补刀已经站不稳的对手
+		if score > best_score:
+			best = rival
+			best_score = score
+	return best
+
 func _find_steal_cart(wanted_only: bool, rng: float) -> Cart:
 	var best: Cart = null
 	var best_d := rng
@@ -795,10 +929,11 @@ func _drive_toward(delta: float, dest: Vector3, sprint: bool) -> void:
 	to.y = 0.0
 	if to.length() > 0.15:
 		var dir := to.normalized()
-		cart.apply_central_force(dir * DRIVE_FORCE * (1.6 if sprint else 1.0))
+		var movement_mult := movement_factor()
+		cart.apply_central_force(dir * DRIVE_FORCE * (1.6 if sprint else 1.0) * movement_mult)
 		var target_yaw := atan2(-dir.x, -dir.z)
 		var diff := wrapf(target_yaw - cart.rotation.y, -PI, PI)
-		cart.apply_torque(Vector3(0, diff * DRIVE_STEER * cart.mass * 0.1, 0))
+		cart.apply_torque(Vector3(0, diff * DRIVE_STEER * cart.mass * 0.1 * movement_mult, 0))
 	_stick_to_handle()
 
 func _stick_to_handle() -> void:

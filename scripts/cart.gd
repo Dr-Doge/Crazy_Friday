@@ -307,7 +307,8 @@ func _physics_process(delta: float) -> void:
 	# 限速:软限制,避免硬钳制造成的高速抖动
 	# speed_cap_bonus:突进窗口内临时放开(见 lift_speed_cap)
 	var hv := Vector3(linear_velocity.x, 0, linear_velocity.z)
-	var cap := 6.0 + 2.8 * sprint_level + speed_cap_bonus
+	var movement_mult := attached_agent.movement_factor() if attached_agent != null else 1.0
+	var cap := (6.0 + 2.8 * sprint_level + speed_cap_bonus) * movement_mult
 	if hv.length() > cap:
 		hv = hv.lerp(hv.normalized() * cap, 0.35)
 		linear_velocity.x = hv.x

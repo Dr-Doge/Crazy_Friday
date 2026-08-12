@@ -6,8 +6,8 @@ class_name Net extends Node
 const PORT := 7788
 const MAX_CLIENTS := 5     # 主机+5客户端=6人
 const SYNC_INTERVAL := 3   # 每3个物理帧同步一次(约20Hz)
-const NET_VERSION := 4     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
-                           # v4:大厅与开局包新增"所选角色";红壳数据带商品名
+const NET_VERSION := 5     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
+                           # v5:李洋范围技能与场内商品道具事件
 
 var main: Main
 var is_host := false
@@ -377,7 +377,7 @@ func _gather_players() -> Dictionary:
 		ps.append([p.global_position, p.body_root.rotation.y, p.hand_pose,
 				p.imbalance, p.stamina, p.downed, p.braced,
 				p.channel_progress, p.body_root.rotation.x,
-				p.locate_cd, p.bottle_cd, p.brace_cd,
+				p.locate_cd, p.prop_cd, p.brace_cd,
 				p.char_cd, p.stance_time, p.stun_time])
 		_sync_text("pp%d" % i, "pp", i, p.prompt_text)
 	return {"p": ps}
@@ -453,18 +453,18 @@ func ev_hud(rows: Array, score: int, hot_carts: Array) -> void:
 func ev_locate(idxs: Array) -> void:
 	main.client_locate(idxs)
 
-## 「上链接」的追踪标记:kind="track"(你被抢了,能看见他) / "exposed"(你抢了人,位置暴露)
 @rpc("authority", "call_remote", "reliable")
-func ev_mark(kind: String, seat: int, dur: float) -> void:
-	main.client_mark(kind, seat, dur)
+func ev_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
+		immune_seat: int, title: String, color: Color) -> void:
+	main.client_slow_zone(pos, radius, life, factor, immune_seat, title, color)
 
 @rpc("authority", "call_remote", "reliable")
 func ev_spawn_items(ids: Array, poss: Array) -> void:
 	main.client_spawn_items(ids, poss)
 
 @rpc("authority", "call_remote", "reliable")
-func ev_slippery(pos: Vector3, life: float) -> void:
-	SlipperyZone.create(main, pos, Vector3(3.5, 2, 3.5), life)
+func ev_slippery(pos: Vector3, life: float, size := Vector2(3.5, 3.5)) -> void:
+	SlipperyZone.create(main, pos, Vector3(size.x, 2, size.y), life)
 
 @rpc("authority", "call_remote", "reliable")
 func ev_item_gone(idx: int) -> void:

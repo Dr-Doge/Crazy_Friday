@@ -9,7 +9,7 @@ class_name CharProbe extends RefCounted
 ## 判定:所有断言通过 → RESULT=PASS。
 ##
 ## 覆盖范围:
-##   主动 ×3  贴地冲撞(蓄力→突进→命中结算→自身代价) / 扎马步(免疫+锁货+反击) / 上链接(夺取+代价+标记)
+##   主动 ×3  贴地冲撞(蓄力→突进→命中结算→自身代价) / 扎马步(免疫+锁货+反击) / 全网最低价(范围减速+自身免疫)
 ##   被动 ×3  压弯(驾驶参数) / 余光(威胁列表) / 爆款嗅觉(红壳距离规则)
 
 var _m
@@ -63,7 +63,7 @@ func tick(delta: float) -> void:
 		[3.8, _s_stance_fire], [4.4, _s_stance_check],
 		[5.2, _s_sense_setup], [5.8, _s_sense_check],
 		[6.1, _s_remote_running_check],
-		[6.4, _s_grab_setup], [7.0, _s_grab_fire], [7.6, _s_grab_check],
+		[6.4, _s_promo_setup], [7.0, _s_promo_fire], [7.6, _s_promo_check],
 		[8.0, _s_sniff_setup], [8.8, _s_sniff_check],
 		[9.2, _s_report],
 	]
@@ -228,37 +228,32 @@ func _s_remote_running_check() -> void:
 	p.net_sprint = old_sprint
 	p.stamina = old_stamina
 
-# ---------------------------------------------------------------- ⑤ 上链接
+# ---------------------------------------------------------------- ⑤ 全网最低价
 
-func _s_grab_setup() -> void:
+func _s_promo_setup() -> void:
 	var p: Player = _m.player
 	_use_char(CharacterDef.LI)
-	p.drop_all_held(false)
-	_dummy.global_position = p.global_position + _fwd(p) * 2.2
-	# 给靶子手里塞一件货
-	var it := Item.create("thermos")
-	_m.add_child(it)
-	_m.all_items.append(it)
-	it.set_held()
-	_dummy.take_item(it)
-	_grab_item = it
+	p.slow_time = 0.0
+	p.slow_factor = 1.0
+	_dummy.slow_time = 0.0
+	_dummy.slow_factor = 1.0
+	_dummy.global_position = p.global_position + Vector3(3.0, 0, 0)
 
-func _s_grab_fire() -> void:
+func _s_promo_fire() -> void:
 	var p: Player = _m.player
-	_check(_dummy.held.size() == 1, "上链接:测试前置——靶子手里有 1 件货")
 	p.imbalance = 0.0
 	_m.trigger_char_skill(p, _fwd(p))
 
-func _s_grab_check() -> void:
+func _s_promo_check() -> void:
 	var p: Player = _m.player
-	_check(_dummy.held.is_empty(), "上链接:靶子手里的货被抢走")
-	var got: bool = p.held.has(_grab_item) or _grab_item.state == Item.ItemState.FREE
-	_check(got, "上链接:货到了李洋手上(或手满时落在脚边)")
-	_check(p.imbalance >= CharSkills.GRAB_SELF_IMB - 1.0,
-			"上链接:自身付出 +%d 失衡代价(实际 %.0f)" % [int(CharSkills.GRAB_SELF_IMB), p.imbalance])
-	_check(p.char_cd > 0.0, "上链接:进入冷却")
-	_check(p.exposed_time > 0.0,
-			"上链接:抢完自己进入暴露状态 %.1f 秒(被抢方的反制)" % p.exposed_time)
+	var zones: Array = _m.get_children().filter(func(n): return n is SlowZone)
+	_check(not zones.is_empty(), "全网最低价:原地生成直播促销减速区")
+	_check(is_equal_approx(p.movement_factor(), 1.0), "全网最低价:李洋本人免疫自己的减速区")
+	_check(_dummy.movement_factor() <= CharSkills.PROMO_SLOW + 0.01,
+			"全网最低价:范围内对手保留约%d%%移动能力" % int(CharSkills.PROMO_SLOW * 100.0))
+	_check(p.imbalance >= CharSkills.PROMO_SELF_IMB - 1.0,
+			"全网最低价:自身付出 +%d 失衡代价(实际 %.0f)" % [int(CharSkills.PROMO_SELF_IMB), p.imbalance])
+	_check(p.char_cd > 0.0, "全网最低价:进入冷却")
 
 # ---------------------------------------------------------------- ⑥ 爆款嗅觉(被动)
 

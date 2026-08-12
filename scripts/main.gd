@@ -146,6 +146,18 @@ func _start_match(tut: bool) -> void:
 	if OS.get_environment("WHITEBOX_CHARTEST") != "":
 		char_probe = CharProbe.new(self)
 		char_probe.setup()
+	# 测试钩子:NPC争抢/互殴与HUD满槽回归。
+	if OS.get_environment("WHITEBOX_NPCTEST") != "":
+		npc_probe = NpcProbe.new(self)
+		npc_probe.setup()
+	if OS.get_environment("WHITEBOX_PROPTEST") != "":
+		prop_probe = PropProbe.new(self)
+		prop_probe.setup()
+	# GUI视觉回归：自动展示当前角色主技能，配合 WHITEBOX_SHOT 截图。
+	if OS.get_environment("WHITEBOX_SHOW_CHAR_SKILL") != "":
+		get_tree().create_timer(0.7).timeout.connect(func() -> void:
+			if is_instance_valid(player):
+				trigger_char_skill(player, cam_rig.forward()))
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
 func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
@@ -462,6 +474,12 @@ var phys_stress: PhysStress
 ## 仅 WHITEBOX_CHARTEST 下创建:角色技能自检,见 char_probe.gd
 var char_probe: CharProbe
 
+## 仅 WHITEBOX_NPCTEST 下创建:NPC争抢/互殴与HUD满槽自检,见 npc_probe.gd
+var npc_probe: NpcProbe
+
+## 仅 WHITEBOX_PROPTEST 下创建:场内商品道具专项回归,见 prop_probe.gd
+var prop_probe: PropProbe
+
 # ---------- 环境与相机 ----------
 
 func _setup_environment() -> void:
@@ -535,6 +553,10 @@ func _process(delta: float) -> void:
 		phys_stress.tick(delta)
 	if char_probe != null:
 		char_probe.tick(delta)
+	if npc_probe != null:
+		npc_probe.tick(delta)
+	if prop_probe != null:
+		prop_probe.tick(delta)
 
 	if tutorial:
 		tutorial_guide.tick(delta)
@@ -704,68 +726,77 @@ func trigger_char_skill(p: Player = null, dir := Vector3.ZERO) -> void:
 		return
 	CharSkills.trigger(self, p, dir)
 
-##「上链接」抢到货的播报与标记下发(只在主机侧调用)。
-##注意:victim 可能是大妈或测试靶子,而 players 是 Array[Player]——
-## 不先判类型就 find() 会触发 TypedArray 校验报错(踩过)
-func on_char_grab(thief: Player, victim: Actor, item: Item) -> void:
-	if net_client:
-		return
-	var thief_seat := players.find(thief)
-	var vname := "大妈"
-	var victim_seat := -1
-	if victim is Player:
-		victim_seat = players.find(victim)
-		vname = seat_name_2nd(victim_seat)
-	hud.broadcast("直播间提示:%s 对着%s大喊\"上链接\",%s 就这么没了~" % [
-			seat_name(thief_seat), vname, item.display_name])
-	# 标记是低频事件,走可靠 RPC 而不是塞进 20Hz 状态包
-	if net_mp:
-		if victim_seat > 0:
-			var vpid := net.peer_of_seat(victim_seat)
-			if net.peer_alive(vpid):
-				net.rpc_id(vpid, "ev_mark", "track", thief_seat, CharSkills.GRAB_MARK)
-		if thief_seat > 0:
-			var tpid := net.peer_of_seat(thief_seat)
-			if net.peer_alive(tpid):
-				net.rpc_id(tpid, "ev_mark", "exposed", victim_seat, CharSkills.GRAB_MARK)
+## 主机创建减速区并广播视觉参数。客户端不做区域判定，位置仍由权威状态包同步。
+func spawn_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
+		immune_actor: Actor, title: String, color: Color) -> SlowZone:
+	var zone := SlowZone.create(self, pos, radius, life, factor, immune_actor, title, color)
+	if net_mp and not net_client:
+		var immune_seat := players.find(immune_actor) if immune_actor is Player else -1
+		net.rpc("ev_slow_zone", pos, radius, life, factor, immune_seat, title, color)
+	return zone
 
-## 客户端收到标记事件
-func client_mark(kind: String, seat: int, dur: float) -> void:
-	if kind == "track":
-		player.track_time = dur
-		player.track_target = players[seat] if seat >= 0 and seat < players.size() else null
-	else:
-		player.exposed_time = dur
+func client_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
+		immune_seat: int, title: String, color: Color) -> void:
+	var immune_actor: Actor = players[immune_seat] if immune_seat >= 0 and immune_seat < players.size() else null
+	SlowZone.create(self, pos, radius, life, factor, immune_actor, title, color)
 
-##右键:向镜头方向掷出水瓶,落地生成临时湿滑地面(CD8秒)
-func trigger_throw_bottle(p: Player = null, dir := Vector3.ZERO) -> void:
+## 右键:消耗手中一件可用商品。Demo只开放三种，强调“结算价值 vs 即时战术”。
+func trigger_use_prop(p: Player = null, dir := Vector3.ZERO) -> void:
 	if p == null:
 		p = player
 	if game_over or p == null:
 		return
-	if p.bottle_cd > 0.0:
+	if p.prop_cd > 0.0:
 		if p == player:
-			Main.float_text(self, p.global_position + Vector3.UP * 2.4, "水瓶冷却中(%d秒)" % int(ceil(p.bottle_cd)), Color(0.8, 0.8, 0.8))
+			Main.float_text(self, p.global_position + Vector3.UP * 2.4,
+					"道具冷却中(%d秒)" % int(ceil(p.prop_cd)), Color(0.8, 0.8, 0.8))
 		return
-	p.bottle_cd = 8.0
+	var prop := current_held_prop(p)
+	if prop == null:
+		if p == player:
+			Main.float_text(self, p.global_position + Vector3.UP * 2.4,
+					"手上没有可用道具\n洗衣液 / 保温杯 / 软糖", Color(1.0, 0.75, 0.35), 58)
+		return
+	var kind := Catalog.prop_kind(prop.item_id)
+	p.prop_cd = Catalog.prop_cd(prop.item_id)
+	p.held.erase(prop)
+	net_item_gone_notify(prop)
+	prop.queue_free()
 	var fwd := dir
 	fwd.y = 0.0
 	if fwd.length() < 0.1:
 		fwd = cam_rig.forward()
 	fwd = fwd.normalized()
+	_spawn_prop_projectile(p, fwd, kind)
+
+func current_held_prop(p: Player) -> Item:
+	for i in range(p.held.size() - 1, -1, -1):
+		var it: Item = p.held[i]
+		if is_instance_valid(it) and Catalog.is_prop(it.item_id):
+			return it
+	return null
+
+func _spawn_prop_projectile(owner: Player, fwd: Vector3, kind: String) -> void:
 	var b := RigidBody3D.new()
 	b.mass = 1.0
 	b.collision_layer = 0
-	b.collision_mask = Catalog.L_WORLD
+	b.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
 	b.contact_monitor = true
 	b.max_contacts_reported = 4
+	b.set_meta("prop_kind", kind)
+	b.set_meta("landed", false)
+	b.set_meta("owner_actor", owner)
 	var mi := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
-	cm.top_radius = 0.09
-	cm.bottom_radius = 0.09
-	cm.height = 0.32
+	cm.top_radius = 0.11
+	cm.bottom_radius = 0.11
+	cm.height = 0.34
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.4, 0.75, 0.95, 0.9)
+	mat.albedo_color = {
+		"slip": Color(0.45, 0.5, 0.95),
+		"impact": Color(0.72, 0.48, 0.85),
+		"sticky": Color(1.0, 0.5, 0.72),
+	}.get(kind, Color.WHITE)
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	cm.material = mat
 	mi.mesh = cm
@@ -777,21 +808,46 @@ func trigger_throw_bottle(p: Player = null, dir := Vector3.ZERO) -> void:
 	cs.shape = sh
 	b.add_child(cs)
 	add_child(b)
-	b.global_position = p.global_position + Vector3.UP * 1.6 + fwd * 0.6
+	b.add_collision_exception_with(owner)
+	if is_instance_valid(owner.cart):
+		b.add_collision_exception_with(owner.cart)
+	b.global_position = owner.global_position + Vector3.UP * 1.6 + fwd * 0.6
 	b.linear_velocity = fwd * 13.0 + Vector3.UP * 4.5
 	b.angular_velocity = Vector3(randf_range(-6, 6), 0, randf_range(-6, 6))
-	b.body_entered.connect(func(_bd: Node) -> void: _bottle_land(b))
+	b.body_entered.connect(func(body: Node) -> void: _prop_projectile_hit(b, body))
 
-func _bottle_land(b: RigidBody3D) -> void:
-	if not is_instance_valid(b):
+func _prop_projectile_hit(b: RigidBody3D, body: Node) -> void:
+	if not is_instance_valid(b) or bool(b.get_meta("landed", false)):
 		return
+	b.set_meta("landed", true)
+	var kind := str(b.get_meta("prop_kind", ""))
+	var owner := b.get_meta("owner_actor") as Player
 	var pos := b.global_position
 	pos.y = 0.0
 	b.queue_free()
-	SlipperyZone.create(self, pos, Vector3(3.5, 2, 3.5), 12.0)
-	if net_mp and not net_client:
-		net.rpc("ev_slippery", pos, 12.0)
-	Main.float_text(self, pos + Vector3.UP * 1.0, "哗啦!!地面湿滑!", Color(0.4, 0.8, 1.0), 72)
+	match kind:
+		"slip":
+			SlipperyZone.create(self, pos, Vector3(5.4, 2, 5.4), 15.0)
+			if net_mp and not net_client:
+				net.rpc("ev_slippery", pos, 15.0, Vector2(5.4, 5.4))
+			Main.float_text(self, pos + Vector3.UP, "洗衣液泼洒!! 大面积湿滑!", Color(0.45, 0.65, 1.0), 68)
+		"sticky":
+			spawn_slow_zone(pos, 2.8, 7.0, 0.6, null,
+					"软糖黏地!\n全员减速", Color(1.0, 0.48, 0.72))
+			Main.float_text(self, pos + Vector3.UP, "软糖撒了一地!!", Color(1.0, 0.5, 0.75), 68)
+		"impact":
+			var victim: Actor = body if body is Actor else (body.attached_agent if body is Cart else null)
+			if victim != null and victim != owner and not victim.immune:
+				victim.add_imbalance(25.0, owner)
+				var away := victim.global_position - owner.global_position
+				away.y = 0.0
+				if away.length() > 0.1:
+					victim.push_velocity += away.normalized() * 4.0
+				Main.float_text(victim, victim.global_position + Vector3.UP * 2.1,
+						"保温杯暴击 +25失衡!", Color(0.85, 0.55, 1.0), 76)
+				shake_for(victim, 0.5)
+			else:
+				Main.float_text(self, pos + Vector3.UP, "咣当!保温杯打空了", Color(0.75, 0.65, 0.85), 52)
 
 ## 随机位置生成地滑区(开局3块由种子决定两端一致;运行时的临时块走网络事件)
 func _spawn_random_slippery(count: int, life: float) -> void:
@@ -920,7 +976,9 @@ func _update_timer_hud() -> void:
 
 func _update_skill_hud() -> void:
 	var s1 := "Q雷达:就绪" if player.locate_cd <= 0.0 else "Q 雷达:%d秒" % int(ceil(player.locate_cd))
-	var s2 := "右键 水瓶:就绪" if player.bottle_cd <= 0.0 else "右键 水瓶:%d秒" % int(ceil(player.bottle_cd))
+	var held_prop := current_held_prop(player)
+	var prop_text := "无可用商品" if held_prop == null else "%s·%s" % [held_prop.display_name, Catalog.prop_effect_name(held_prop.item_id)]
+	var s2 := "右键 道具:%s" % prop_text if player.prop_cd <= 0.0 else "右键 道具:%d秒" % int(ceil(player.prop_cd))
 	var s3 := "Ctrl稳住:就绪" if player.brace_cd <= 0.0 else ("Ctrl 稳住:格挡中!" if player.braced else "Ctrl 稳住:%d秒" % int(ceil(player.brace_cd)))
 	var sk := CharacterDef.skill_name(player.char_id)
 	var max_cd := CharacterDef.skill_cd(player.char_id)
@@ -931,28 +989,13 @@ func _update_skill_hud() -> void:
 		s4 = "空格 %s:收不住脚(%.1f秒)" % [sk, player.stun_time]
 	elif player.char_cd > 0.0:
 		s4 = "空格 %s:%d秒" % [sk, int(ceil(player.char_cd))]
-	var ready: bool = player.locate_cd <= 0.0 and player.bottle_cd <= 0.0 \
+	var ready: bool = player.locate_cd <= 0.0 and player.prop_cd <= 0.0 \
 			and player.brace_cd <= 0.0 and player.char_cd <= 0.0
 	# 技能冷却圆环(塞尔达体力轮风格)
 	hud.set_skill_cd(clampf(player.char_cd / maxf(max_cd, 1.0), 0.0, 1.0))
-	# 「上链接」的双向反馈:抢人者知道自己暴露,被抢者知道能看见对方
-	if player.exposed_time > 0.0:
-		s4 += "⚠ 位置暴露 %.1f秒!" % player.exposed_time
-	elif player.track_time > 0.0:
-		s4 += "  👁 已锁定抢你货的人 %.1f秒" % player.track_time
 	hud.set_skill(s1 + " · " + s2 + " · " + s3 + " · " + s4, ready)
 	# 马德胜「余光」:屏幕边缘的威胁方向预警(只给信息,不给数值)
 	hud.set_threats(CharSkills.threats_for(self, player), cam_yaw)
-	# 李洋「上链接」的受害者:4秒内穿墙看到抢你货的人
-	_update_track_mark()
-
-## 被抢货后的追踪标记:只有受害者本机能看到那个红壳
-func _update_track_mark() -> void:
-	for p in players:
-		if not is_instance_valid(p) or p.mark_shell == null:
-			continue
-		var show_it: bool = player.track_time > 0.0 and player.track_target == p
-		p.mark_shell.visible = show_it
 
 func _update_hud() -> void:
 	_update_timer_hud()
@@ -1125,8 +1168,8 @@ func apply_remote_action(seat: int, kind: String, dir: Vector3) -> void:
 			p.do_elbow(dir)
 		"locate":
 			trigger_locate_skill(p)
-		"throw":
-			trigger_throw_bottle(p, dir)
+		"prop":
+			trigger_use_prop(p, dir)
 		"char_skill":
 			trigger_char_skill(p, dir)
 
@@ -1165,8 +1208,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			net.send_action("drop")
 		elif event.is_action_pressed("locate"):
 			net.send_action("locate")
-		elif event.is_action_pressed("throw"):
-			net.send_action("throw", cam_rig.forward())
+		elif event.is_action_pressed("use_prop"):
+			net.send_action("prop", cam_rig.forward())
 		elif event.is_action_pressed("char_skill"):
 			net.send_action("char_skill", cam_rig.forward())
 		elif event.is_action_pressed("elbow"):
