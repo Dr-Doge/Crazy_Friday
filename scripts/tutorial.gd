@@ -22,7 +22,7 @@ var _sprint := 0.0
 func _init(m) -> void:
 	_m = m
 
-## 布置练手道具:一辆无主车+ 两件可用商品(供第⑦步偷、第⑧步右键使用)
+## 布置练手商品:一辆无主车+ 两件货(供第⑦步偷走，再装入自己的车作为弹药)
 func setup() -> void:
 	var c := Cart.create(Color(0.6, 0.6, 0.6), "无主购物车(练手)")
 	_m.add_child(c)
@@ -87,8 +87,8 @@ func _tick_skills(p: Player) -> void:
 		marks["rmb"] = true
 	if p.braced:
 		marks["ctrl"] = true
-	_say("⑧ 试用技能:Q 找货雷达%s · 右键 使用刚偷到的道具商品%s · Ctrl 稳住%s" % [
-			_mark("q"), _mark("rmb"), _mark("ctrl")])
+	_say("⑧ 试用能力:先把货装回自己的车，滚轮选商品、右键朝白点投掷%s · Q雷达%s · Ctrl稳住%s" % [
+			_mark("rmb"), _mark("q"), _mark("ctrl")])
 	if marks.get("q", false) and marks.get("rmb", false) and marks.get("ctrl", false):
 		step = 8
 

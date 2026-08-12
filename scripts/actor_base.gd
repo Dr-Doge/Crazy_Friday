@@ -268,7 +268,7 @@ func add_imbalance(amount: float, _source: Node = null) -> void:
 		last_overflow = raw - MAX_IMBALANCE
 		knockdown()
 
-## 被购物车撞:徒步+50并被撞飞
+## 徒步角色缺少购物车保护：普通车撞按基础25的2倍结算；加速/技能冲撞直接满失衡倒地。
 func hit_by_cart(hit_cart: Cart) -> void:
 	if downed or immune:
 		return
@@ -278,9 +278,13 @@ func hit_by_cart(hit_cart: Cart) -> void:
 		return
 	var v := hit_cart.linear_velocity
 	v.y = 0.0
-	push_velocity = v * 1.1 + Vector3.UP * 2.0
-	add_imbalance(50.0, hit_cart)
-	Main.float_text(self, global_position + Vector3.UP * 2.0, "%s +50 %s" % [Main.bam(), Main.BAM_PED.pick_random()], Color(1, 0.4, 0.2), 80)
+	var boosted := hit_cart.sprinting or hit_cart.sprint_level >= 0.6 or hit_cart.hit_mult > 1.0
+	var amount := MAX_IMBALANCE if boosted else 50.0
+	push_velocity = v * (1.55 if boosted else 1.1) + Vector3.UP * (3.6 if boosted else 2.0)
+	add_imbalance(amount, hit_cart)
+	var hit_text := "%s 加速冲撞! 满失衡倒地" % Main.bam() if boosted \
+			else "%s 徒步受撞×2 +50 %s" % [Main.bam(), Main.BAM_PED.pick_random()]
+	Main.float_text(self, global_position + Vector3.UP * 2.0, hit_text, Color(1, 0.3, 0.15), 82)
 	on_cart_hit(hit_cart)
 	if Main.instance != null:
 		Main.instance.shake_for(self, 0.65)

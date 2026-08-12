@@ -158,6 +158,13 @@ func _start_match(tut: bool) -> void:
 		get_tree().create_timer(0.7).timeout.connect(func() -> void:
 			if is_instance_valid(player):
 				trigger_char_skill(player, cam_rig.forward()))
+	if OS.get_environment("WHITEBOX_WHEEL_DEMO") != "":
+		for i in ["detergent", "thermos", "cola", "tv", "candy"].size():
+			var id: String = ["detergent", "thermos", "cola", "tv", "candy"][i]
+			var demo_item := Item.create(id)
+			add_child(demo_item)
+			all_items.append(demo_item)
+			demo_item.set_free_at(player.cart.to_global(Vector3((i % 3 - 1) * 0.22, 1.1 + (i / 3) * 0.32, (i % 2) * 0.18)))
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
 func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
@@ -740,8 +747,36 @@ func client_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
 	var immune_actor: Actor = players[immune_seat] if immune_seat >= 0 and immune_seat < players.size() else null
 	SlowZone.create(self, pos, radius, life, factor, immune_actor, title, color)
 
-## 右键:消耗手中一件可用商品。Demo只开放三种，强调“结算价值 vs 即时战术”。
-func trigger_use_prop(p: Player = null, dir := Vector3.ZERO) -> void:
+## 购物车内所有自由商品都可作为弹药；排序固定，供滚轮与联机按商品ID选择。
+func cart_throw_items(p: Player) -> Array[Item]:
+	var out: Array[Item] = []
+	if p == null or not is_instance_valid(p.cart):
+		return out
+	for it in p.cart.items_in_basket():
+		if is_instance_valid(it) and it.state == Item.ItemState.FREE:
+			out.append(it)
+	out.sort_custom(func(a: Item, b: Item) -> bool:
+		if a.item_id == b.item_id:
+			return a.get_instance_id() < b.get_instance_id()
+		return a.item_id < b.item_id)
+	return out
+
+func cycle_cart_item(p: Player, step: int) -> void:
+	var items := cart_throw_items(p)
+	if items.is_empty():
+		p.throw_selection = 0
+		return
+	p.throw_selection = posmod(p.throw_selection + step, items.size())
+
+func selected_cart_item_id(p: Player) -> String:
+	var items := cart_throw_items(p)
+	if items.is_empty():
+		return ""
+	p.throw_selection = posmod(p.throw_selection, items.size())
+	return items[p.throw_selection].item_id
+
+## 右键:从自己的购物车取出轮盘选中商品，沿屏幕中心准星投掷。
+func trigger_throw_cart_item(p: Player = null, dir := Vector3.ZERO, wanted_id := "") -> void:
 	if p == null:
 		p = player
 	if game_over or p == null:
@@ -751,103 +786,104 @@ func trigger_use_prop(p: Player = null, dir := Vector3.ZERO) -> void:
 			Main.float_text(self, p.global_position + Vector3.UP * 2.4,
 					"道具冷却中(%d秒)" % int(ceil(p.prop_cd)), Color(0.8, 0.8, 0.8))
 		return
-	var prop := current_held_prop(p)
+	if not is_instance_valid(p.cart) or (not p.attached and p.global_position.distance_to(p.cart.global_position) > 2.8):
+		if p == player:
+			Main.float_text(self, p.global_position + Vector3.UP * 2.4,
+					"离购物车太远，拿不到弹药", Color(1.0, 0.75, 0.35), 52)
+		return
+	var items := cart_throw_items(p)
+	var prop: Item = null
+	for it in items:
+		if wanted_id == "" or it.item_id == wanted_id:
+			prop = it
+			break
 	if prop == null:
 		if p == player:
 			Main.float_text(self, p.global_position + Vector3.UP * 2.4,
-					"手上没有可用道具\n洗衣液 / 保温杯 / 软糖", Color(1.0, 0.75, 0.35), 58)
+					"购物车里没有可投掷商品", Color(1.0, 0.75, 0.35), 52)
 		return
-	var kind := Catalog.prop_kind(prop.item_id)
 	p.prop_cd = Catalog.prop_cd(prop.item_id)
-	p.held.erase(prop)
-	net_item_gone_notify(prop)
-	prop.queue_free()
 	var fwd := dir
-	fwd.y = 0.0
 	if fwd.length() < 0.1:
-		fwd = cam_rig.forward()
+		fwd = cam_rig.aim_direction()
 	fwd = fwd.normalized()
-	_spawn_prop_projectile(p, fwd, kind)
+	_throw_item_body(prop, p, fwd)
 
-func current_held_prop(p: Player) -> Item:
-	for i in range(p.held.size() - 1, -1, -1):
-		var it: Item = p.held[i]
-		if is_instance_valid(it) and Catalog.is_prop(it.item_id):
-			return it
-	return null
-
-func _spawn_prop_projectile(owner: Player, fwd: Vector3, kind: String) -> void:
-	var b := RigidBody3D.new()
-	b.mass = 1.0
-	b.collision_layer = 0
-	b.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
-	b.contact_monitor = true
-	b.max_contacts_reported = 4
-	b.set_meta("prop_kind", kind)
-	b.set_meta("landed", false)
-	b.set_meta("owner_actor", owner)
-	var mi := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.11
-	cm.bottom_radius = 0.11
-	cm.height = 0.34
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = {
-		"slip": Color(0.45, 0.5, 0.95),
-		"impact": Color(0.72, 0.48, 0.85),
-		"sticky": Color(1.0, 0.5, 0.72),
-	}.get(kind, Color.WHITE)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	cm.material = mat
-	mi.mesh = cm
-	b.add_child(mi)
-	var cs := CollisionShape3D.new()
-	var sh := CylinderShape3D.new()
-	sh.radius = 0.09
-	sh.height = 0.32
-	cs.shape = sh
-	b.add_child(cs)
-	add_child(b)
-	b.add_collision_exception_with(owner)
+func _throw_item_body(it: Item, owner: Player, fwd: Vector3) -> void:
+	it.mark_flung()
+	it.set_free_at(owner.global_position + Vector3.UP * 1.55 + fwd * 0.75)
+	# 飞行阶段不撞其他商品，避免刚离开满载车斗就被邻近货物提前引爆。
+	it.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
+	it.contact_monitor = true
+	it.max_contacts_reported = 6
+	it.set_meta("throw_active", true)
+	it.set_meta("throw_owner", owner)
+	it.add_collision_exception_with(owner)
 	if is_instance_valid(owner.cart):
-		b.add_collision_exception_with(owner.cart)
-	b.global_position = owner.global_position + Vector3.UP * 1.6 + fwd * 0.6
-	b.linear_velocity = fwd * 13.0 + Vector3.UP * 4.5
-	b.angular_velocity = Vector3(randf_range(-6, 6), 0, randf_range(-6, 6))
-	b.body_entered.connect(func(body: Node) -> void: _prop_projectile_hit(b, body))
+		it.add_collision_exception_with(owner.cart)
+	it.linear_velocity = fwd * 16.0 + Vector3.UP * 1.2
+	it.angular_velocity = Vector3(randf_range(-9, 9), randf_range(-5, 5), randf_range(-9, 9))
+	it.body_entered.connect(func(body: Node) -> void: _thrown_item_hit(it, body, owner), CONNECT_ONE_SHOT)
 
-func _prop_projectile_hit(b: RigidBody3D, body: Node) -> void:
-	if not is_instance_valid(b) or bool(b.get_meta("landed", false)):
+func _thrown_item_hit(it: Item, body: Node, owner: Player) -> void:
+	if not is_instance_valid(it) or not bool(it.get_meta("throw_active", false)):
 		return
-	b.set_meta("landed", true)
-	var kind := str(b.get_meta("prop_kind", ""))
-	var owner := b.get_meta("owner_actor") as Player
-	var pos := b.global_position
+	it.set_meta("throw_active", false)
+	var pos := it.global_position
 	pos.y = 0.0
-	b.queue_free()
-	match kind:
-		"slip":
-			SlipperyZone.create(self, pos, Vector3(5.4, 2, 5.4), 15.0)
-			if net_mp and not net_client:
-				net.rpc("ev_slippery", pos, 15.0, Vector2(5.4, 5.4))
-			Main.float_text(self, pos + Vector3.UP, "洗衣液泼洒!! 大面积湿滑!", Color(0.45, 0.65, 1.0), 68)
-		"sticky":
-			spawn_slow_zone(pos, 2.8, 7.0, 0.6, null,
-					"软糖黏地!\n全员减速", Color(1.0, 0.48, 0.72))
-			Main.float_text(self, pos + Vector3.UP, "软糖撒了一地!!", Color(1.0, 0.5, 0.75), 68)
-		"impact":
-			var victim: Actor = body if body is Actor else (body.attached_agent if body is Cart else null)
-			if victim != null and victim != owner and not victim.immune:
-				victim.add_imbalance(25.0, owner)
-				var away := victim.global_position - owner.global_position
-				away.y = 0.0
-				if away.length() > 0.1:
-					victim.push_velocity += away.normalized() * 4.0
-				Main.float_text(victim, victim.global_position + Vector3.UP * 2.1,
-						"保温杯暴击 +25失衡!", Color(0.85, 0.55, 1.0), 76)
-				shake_for(victim, 0.5)
-			else:
-				Main.float_text(self, pos + Vector3.UP, "咣当!保温杯打空了", Color(0.75, 0.65, 0.85), 52)
+	var victim: Actor = body if body is Actor else (body.attached_agent if body is Cart else null)
+	if victim != null and victim != owner and not victim.immune:
+		var damage := Catalog.throw_imbalance(it.item_id)
+		victim.add_imbalance(damage, owner)
+		var away := victim.global_position - owner.global_position
+		away.y = 0.0
+		if away.length() > 0.1:
+			victim.push_velocity += away.normalized() * clampf(damage * 0.12, 1.5, 7.0)
+		Main.float_text(victim, victim.global_position + Vector3.UP * 2.1,
+				"%s砸中 +%d失衡!" % [it.display_name, int(damage)], Color(1.0, 0.58, 0.25), 66)
+		shake_for(victim, clampf(damage / 70.0, 0.25, 0.8))
+	_apply_throw_effect(it.item_id, pos, owner)
+	# 命中后商品仍留在场内，可再次拾取/装车；仅关闭角色碰撞避免持续蹭伤。
+	get_tree().create_timer(0.35).timeout.connect(func() -> void:
+		if is_instance_valid(it):
+			it.collision_mask = Catalog.L_WORLD | Catalog.L_CART | Catalog.L_ITEM
+			it.remove_collision_exception_with(owner)
+			if is_instance_valid(owner.cart):
+				it.remove_collision_exception_with(owner.cart))
+
+func _apply_throw_effect(id: String, pos: Vector3, owner: Player) -> void:
+	match Catalog.prop_kind(id):
+		"slip_large": _make_slip_effect(pos, Vector2(5.4, 5.4), 15.0, "洗衣液泼洒!")
+		"slip_long": _make_slip_effect(pos, Vector2(3.0, 3.0), 24.0, "冰淇淋融化!")
+		"slip_small": _make_slip_effect(pos, Vector2(3.2, 3.2), 10.0, "液体洒了一地!")
+		"sticky": spawn_slow_zone(pos, 2.8, 7.0, 0.6, null, "软糖黏地!", Color(1.0, 0.48, 0.72))
+		"sticky_small": spawn_slow_zone(pos, 2.2, 6.0, 0.72, null, "油腻地面", Color(1.0, 0.62, 0.25))
+		"burst": _throw_aoe(pos, owner, 3.2, 18.0, 5.0, "汽水爆开!")
+		"burst_small": _throw_aoe(pos, owner, 2.4, 10.0, 3.2, "碎片四溅!")
+		"gust": _throw_aoe(pos, owner, 3.0, 0.0, 7.0, "气流推开!")
+		"trip":
+			spawn_slow_zone(pos, 2.4, 6.0, 0.68, null, "扫地机器人乱跑!", Color(0.35, 0.75, 0.9))
+
+func _make_slip_effect(pos: Vector3, size: Vector2, life: float, text_value: String) -> void:
+	SlipperyZone.create(self, pos, Vector3(size.x, 2, size.y), life)
+	if net_mp and not net_client:
+		net.rpc("ev_slippery", pos, life, size)
+	Main.float_text(self, pos + Vector3.UP, text_value, Color(0.45, 0.7, 1.0), 58)
+
+func _throw_aoe(pos: Vector3, owner: Player, radius: float, damage: float, push: float, text_value: String) -> void:
+	for node in get_tree().get_nodes_in_group("characters"):
+		if not (node is Actor) or node == owner:
+			continue
+		var a: Actor = node
+		var away := a.global_position - pos
+		away.y = 0.0
+		if away.length() > radius:
+			continue
+		if damage > 0.0:
+			a.add_imbalance(damage, owner)
+		if away.length() > 0.05:
+			a.push_velocity += away.normalized() * push
+	Main.float_text(self, pos + Vector3.UP, text_value, Color(1.0, 0.62, 0.28), 58)
 
 ## 随机位置生成地滑区(开局3块由种子决定两端一致;运行时的临时块走网络事件)
 func _spawn_random_slippery(count: int, life: float) -> void:
@@ -976,9 +1012,12 @@ func _update_timer_hud() -> void:
 
 func _update_skill_hud() -> void:
 	var s1 := "Q雷达:就绪" if player.locate_cd <= 0.0 else "Q 雷达:%d秒" % int(ceil(player.locate_cd))
-	var held_prop := current_held_prop(player)
-	var prop_text := "无可用商品" if held_prop == null else "%s·%s" % [held_prop.display_name, Catalog.prop_effect_name(held_prop.item_id)]
-	var s2 := "右键 道具:%s" % prop_text if player.prop_cd <= 0.0 else "右键 道具:%d秒" % int(ceil(player.prop_cd))
+	var wheel_items := cart_throw_items(player)
+	var selected_id := selected_cart_item_id(player)
+	var prop_text := "车内无商品" if selected_id == "" else "%s·%d失衡" % [Catalog.ITEMS[selected_id]["name"], int(Catalog.throw_imbalance(selected_id))]
+	var s2 := "右键 投掷:%s" % prop_text if player.prop_cd <= 0.0 else "右键 投掷:%.1f秒" % player.prop_cd
+	hud.set_item_wheel(wheel_items, player.throw_selection,
+			player.attached or (is_instance_valid(player.cart) and player.global_position.distance_to(player.cart.global_position) <= 2.8))
 	var s3 := "Ctrl稳住:就绪" if player.brace_cd <= 0.0 else ("Ctrl 稳住:格挡中!" if player.braced else "Ctrl 稳住:%d秒" % int(ceil(player.brace_cd)))
 	var sk := CharacterDef.skill_name(player.char_id)
 	var max_cd := CharacterDef.skill_cd(player.char_id)
@@ -1169,7 +1208,9 @@ func apply_remote_action(seat: int, kind: String, dir: Vector3) -> void:
 		"locate":
 			trigger_locate_skill(p)
 		"prop":
-			trigger_use_prop(p, dir)
+			trigger_throw_cart_item(p, dir)
+		_ when kind.begins_with("throw:"):
+			trigger_throw_cart_item(p, dir, kind.trim_prefix("throw:"))
 		"char_skill":
 			trigger_char_skill(p, dir)
 
@@ -1191,6 +1232,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		_set_mouse_captured(not mouse_captured)
 		return
+	if game_started and not game_over and event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			cycle_cart_item(player, -1)
+			return
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			cycle_cart_item(player, 1)
+			return
 	if event.is_action_pressed("restart") and game_over:
 		net.shutdown()
 		get_tree().paused = false
@@ -1209,7 +1257,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.is_action_pressed("locate"):
 			net.send_action("locate")
 		elif event.is_action_pressed("use_prop"):
-			net.send_action("prop", cam_rig.forward())
+			var selected_id := selected_cart_item_id(player)
+			net.send_action("throw:" + selected_id, cam_rig.aim_direction())
 		elif event.is_action_pressed("char_skill"):
 			net.send_action("char_skill", cam_rig.forward())
 		elif event.is_action_pressed("elbow"):

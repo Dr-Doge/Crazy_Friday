@@ -41,6 +41,11 @@ var result_overlay: Control
 var result_vbox: VBoxContainer
 var threat_layer: Control          # 「余光」被动:屏幕边缘威胁方向箭头
 var threat_arrows: Array[Label] = []
+var item_wheel: Control            # 右下购物车商品投掷轮盘
+var crosshair: Control             # 屏幕中心白点准星
+var _wheel_items: Array = []
+var _wheel_selected := 0
+var _wheel_available := false
 ## 局内 HUD 元素:开始界面阶段一律隐藏(开局前显示计时与体力条毫无意义)
 var _ingame_nodes: Array[Control] = []
 
@@ -160,7 +165,7 @@ func _ready() -> void:
 
 	# 右下:操作说明(精简三行)
 	var hint := Label.new()
-	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n左键 肘击 · 右键 使用手中道具商品 · Q 找货雷达 · 空格 角色技能· Ctrl 稳住\nEsc鼠标 · F1 开发者 · T/F3/F4 调试"
+	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n滚轮 选择车内商品 · 右键 朝准星投掷 · 左键 肘击 · Q 雷达\n空格 角色技能 · Ctrl 稳住 · Esc鼠标 · F1 开发者"
 	hint.add_theme_font_override("font", Catalog.ui_font_bold())
 	hint.add_theme_font_size_override("font_size", 30)
 	hint.add_theme_color_override("font_color", Color(1, 0.25, 0.18))
@@ -168,6 +173,24 @@ func _ready() -> void:
 	hint.add_theme_constant_override("outline_size", 6)
 	root.add_child(hint)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+
+	# 右下商品轮盘：中心显示当前弹药，环上显示购物车内其余商品。
+	item_wheel = Control.new()
+	item_wheel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	item_wheel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	item_wheel.offset_left = -340
+	item_wheel.offset_top = -500
+	item_wheel.offset_right = -20
+	item_wheel.offset_bottom = -180
+	item_wheel.draw.connect(_draw_item_wheel)
+	root.add_child(item_wheel)
+
+	# 极简准星：只保留屏幕中心白点和一圈暗边，避免遮挡商品标签。
+	crosshair = Control.new()
+	crosshair.set_anchors_preset(Control.PRESET_FULL_RECT)
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair.draw.connect(_draw_crosshair)
+	root.add_child(crosshair)
 
 	# 「余光」威胁箭头层(马德胜被动):按方向摆在屏幕边缘,只给信息不给数值
 	threat_layer = Control.new()
@@ -274,7 +297,7 @@ func _ready() -> void:
 	root.add_child(menu)
 
 	# 菜单阶段隐藏所有局内 HUD(逐个 append:数组字面量无法直接赋给 Array[Control])
-	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, hint, threat_layer]:
+	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, hint, item_wheel, crosshair, threat_layer]:
 		_ingame_nodes.append(n)
 	_set_ingame_visible(false)
 
@@ -379,6 +402,44 @@ func set_skill(text: String, ready: bool) -> void:
 	skill_label.text = text
 	skill_label.add_theme_color_override("font_color",
 			Color(0.55, 0.95, 0.6) if ready else Color(0.75, 0.75, 0.75))
+
+func set_item_wheel(items: Array[Item], selected: int, available: bool) -> void:
+	_wheel_items = items
+	_wheel_selected = posmod(selected, items.size()) if not items.is_empty() else 0
+	_wheel_available = available
+	item_wheel.queue_redraw()
+
+func _draw_crosshair() -> void:
+	var c := crosshair.size * 0.5
+	crosshair.draw_circle(c, 5.5, Color(0, 0, 0, 0.72))
+	crosshair.draw_circle(c, 3.0, Color(1, 1, 1, 0.98))
+
+func _draw_item_wheel() -> void:
+	var c := item_wheel.size * 0.5
+	item_wheel.draw_circle(c, 69, Color(0.03, 0.04, 0.06, 0.76))
+	item_wheel.draw_arc(c, 70, 0, TAU, 64, Color(1, 0.72, 0.18, 0.8), 3.0, true)
+	if _wheel_items.is_empty():
+		item_wheel.draw_string(Catalog.ui_font_bold(), c + Vector2(-58, 4), "购物车无弹药",
+				HORIZONTAL_ALIGNMENT_CENTER, 116, 19, Color(0.75, 0.75, 0.75))
+		return
+	var count := mini(_wheel_items.size(), 8)
+	for slot in count:
+		var idx := posmod(_wheel_selected + slot - count / 2, _wheel_items.size())
+		var angle := -PI * 0.5 + TAU * float(slot) / float(count)
+		var p := c + Vector2(cos(angle), sin(angle)) * 112.0
+		var chosen := idx == _wheel_selected
+		item_wheel.draw_circle(p, 25 if chosen else 20,
+				Color(1, 0.66, 0.12, 0.95) if chosen else Color(0.1, 0.12, 0.16, 0.82))
+		var short_name: String = str(_wheel_items[idx].display_name).left(4)
+		item_wheel.draw_string(Catalog.ui_font_bold(), p + Vector2(-30, 5), short_name,
+				HORIZONTAL_ALIGNMENT_CENTER, 60, 14, Color.WHITE)
+	var selected_item: Item = _wheel_items[_wheel_selected]
+	var title := selected_item.display_name.left(7)
+	var detail := "%d失衡 · %s" % [int(Catalog.throw_imbalance(selected_item.item_id)), Catalog.prop_effect_name(selected_item.item_id)]
+	item_wheel.draw_string(Catalog.ui_font_bold(), c + Vector2(-62, -8), title,
+			HORIZONTAL_ALIGNMENT_CENTER, 124, 20, Color(1, 0.9, 0.5) if _wheel_available else Color(0.65, 0.65, 0.65))
+	item_wheel.draw_string(Catalog.ui_font(), c + Vector2(-70, 18), detail,
+			HORIZONTAL_ALIGNMENT_CENTER, 140, 13, Color.WHITE if _wheel_available else Color(0.6, 0.6, 0.6))
 
 func set_npc_count_display(n: int) -> void:
 	npc_slider.set_value_no_signal(n)

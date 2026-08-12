@@ -40,9 +40,16 @@ func look(rel: Vector2) -> void:
 func add_shake(v: float) -> void:
 	shake = minf(shake + v, SHAKE_MAX)
 
-## 镜头朝向的水平前向:徒步移动、肘击、商品道具投掷都以此为准
+## 镜头朝向的水平前向:徒步移动与肘击使用；商品投掷改用 aim_direction()。
 func forward() -> Vector3:
 	return Basis(Vector3.UP, yaw) * Vector3.FORWARD
+
+## 屏幕中心白点准星对应的三维射线，包含镜头俯仰。
+func aim_direction() -> Vector3:
+	if camera != null:
+		var center := get_viewport().get_visible_rect().size * 0.5
+		return camera.project_ray_normal(center).normalized()
+	return forward()
 
 ## 每帧跟随目标点并施加震动
 func follow(target: Vector3, delta: float) -> void:

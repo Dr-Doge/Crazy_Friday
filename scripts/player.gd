@@ -20,6 +20,7 @@ var brace_time := 0.0       # Ctrl:冲击准备剩余时长
 var brace_cd := 0.0
 var locate_cd := 0.0        # 技能CD按人各算(联机双人)
 var prop_cd := 0.0          # 右键场内商品道具冷却
+var throw_selection := 0    # 购物车商品轮盘当前索引（本地UI状态）
 
 # ---------- 角色(见 character_def.gd / char_skills.gd) ----------
 var char_id := CharacterDef.ORDER[0]
@@ -306,7 +307,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("locate"):
 		main.trigger_locate_skill()
 	elif event.is_action_pressed("use_prop"):
-		main.trigger_use_prop(self, _aim_dir())
+		main.trigger_throw_cart_item(self, _aim_dir(), main.selected_cart_item_id(self))
 	elif event.is_action_pressed("char_skill"):
 		# 空格:角色专属技能(赵冬梅冲撞 / 马德胜扎马步 / 李洋促销圈)
 		main.trigger_char_skill(self, _aim_dir())
@@ -314,10 +315,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		# 肘击自动朝镜头面朝的方向
 		do_elbow(_aim_dir())
 
-## 出手方向:一律用镜头朝向(与肘击口径一致)
+## 出手方向:投掷读取屏幕中心准星射线；肘击只使用其中的水平分量。
 func _aim_dir() -> Vector3:
 	if main != null:
-		return Basis(Vector3.UP, main.cam_yaw) * Vector3.FORWARD
+		return main.cam_rig.aim_direction()
 	return Vector3.ZERO
 
 ## 肘击统一入口(本地/联机远程共用):结算体力,不够抡不动

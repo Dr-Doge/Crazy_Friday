@@ -309,7 +309,7 @@ if ($Mode -in @('npc', 'all')) {
 if ($Mode -in @('prop', 'all')) {
 	$all += Invoke-SingleCase -Name 'prop' -EnvVars @{ WHITEBOX_PROPTEST = '1'; WHITEBOX_NPC = '0' } `
 		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
-		-Note '(场内商品道具:洗衣液/保温杯/软糖)'
+		-Note '(购物车轮盘/全商品投掷/准星/徒步受撞)'
 }
 if ($Mode -in @('mp', 'all')) {
 	$all += Invoke-MpCase -ClientCount $Clients -FrameCount $mpFrames

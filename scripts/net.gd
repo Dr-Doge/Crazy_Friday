@@ -6,8 +6,8 @@ class_name Net extends Node
 const PORT := 7788
 const MAX_CLIENTS := 5     # 主机+5客户端=6人
 const SYNC_INTERVAL := 3   # 每3个物理帧同步一次(约20Hz)
-const NET_VERSION := 5     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
-                           # v5:李洋范围技能与场内商品道具事件
+const NET_VERSION := 6     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
+                           # v6:购物车全商品轮盘投掷，动作携带选中商品ID与三维准星方向
 
 var main: Main
 var is_host := false

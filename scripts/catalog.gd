@@ -57,14 +57,14 @@ const ITEMS := {
 	"hair_dryer": {"name": "负离子吹风机", "cat": CAT_NORMAL, "zone": ZONE_APPLIANCE, "stock": 3, "size": Vector3(0.3, 0.25, 0.15), "color": Color(0.85, 0.6, 0.75), "price": 129, "disc": 0.4},
 	# ---- 常规品:日用百货 ----
 	"tissue":    {"name": "十卷装卫生纸", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 4, "size": Vector3(0.5, 0.28, 0.3), "color": Color(0.95, 0.95, 0.92), "price": 35, "disc": 0.3},
-	"detergent": {"name": "薰衣草洗衣液", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.28, 0.4, 0.22), "color": Color(0.45, 0.5, 0.9), "price": 49, "disc": 0.35, "prop": "slip", "prop_cd": 7.0},
-	"thermos":   {"name": "焖烧保温杯", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.18, 0.35, 0.18), "color": Color(0.75, 0.55, 0.85), "price": 79, "disc": 0.4, "prop": "impact", "prop_cd": 4.0},
+	"detergent": {"name": "薰衣草洗衣液", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.28, 0.4, 0.22), "color": Color(0.45, 0.5, 0.9), "price": 49, "disc": 0.35},
+	"thermos":   {"name": "焖烧保温杯", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.18, 0.35, 0.18), "color": Color(0.75, 0.55, 0.85), "price": 79, "disc": 0.4},
 	"shampoo":   {"name": "生姜防脱洗发水", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.22, 0.32, 0.18), "color": Color(0.4, 0.7, 0.55), "price": 59, "disc": 0.3},
 	"rice_bag":  {"name": "十斤装东北大米", "cat": CAT_NORMAL, "zone": ZONE_DAILY, "stock": 3, "size": Vector3(0.45, 0.15, 0.6), "color": Color(0.9, 0.85, 0.7), "price": 69, "disc": 0.2},
 	# ---- 常规品:零食玩具 ----
 	"chips": {"name": "巨型桶装薯片", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 4, "size": Vector3(0.3, 0.4, 0.24), "color": Color(0.95, 0.85, 0.3), "price": 29, "disc": 0.25},
 	"cola":  {"name": "可乐24罐整箱", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 4, "size": Vector3(0.4, 0.25, 0.3), "color": Color(0.7, 0.2, 0.25), "price": 45, "disc": 0.3},
-	"candy": {"name": "什锦软糖桶", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 3, "size": Vector3(0.28, 0.3, 0.28), "color": Color(0.95, 0.6, 0.75), "price": 19, "disc": 0.2, "prop": "sticky", "prop_cd": 6.0},
+	"candy": {"name": "什锦软糖桶", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 3, "size": Vector3(0.28, 0.3, 0.28), "color": Color(0.95, 0.6, 0.75), "price": 19, "disc": 0.2},
 	"teddy": {"name": "限量款玩具熊", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 2, "size": Vector3(0.4, 0.45, 0.35), "color": Color(0.8, 0.6, 0.4), "price": 99, "disc": 0.45},
 	"lego":  {"name": "积木天空城堡", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 2, "size": Vector3(0.5, 0.35, 0.3), "color": Color(0.4, 0.75, 0.5), "price": 199, "disc": 0.35},
 	"drone": {"name": "迷你航拍无人机", "cat": CAT_NORMAL, "zone": ZONE_SNACK, "stock": 2, "size": Vector3(0.35, 0.18, 0.35), "color": Color(0.5, 0.55, 0.6), "price": 299, "disc": 0.4},
@@ -84,21 +84,49 @@ const L_ITEM := 8
 static var _font: SystemFont
 static var _font_bold: SystemFont
 
+# 全商品投掷基础失衡。数值按包装重量、硬度和体积手工分层；每件商品均有独立值。
+const THROW_IMBALANCE := {
+	"king_crab": 28.0, "wagyu": 20.0, "air_fryer": 38.0, "rice_cooker": 36.0,
+	"robot_vac": 42.0, "game_console": 34.0, "pizza": 12.0, "ice_cream": 16.0,
+	"salmon": 10.0, "dumplings": 14.0, "microwave": 46.0, "kettle": 22.0,
+	"hair_dryer": 18.0, "tissue": 6.0, "detergent": 24.0, "thermos": 30.0,
+	"shampoo": 17.0, "rice_bag": 40.0, "chips": 13.0, "cola": 26.0,
+	"candy": 15.0, "teddy": 8.0, "lego": 21.0, "drone": 19.0,
+	"tv": 55.0, "treadmill": 65.0, "sale_box": 25.0,
+}
+
+# 只有符合商品直觉的品类附带落点效果；其余商品保留差异化直击失衡。
+const THROW_EFFECT := {
+	"detergent": "slip_large", "ice_cream": "slip_long", "kettle": "slip_small",
+	"shampoo": "slip_small", "candy": "sticky", "pizza": "sticky_small",
+	"cola": "burst", "chips": "burst_small", "lego": "burst_small",
+	"hair_dryer": "gust", "drone": "gust", "robot_vac": "trip",
+}
+
 static func prop_kind(id: String) -> String:
-	return str(ITEMS.get(id, {}).get("prop", ""))
+	return str(THROW_EFFECT.get(id, "impact"))
 
 static func is_prop(id: String) -> bool:
-	return prop_kind(id) != ""
+	return ITEMS.has(id)
 
-static func prop_cd(id: String) -> float:
-	return float(ITEMS.get(id, {}).get("prop_cd", 0.0))
+static func prop_cd(_id: String) -> float:
+	return 0.65
+
+static func throw_imbalance(id: String) -> float:
+	return float(THROW_IMBALANCE.get(id, 15.0))
 
 static func prop_effect_name(id: String) -> String:
 	match prop_kind(id):
-		"slip": return "大范围泼洒"
-		"impact": return "远投钝击"
+		"slip_large": return "大范围湿滑"
+		"slip_long": return "持久融化"
+		"slip_small": return "小范围湿滑"
 		"sticky": return "黏地减速"
-	return "不可使用"
+		"sticky_small": return "油腻减速"
+		"burst": return "汽水爆发"
+		"burst_small": return "碎片震荡"
+		"gust": return "冲击推离"
+		"trip": return "扫地绊倒"
+	return "直击 %d失衡" % int(throw_imbalance(id))
 
 # 中文UI字体:Godot默认字体无CJK,回落到系统字体
 static func ui_font() -> SystemFont:
