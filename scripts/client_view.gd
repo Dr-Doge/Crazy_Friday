@@ -26,7 +26,7 @@ func apply_state(d: Dictionary) -> void:
 	for k in d:
 		state[k] = d[k]
 
-## hot_carts: [[车下标, 商品名或""], ...] —— 名字非空时(李洋「爆款嗅觉」)车顶显示品名
+## hot_carts: [[车下标, 提示或""], ...] —— 李洋只收到链接图标，不泄露商品名
 func set_hud(new_rows: Array, new_score: int, hot_carts: Array) -> void:
 	rows = new_rows
 	score = new_score
@@ -48,6 +48,7 @@ func interpolate(delta: float) -> void:
 	_players(k, delta)
 	_carts(k)
 	_grannies(k, delta)
+	_buddies(k, delta)
 	_items(k)
 	_gates()
 	_clock()
@@ -107,6 +108,22 @@ func _grannies(k: float, delta: float) -> void:
 		g.hand_pose = gs[i][2]
 		g.body_root.rotation.x = lerpf(g.body_root.rotation.x, gs[i][3], k)
 		g.puppet_update(delta)
+
+func _buddies(k: float, delta: float) -> void:
+	var bs: Array = state.get("b", [])
+	for i in mini(bs.size(), _m.warehouse_buddies.size()):
+		if bs[i] == null:
+			continue
+		var buddy: WarehouseBuddy = _m.warehouse_buddies[i]
+		if not is_instance_valid(buddy):
+			continue
+		buddy.global_position = buddy.global_position.lerp(bs[i][0], k)
+		buddy.body_root.rotation.y = lerp_angle(buddy.body_root.rotation.y, bs[i][1], k)
+		buddy.body_root.rotation.x = lerpf(buddy.body_root.rotation.x, bs[i][2], k)
+		buddy.imbalance = bs[i][3]
+		buddy.downed = bs[i][4]
+		buddy.active = bs[i][5]
+		buddy.puppet_update(delta)
 
 ## 商品:四态同步;已扫码的标签本地也要转绿
 func _items(k: float) -> void:

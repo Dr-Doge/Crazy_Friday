@@ -38,6 +38,7 @@ var mouse_captured := true
 var grid: AStarGrid2D
 var checkouts: Array[Checkout] = []
 var grannies: Array[Granny] = []
+var warehouse_buddies: Array = []
 var all_items: Array[Item] = []
 
 # 每名玩家一份对局数据:{list, score, counts, orig, saved, settled, done}
@@ -390,6 +391,13 @@ func _spawn_players(data: Dictionary, nplayers: int) -> void:
 		cart.global_position = p.global_position + Vector3(-1.6, 0.2, -0.5)
 		p.cart = cart
 		players.append(p)
+		if p.char_id == CharacterDef.MA:
+			for buddy_slot in 2:
+				var buddy := WarehouseBuddy.new()
+				add_child(buddy)
+				buddy.setup(p, buddy_slot)
+				p.buddies.append(buddy)
+				warehouse_buddies.append(buddy)
 	player = players[local_idx]
 
 var _granny_spawns: Array = []
@@ -463,6 +471,9 @@ func _make_client_puppets() -> void:
 		p.set_process_unhandled_input(false)
 	for g in grannies:
 		g.set_physics_process(false)
+	for buddy in warehouse_buddies:
+		if is_instance_valid(buddy):
+			buddy.set_physics_process(false)
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
 		c.freeze = true
@@ -626,7 +637,7 @@ func _process(delta: float) -> void:
 ##
 ## 距离规则(《05·三》与《16·五·5.2》):
 ## - 通用版:仅 12 米内亮壳,不显示商品名
-## - 李洋「爆款嗅觉」:全场无距离限制,并在车顶浮出具体商品名
+## - 李洋「主播手速」:仅 8 米内提示链接图标,不显示具体商品名
 func _apply_highlights_local() -> void:
 	var missing_hl := missing_list_ids(local_idx)
 	var sniff := CharSkills.has_sniff(player)
@@ -644,13 +655,14 @@ func _apply_highlights_local() -> void:
 				hot_name = it2.display_name
 				break
 		var hot := hot_name != ""
-		if hot and not sniff and origin.distance_to(c.global_position) > CharSkills.SNIFF_RANGE_OTHERS:
+		var sense_range := CharSkills.LI_LINK_RANGE if sniff else CharSkills.SNIFF_RANGE_OTHERS
+		if hot and origin.distance_to(c.global_position) > sense_range:
 			hot = false
 		c.set_highlight(hot)
-		c.set_hot_name(hot_name if (hot and sniff) else "")
+		c.set_hot_name("🔗" if (hot and sniff) else "")
 
 ## 发给某客户端的红壳数据:[[车下标, 商品名或""], ...]
-## 商品名只对李洋(爆款嗅觉)非空;非李洋还要过 12 米距离门槛
+## 李洋只在 8 米内收到链接图标；非李洋沿用 12 米通用红壳。
 func _hot_carts_for(idx: int) -> Array:
 	var missing := missing_list_ids(idx)
 	var p := players[idx]
@@ -667,9 +679,10 @@ func _hot_carts_for(idx: int) -> Array:
 				break
 		if hot_name == "":
 			continue
-		if not sniff and p.global_position.distance_to(c.global_position) > CharSkills.SNIFF_RANGE_OTHERS:
+		var sense_range := CharSkills.LI_LINK_RANGE if sniff else CharSkills.SNIFF_RANGE_OTHERS
+		if p.global_position.distance_to(c.global_position) > sense_range:
 			continue
-		out.append([i, hot_name if sniff else ""])
+		out.append([i, "🔗" if sniff else ""])
 	return out
 
 # ---------- 客户端渲染 ----------
@@ -680,6 +693,31 @@ var client_view: ClientView
 func apply_net_state(d: Dictionary) -> void:
 	if client_view != null:
 		client_view.apply_state(d)
+
+## 李洋截货成功后，仅让受害玩家看见李洋名牌的红色追踪描边。
+func expose_li_to(victim_seat: int, li_seat: int, duration: float) -> void:
+	if victim_seat < 0 or li_seat < 0 or li_seat >= players.size():
+		return
+	if victim_seat == local_idx:
+		_show_li_exposure(li_seat, duration)
+	if net_mp and not net_client and victim_seat > 0:
+		var peer := net.peer_of_seat(victim_seat)
+		if peer > 0:
+			net.rpc_id(peer, "ev_li_exposed", li_seat, duration)
+
+func _show_li_exposure(li_seat: int, duration: float) -> void:
+	var li: Player = players[li_seat]
+	if not is_instance_valid(li) or li.name_label == null:
+		return
+	var until := Time.get_ticks_msec() * 0.001 + duration
+	li.set_meta("li_exposed_until", until)
+	li.name_label.outline_modulate = Color(1.0, 0.05, 0.08, 0.98)
+	li.name_label.outline_size = 24
+	get_tree().create_timer(duration).timeout.connect(func() -> void:
+		if is_instance_valid(li) and li.name_label != null \
+				and float(li.get_meta("li_exposed_until", 0.0)) <= Time.get_ticks_msec() * 0.001:
+			li.name_label.outline_modulate = Color(0, 0, 0, 0.85)
+			li.name_label.outline_size = 14)
 
 func client_hud(rows: Array, score: int, hot_carts: Array) -> void:
 	if client_view != null:
@@ -842,6 +880,7 @@ func _thrown_item_hit(it: Item, body: Node, owner: Player) -> void:
 		Main.float_text(victim, victim.global_position + Vector3.UP * 2.1,
 				"%s砸中 +%d失衡!" % [it.display_name, int(damage)], Color(1.0, 0.58, 0.25), 66)
 		shake_for(victim, clampf(damage / 70.0, 0.25, 0.8))
+		CharSkills.mark_foreman_target(victim, owner)
 	_apply_throw_effect(it.item_id, pos, owner)
 	# 命中后商品仍留在场内，可再次拾取/装车；仅关闭角色碰撞避免持续蹭伤。
 	get_tree().create_timer(0.35).timeout.connect(func() -> void:
@@ -1022,9 +1061,7 @@ func _update_skill_hud() -> void:
 	var sk := CharacterDef.skill_name(player.char_id)
 	var max_cd := CharacterDef.skill_cd(player.char_id)
 	var s4 := "空格 %s:就绪" % sk
-	if player.stance_time > 0.0:
-		s4 = "空格 %s:扎住了!" % sk
-	elif player.stun_time > 0.0:
+	if player.stun_time > 0.0:
 		s4 = "空格 %s:收不住脚(%.1f秒)" % [sk, player.stun_time]
 	elif player.char_cd > 0.0:
 		s4 = "空格 %s:%d秒" % [sk, int(ceil(player.char_cd))]
@@ -1033,8 +1070,8 @@ func _update_skill_hud() -> void:
 	# 技能冷却圆环(塞尔达体力轮风格)
 	hud.set_skill_cd(clampf(player.char_cd / maxf(max_cd, 1.0), 0.0, 1.0))
 	hud.set_skill(s1 + " · " + s2 + " · " + s3 + " · " + s4, ready)
-	# 马德胜「余光」:屏幕边缘的威胁方向预警(只给信息,不给数值)
-	hud.set_threats(CharSkills.threats_for(self, player), cam_yaw)
+	# 旧威胁箭头层保持清空；马德胜被动已改为随从标记追击。
+	hud.set_threats([], cam_yaw)
 
 func _update_hud() -> void:
 	_update_timer_hud()

@@ -404,13 +404,17 @@ func try_elbow(dir_override := Vector3.ZERO) -> bool:
 			Main.float_text(best, best.global_position + Vector3.UP * 2.0, "码得住!!(肘不动)", Color(0.5, 0.85, 1.0), 72)
 			best.on_elbowed(self)
 			return true
-		best.add_imbalance(15.0, self)
+		var elbow_damage := 25.0 if best is WarehouseBuddy else 15.0
+		best.add_imbalance(elbow_damage, self)
 		best.drop_one_held(true)
 		best.push_velocity += fwd * 3.0
 		var vcart := best.get_pushed_cart()
 		if vcart != null:
 			vcart.eject_random_item()
-		Main.float_text(best, best.global_position + Vector3.UP * 2.0, "%s 肘击+15" % Main.BAM_ELBOW.pick_random(), Color(1, 0.7, 0.2), 76)
+		Main.float_text(best, best.global_position + Vector3.UP * 2.0,
+				"%s 肘击+%d" % [Main.BAM_ELBOW.pick_random(), int(elbow_damage)], Color(1, 0.7, 0.2), 76)
+		if self is Player:
+			CharSkills.mark_foreman_target(best, self)
 		best.on_elbowed(self)
 		if Main.instance != null:
 			Main.instance.shake_for(self, 0.25)

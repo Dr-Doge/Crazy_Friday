@@ -24,19 +24,22 @@ const DASH_HIT_DRIVER := 40.0   # 撞推车者
 const DASH_SPILL := 0.2# 撞推车者的甩货比例
 const DASH_CART_MULT := 1.5     # 推车时车头撞击倍率
 
-# ---------------- 马德胜「老码」· 扎马步 ----------------
+# ---------------- 马德胜「老码」· 都给我上 ----------------
 
-const STANCE_TIME := 2.0        # 完全定身,换来免疫与车斗锁死
-const STANCE_MIN_IMB := 30.0    # 反击下限(撞速2.5m/s)
-const STANCE_MAX_IMB := 50.0    # 反击上限(撞速 8.8m/s)
-const STANCE_KICKBACK := 4.5    # 反弹冲量(每千克)
+const BUDDY_SELF_IMB := 15.0
+const FOREMAN_MARK_TIME := 6.0
+# 旧存档/联机状态的兼容兜底；新设计不会再主动进入扎马步。
+const STANCE_MIN_IMB := 20.0
+const STANCE_MAX_IMB := 60.0
+const STANCE_KICKBACK := 4.5
 
-# ---------------- 李洋「上链接」· 全网最低价 ----------------
+# ---------------- 李洋「上链接」· 上链接 ----------------
 
-const PROMO_RADIUS := 6.0
-const PROMO_TIME := 8.0
-const PROMO_SLOW := 0.55        # 对手保留55%移动能力(即减速45%)
-const PROMO_SELF_IMB := 20.0
+const LINK_RANGE := 3.5
+const LINK_COS := 0.819          # cos(35°)
+const LINK_SELF_IMB := 20.0
+const LINK_FAIL_CD := 4.0
+const LI_STEAL_TIME := 0.75
 
 # ---------------- 被动数值(受《16·一·1.4》红线约束) ----------------
 
@@ -46,13 +49,15 @@ const ZHAO_GRIP_MULT := 1.2     # 侧向抓地(抗漂)
 const ZHAO_STEER_FLOOR := 0.20  # 低速转向下限(基准0.12)
 const ZHAO_STAMINA_MULT := 0.75 # 冲刺体力消耗 -25%
 
-## 马德胜「余光」:威胁预警
-const THREAT_RANGE := 15.0
-const THREAT_MAX := 3           # 最多同时提示3个,防止满屏箭头
-const THREAT_IMMINENT := 0.4    # 这么久之后将撞上→箭头闪白
-
-## 李洋「爆款嗅觉」/ 其他角色的通用「杀意感知」
-const SNIFF_RANGE_OTHERS := 12.0  # 通用版:12米内只亮红壳(《05·三》已同步削弱)
+## 李洋近距链接提示 / 其他角色的通用「杀意感知」
+const LI_LINK_RANGE := 8.0
+const SNIFF_RANGE_OTHERS := 12.0
+# HUD 仍保留通用箭头节点，但新被动不再向其提供威胁数据。
+const THREAT_MAX := 4
+const THREAT_RANGE := 12.0
+# 兼容旧的白盒探针常量；探针迁移完成后不会再参与实际技能逻辑。
+const PROMO_SLOW := 0.55
+const PROMO_SELF_IMB := 15.0
 
 # ================================================================ 主动技能
 
@@ -83,9 +88,9 @@ static func trigger(m, p: Player, dir: Vector3) -> void:
 		CharacterDef.ZHAO:
 			_start_dash(m, p, fwd)
 		CharacterDef.MA:
-			_start_stance(m, p)
+			_deploy_buddies(m, p)
 		CharacterDef.LI:
-			_drop_promo_link(m, p)
+			_grab_wanted(m, p, fwd)
 
 ## 赵冬梅:进入蓄力,0.2秒后真正突进(蓄力期全场可见,是对手的反应窗口)
 static func _start_dash(m, p: Player, fwd: Vector3) -> void:
@@ -163,16 +168,19 @@ static func dash_finish(m, p: Player) -> void:
 	p.stun_time = DASH_STUN
 	Main.float_text(m, p.global_position + Vector3.UP * 2.2, "收不住脚!!", Color(0.8, 0.8, 0.85), 70)
 
-## 马德胜:扎马步
-static func _start_stance(m, p: Player) -> void:
+## 马德胜:吹哨派出两名常驻物流随从。
+static func _deploy_buddies(m, p: Player) -> void:
 	p.char_cd = CharacterDef.skill_cd(p.char_id)
-	p.stance_time = STANCE_TIME
-	p.stance = true
-	if p.attached and is_instance_valid(p.cart):
-		# 定身:把车的动量按住,配合 player.gd 里的"技能期间不施力"
-		p.cart.linear_velocity *= 0.15
-		p.cart.angular_velocity = Vector3.ZERO
-	Main.float_text(m, p.global_position + Vector3.UP * 2.4, "扎稳了!", Color(0.45, 0.75, 1.0), 76)
+	p.add_imbalance(BUDDY_SELF_IMB, null)
+	var deployed := 0
+	for buddy in p.buddies:
+		if is_instance_valid(buddy) and not buddy.downed:
+			buddy.deploy()
+			deployed += 1
+	Main.float_text(m, p.global_position + Vector3.UP * 2.4,
+			"大壮二壮——都给我上!!", Color(0.35, 0.68, 1.0), 70)
+	if deployed == 0:
+		Main.float_text(m, p.global_position + Vector3.UP * 1.9, "人呢?!都报工伤了?", Color(0.8, 0.8, 0.85), 48)
 
 ## 反击:被撞时由 cart.gd / actor_base.gd 调用。返回是否成功反击
 static func stance_counter(victim: Actor, attacker_cart: Cart) -> bool:
@@ -203,19 +211,55 @@ static func stance_counter(victim: Actor, attacker_cart: Cart) -> bool:
 			Main.instance.shake_for(atk, 0.7)
 	return true
 
-## 李洋:全网最低价。原地生成直播促销区，施法者本人免疫。
-static func _drop_promo_link(m, p: Player) -> void:
+## 李洋:从准星前方最近购物车随机截走一件自己尚缺的商品。
+static func _grab_wanted(m, p: Player, fwd: Vector3) -> void:
+	var seat: int = m.players.find(p)
+	var missing: Dictionary = m.missing_list_ids(seat)
+	var best_cart: Cart = null
+	var best_items: Array[Item] = []
+	var best_d := LINK_RANGE
+	for node in p.get_tree().get_nodes_in_group("carts"):
+		var c: Cart = node
+		if not is_instance_valid(c) or c == p.cart:
+			continue
+		if c.attached_agent != null and c.attached_agent.immune:
+			continue
+		var to := c.global_position - p.global_position
+		to.y = 0.0
+		var d := to.length()
+		if d > best_d or d < 0.05 or fwd.dot(to.normalized()) < LINK_COS:
+			continue
+		var wanted: Array[Item] = []
+		for it in c.items_in_basket():
+			if missing.has(it.item_id):
+				wanted.append(it)
+		if wanted.is_empty():
+			continue
+		best_cart = c
+		best_items = wanted
+		best_d = d
+	if best_cart == null:
+		p.char_cd = LINK_FAIL_CD
+		Main.float_text(m, p.global_position + Vector3.UP * 2.4,
+				"链接里没我要的货!", Color(0.9, 0.72, 0.4), 58)
+		return
 	p.char_cd = CharacterDef.skill_cd(p.char_id)
-	p.add_imbalance(PROMO_SELF_IMB, null)
-	var pos := p.global_position
-	if p.attached and is_instance_valid(p.cart):
-		pos = p.cart.global_position
-	m.spawn_slow_zone(pos, PROMO_RADIUS, PROMO_TIME, PROMO_SLOW, p,
-			"🔥 直播间专享链接 🔥\n全网最低价!", Color(1.0, 0.18, 0.55))
-	Main.float_text(m, p.global_position + Vector3.UP * 2.5,
-			"家人们!全网最低价!!", Color(1.0, 0.35, 0.65), 40)
-	if m != null:
-		m.hud.broadcast("直播间提示:%s 发布了限时促销链接——围观可以,别想走太快~" % m.seat_name(m.players.find(p)))
+	p.add_imbalance(LINK_SELF_IMB, null)
+	var got: Item = best_items.pick_random()
+	got.mark_flung()
+	if p.can_hold(got):
+		got.set_held()
+		p.take_item(got)
+	else:
+		got.set_free_at(p.global_position + Vector3.UP * 0.9 + fwd * 0.7)
+	best_cart.show_steal_alert()
+	if best_cart.cart_owner is Player:
+		m.expose_li_to(m.players.find(best_cart.cart_owner), seat, 3.0)
+	Main.float_text(m, p.global_position + Vector3.UP * 2.4,
+			"上链接!截走%s" % got.display_name, Color(1.0, 0.42, 0.68), 68)
+	if best_cart.cart_owner is Granny:
+		best_cart.cart_owner.on_robbed(got, p)
+	m.hud.broadcast("直播间提示:%s 从别人车里截走了%s!" % [m.seat_name(seat), got.display_name])
 
 # ================================================================ 被动
 
@@ -223,50 +267,28 @@ static func _drop_promo_link(m, p: Player) -> void:
 static func has_carve(p: Player) -> bool:
 	return CharacterDef.valid_id(p.char_id) == CharacterDef.ZHAO
 
-## 马德胜「余光」是否生效
-static func has_sixth_sense(p: Player) -> bool:
-	return CharacterDef.valid_id(p.char_id) == CharacterDef.MA
-
-## 李洋「爆款嗅觉」是否生效
+## 李洋近距需求链接提示是否生效
 static func has_sniff(p: Player) -> bool:
 	return CharacterDef.valid_id(p.char_id) == CharacterDef.LI
+
+static func steal_time_for(p: Player) -> float:
+	return LI_STEAL_TIME if CharacterDef.valid_id(p.char_id) == CharacterDef.LI else Player.STEAL_TIME
+
+static func mark_foreman_target(target: Actor, owner: Player) -> void:
+	if target == null or owner == null or CharacterDef.valid_id(owner.char_id) != CharacterDef.MA:
+		return
+	target.set_meta("foreman_owner", owner.get_instance_id())
+	target.set_meta("foreman_until", Time.get_ticks_msec() * 0.001 + FOREMAN_MARK_TIME)
+	Main.float_text(target, target.global_position + Vector3.UP * 2.45, "重点卸货!", Color(0.4, 0.75, 1.0), 50)
+
+static func is_foreman_marked(target: Actor, owner: Player) -> bool:
+	return is_instance_valid(target) and is_instance_valid(owner) \
+			and int(target.get_meta("foreman_owner", -1)) == owner.get_instance_id() \
+			and float(target.get_meta("foreman_until", 0.0)) > Time.get_ticks_msec() * 0.001
 
 ## 「余光」:算出朝本机玩家冲来的威胁。
 ## 返回 [{yaw: 世界朝向弧度, dist: 距离, imminent: bool}],最多 THREAT_MAX 个。
 ## 判定口径与《05》撞击判定一致(速度阈值 + 朝向点积),不引入新规则。
 static func threats_for(m, p: Player) -> Array:
 	var out: Array = []
-	if p == null or not has_sixth_sense(p) or p.downed:
-		return out
-	for node in p.get_tree().get_nodes_in_group("characters"):
-		if node == p or not (node is Actor):
-			continue
-		var a: Actor = node
-		if a.downed:
-			continue
-		var to: Vector3 = p.global_position - a.global_position
-		to.y = 0.0
-		var d := to.length()
-		if d > THREAT_RANGE or d < 0.2:
-			continue
-		# 速度取"人或其车"的较大者:推车冲过来才是真威胁
-		var vel := a.velocity
-		var c: Cart = a.get_pushed_cart()
-		if c != null:
-			vel = c.linear_velocity
-		vel.y = 0.0
-		var speed := vel.length()
-		if speed< Cart.MIN_HIT_SPEED:
-			continue
-		var dir := to.normalized()
-		if vel.normalized().dot(dir) < 0.55:   # 没朝你来就不报警
-			continue
-		out.append({
-			"yaw": atan2(-dir.x, -dir.z),
-			"dist": d,
-			"imminent": d / maxf(speed, 0.01) <= THREAT_IMMINENT,
-		})
-	out.sort_custom(func(x, y): return float(x["dist"]) < float(y["dist"]))
-	if out.size() > THREAT_MAX:
-		out = out.slice(0, THREAT_MAX)
 	return out

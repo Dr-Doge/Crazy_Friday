@@ -6,7 +6,7 @@ class_name Net extends Node
 const PORT := 7788
 const MAX_CLIENTS := 5     # 主机+5客户端=6人
 const SYNC_INTERVAL := 3   # 每3个物理帧同步一次(约20Hz)
-const NET_VERSION := 6     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
+const NET_VERSION := 7     # v7:新增马德胜双随从世界状态包
                            # v6:购物车全商品轮盘投掷，动作携带选中商品ID与三维准星方向
 
 var main: Main
@@ -423,7 +423,14 @@ func _gather_world() -> Dictionary:
 		for j in 14:
 			its.append(act[(_item_cursor + j) % act.size()])
 		_item_cursor = (_item_cursor + 14) % act.size()
-	return {"g": gs, "i": its}
+	var bs: Array = []
+	for buddy in main.warehouse_buddies:
+		if is_instance_valid(buddy):
+			bs.append([buddy.global_position, buddy.body_root.rotation.y,
+					buddy.body_root.rotation.x, buddy.imbalance, buddy.downed, buddy.active])
+		else:
+			bs.append(null)
+	return {"g": gs, "i": its, "b": bs}
 
 @rpc("authority", "call_remote", "unreliable")
 func sync_state(d: Dictionary) -> void:
@@ -457,6 +464,10 @@ func ev_locate(idxs: Array) -> void:
 func ev_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
 		immune_seat: int, title: String, color: Color) -> void:
 	main.client_slow_zone(pos, radius, life, factor, immune_seat, title, color)
+
+@rpc("authority", "call_remote", "reliable")
+func ev_li_exposed(li_seat: int, duration: float) -> void:
+	main._show_li_exposure(li_seat, duration)
 
 @rpc("authority", "call_remote", "reliable")
 func ev_spawn_items(ids: Array, poss: Array) -> void:

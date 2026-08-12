@@ -21,6 +21,7 @@ var brace_cd := 0.0
 var locate_cd := 0.0        # 技能CD按人各算(联机双人)
 var prop_cd := 0.0          # 右键场内商品道具冷却
 var throw_selection := 0    # 购物车商品轮盘当前索引（本地UI状态）
+var buddies: Array = []      # 马德胜常驻的两名物流随从
 
 # ---------- 角色(见 character_def.gd / char_skills.gd) ----------
 var char_id := CharacterDef.ORDER[0]
@@ -354,7 +355,7 @@ func _on_interact_pressed() -> void:
 		"search":
 			_start_channel("search", pick["target"], SEARCH_TIME)
 		"steal":
-			_start_channel("steal", pick["target"], STEAL_TIME)
+			_start_channel("steal", pick["target"], CharSkills.steal_time_for(self))
 		"load":
 			_load_held_into_cart()
 
@@ -459,7 +460,8 @@ func _best_interaction() -> Dictionary:
 		var d2 := global_position.distance_to(c.global_position)
 		if d2 < 2.1 and d2 < best_d and c.attached_agent == null and not c.items_in_basket().is_empty():
 			if held_slots_used() < hold_capacity:
-				best = {"kind": "steal", "target": c, "label": "按住E 偷取车内商品(1.2秒)"}
+				var steal_time := CharSkills.steal_time_for(self)
+				best = {"kind": "steal", "target": c, "label": "按住E 偷取车内商品(%.2f秒)" % steal_time}
 				best_d = d2
 	# 手里有货且在自己车旁:E 放入购物车
 	if not held.is_empty() and cart != null and is_instance_valid(cart):
