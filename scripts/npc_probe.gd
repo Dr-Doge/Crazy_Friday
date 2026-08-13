@@ -73,7 +73,8 @@ func tick(delta: float) -> void:
 		[1.4, _setup_player_attack],
 		[1.7, _start_player_attack],
 		[2.8, _check_player_attack],
-		[3.1, _report],
+		[3.0, _check_elbow_reclaim_only],
+		[3.2, _report],
 	]
 	while _step < schedule.size() and _t >= float(schedule[_step][0]):
 		var fn: Callable = schedule[_step][1]
@@ -137,6 +138,33 @@ func _start_player_attack() -> void:
 func _check_player_attack() -> void:
 	_check(_m.player.imbalance > 0.0 or _m.player.downed,
 			"NPC：锁定需求车后会主动靠近并攻击玩家")
+
+func _check_elbow_reclaim_only() -> void:
+	# 暂停自主决策，确定性验证单次追讨动作。
+	_g1.set_physics_process(false)
+	_prepare_actor(_m.player)
+	_prepare_actor(_g1)
+	_m.player.cart.remove_collision_exception_with(_g1)
+	_g1.global_position = _m.player.global_position + Vector3(0.0, 0.0, 1.2)
+	var stolen := Item.create("thermos")
+	_m.add_child(stolen)
+	_m.all_items.append(stolen)
+	stolen.set_held()
+	_m.player.take_item(stolen)
+	_g1.on_robbed(stolen, _m.player)
+	_g1._elbow_cd = 0.0
+	_g1._chase_state(0.05)
+	_check(_m.player.held.has(stolen) and not _g1.held.has(stolen),
+			"NPC追讨：首次贴身命中只累积失衡，不会立即夺回手持商品")
+	_check(_m.player.imbalance > 0.0 and not _m.player.downed,
+			"NPC追讨：会通过肘击逐步制造失衡")
+	_m.player.imbalance = 90.0
+	_g1._elbow_cd = 0.0
+	_g1._chase_state(0.05)
+	_check(_m.player.downed and stolen.state == Item.ItemState.FREE,
+			"NPC追讨：只有将持有者肘击倒地后，商品才会掉落")
+	_check(not _g1.held.has(stolen),
+			"NPC追讨：倒地瞬间仍不瞬移夺货，必须再走正常拾取流程")
 
 func _report() -> void:
 	for line in _notes:

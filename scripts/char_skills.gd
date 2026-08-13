@@ -67,7 +67,7 @@ static func trigger(m, p: Player, dir: Vector3) -> void:
 	if p == null or p.downed or p.finished or m.game_over:
 		return
 	#硬直/突进/扎马步中不可重复触发
-	if p.stun_time > 0.0 or p.dash_windup > 0.0 or p.dash_time > 0.0 or p.stance_time > 0.0:
+	if p.stun_time > 0.0 or p.taser_time > 0.0 or p.dash_windup > 0.0 or p.dash_time > 0.0 or p.stance_time > 0.0:
 		return
 	if p.char_cd > 0.0:
 		if p == m.player:

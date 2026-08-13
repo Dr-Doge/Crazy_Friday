@@ -154,6 +154,15 @@ func _physics_process(delta: float) -> void:
 	if downed or main == null or main.game_over:
 		apply_motion(delta, Vector3.ZERO, 0.0)
 		return
+	if taser_time > 0.0:
+		hand_pose = "stunned"
+		if attached and is_instance_valid(cart):
+			cart.linear_velocity *= 0.55
+			cart.angular_velocity *= 0.4
+			_stick_to_handle()
+		else:
+			apply_motion(delta, Vector3.ZERO, 0.0)
+		return
 	steal_timer -= delta
 	_charge_cd = maxf(0.0, _charge_cd - delta)
 	_aggression_timer = maxf(0.0, _aggression_timer - delta)
@@ -536,38 +545,32 @@ func _ram_state(delta: float) -> void:
 		return
 	_drive_toward(delta, target_cart.global_position, true)
 
-## 追逐偷货的玩家或NPC:抓到就把商品抢回来
+## 追逐偷货者：只靠肘击将其打倒，商品落地后再按正常拾取流程拿回。
 func _chase_state(delta: float) -> void:
 	action_timer -= delta
 	var p: Actor = chase_target
-	if action_timer <= 0.0 or p == null or not is_instance_valid(p) or p.immune or p.downed:
+	if action_timer <= 0.0 or p == null or not is_instance_valid(p) or p.immune:
 		_charge_cd = 2.0
 		state = GState.IDLE
 		return
-	# 他手里还拿着我的东西吗?(进了他车斗则交给常规冲撞/偷窃接管)
-	var loot: Item = null
-	for it in p.held:
-		if is_instance_valid(it) and _wanted(it.item_id):
-			loot = it
-			break
-	if loot == null:
+	# 倒地后手持物自然掉落；NPC再走正常寻路/拾取，不瞬移夺回。
+	if is_instance_valid(target_item) and target_item.state == Item.ItemState.FREE:
+		chase_target = null
+		_go_shop(target_item)
+		return
+	if p.downed or not is_instance_valid(target_item) or not p.held.has(target_item):
+		chase_target = null
 		state = GState.IDLE
 		return
 	var to := p.global_position - global_position
 	to.y = 0.0
 	var d := to.length()
 	if d < 1.7:
-		# 夺回!
-		p.held.erase(loot)
-		loot.set_held()
-		take_item(loot)
-		_register_acquired(loot)
-		p.add_imbalance(10.0, self)
-		p.push_velocity += to.normalized() * 2.5
-		Main.float_text(self, global_position + Vector3.UP * 2.2, "大妈夺回了%s!!" % loot.display_name, Color(1, 0.5, 0.6), 72)
-		say_from_pool(SAY_SLAM)
-		_charge_cd = 3.0
-		state = GState.IDLE
+		apply_motion(delta, Vector3.ZERO, 0.0)
+		if _elbow_cd <= 0.0:
+			_elbow_cd = ELBOW_CD
+			_elbow_without_hand_drop(p, to)
+			say_from_pool(SAY_SLAM)
 		return
 	if attached:
 		_drive_toward(delta, p.global_position, true)
@@ -575,7 +578,7 @@ func _chase_state(delta: float) -> void:
 		apply_motion(delta, to.normalized(), RUSH_SPEED)
 
 ## 徒步争抢。仅在目标正推着含需求品的购物车时持续追打；货物离开车斗即停手。
-## 贴身先拿对方手中恰好需要的货，否则肘击并尝试打落车内商品。
+## NPC肘击只积累失衡，手持商品必须等目标倒地后才会落下。
 func _brawl_state(delta: float) -> void:
 	action_timer -= delta
 	var rival: Actor = target_actor
@@ -587,7 +590,7 @@ func _brawl_state(delta: float) -> void:
 	var to := rival.global_position - global_position
 	to.y = 0.0
 	var d := to.length()
-	if d > AGGRO_RANGE + 4.0:
+	if d > AGGRO_RANGE * perception_factor() + 4.0:
 		target_actor = null
 		state = GState.IDLE
 		return
@@ -598,39 +601,37 @@ func _brawl_state(delta: float) -> void:
 	if _elbow_cd > 0.0:
 		return
 	_elbow_cd = ELBOW_CD
-	if _try_snatch_from(rival):
-		target_actor = null
-		state = GState.IDLE
-		return
-	try_elbow(to)
+	_elbow_without_hand_drop(rival, to)
 	say_from_pool(SAY_SLAM)
 
-## 贴身只抢自己尚缺的手持货；不因已经开打就顺手拿无关商品。
-func _try_snatch_from(victim: Actor) -> bool:
-	if victim.held.is_empty():
-		return false
-	var pick: Item = null
-	for it in victim.held:
-		if is_instance_valid(it) and _wanted(it.item_id) and can_hold(it):
-			pick = it
-			break
-	if pick == null:
-		return false
-	victim.held.erase(pick)
-	pick.set_held()
-	take_item(pick)
-	_register_acquired(pick)
-	victim.add_imbalance(12.0, self)
-	var shove := victim.global_position - global_position
-	shove.y = 0.0
-	if shove.length() > 0.1:
-		victim.push_velocity += shove.normalized() * 2.8
-	Main.float_text(victim, victim.global_position + Vector3.UP * 2.2,
-			"大妈抢走了%s!!" % pick.display_name, Color(1, 0.45, 0.25), 72)
+## NPC专用肘击：不会在每次命中时直接打落或转移手持商品。
+## 满失衡后 Actor.knockdown() 会统一让手持商品落地。
+func _elbow_without_hand_drop(victim: Actor, direction: Vector3) -> void:
+	if victim == null or victim.downed or victim.immune:
+		return
+	_elbow_anim = 1.3
+	if victim.stance:
+		Main.float_text(victim, victim.global_position + Vector3.UP * 2.0,
+				"扎马步！（肘不动）", Color(0.5, 0.85, 1.0), 72)
+		victim.on_elbowed(self)
+		return
+	var fwd := direction
+	fwd.y = 0.0
+	if fwd.length() < 0.1:
+		fwd = -body_root.global_transform.basis.z
+	fwd = fwd.normalized()
+	var damage := 25.0 if victim is WarehouseBuddy else 15.0
+	victim.add_imbalance(damage, self)
+	victim.push_velocity += fwd * 3.0
+	var victim_cart := victim.get_pushed_cart()
+	if victim_cart != null:
+		victim_cart.eject_random_item()
+	Main.float_text(victim, victim.global_position + Vector3.UP * 2.0,
+			"%s 追讨肘击+%d" % [Main.BAM_ELBOW.pick_random(), int(damage)], Color(1, 0.7, 0.2), 76)
 	victim.on_elbowed(self)
-	if victim is Granny:
-		victim.on_robbed(pick, self)
-	return true
+	if Main.instance != null:
+		Main.instance.shake_for(self, 0.25)
+		Main.instance.shake_for(victim, 0.5)
 
 func _queue_state(delta: float) -> void:
 	action_timer -= delta
@@ -796,7 +797,7 @@ func _update_want_label() -> void:
 
 func _find_ram_target() -> Cart:
 	var best: Cart = null
-	var best_d := RAM_RANGE
+	var best_d := RAM_RANGE * perception_factor()
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
 		if not is_instance_valid(c) or c == cart or c.attached_agent == null or c.attached_agent == self:
@@ -821,7 +822,7 @@ func _find_brawl_target() -> Actor:
 		if rival is Granny and rival._in_checkout_chain():
 			continue
 		var d := global_position.distance_to(rival.global_position)
-		if d > AGGRO_RANGE:
+		if d > AGGRO_RANGE * perception_factor():
 			continue
 		var rival_cart := rival.get_pushed_cart()
 		if rival_cart == null:
@@ -842,7 +843,7 @@ func _find_brawl_target() -> Actor:
 
 func _find_steal_cart(wanted_only: bool, rng: float) -> Cart:
 	var best: Cart = null
-	var best_d := rng
+	var best_d := rng * perception_factor()
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
 		if not is_instance_valid(c) or c == cart or c.attached_agent != null:
@@ -913,6 +914,7 @@ func _in_any_basket(it: Item) -> bool:
 
 func _drive_toward(delta: float, dest: Vector3, sprint: bool) -> void:
 	cart.sprinting = sprint
+	cart.grip_mult = traction_factor()
 	cart.sprint_level = 1.0 if sprint else move_toward(cart.sprint_level, 0.0, 2.0 * delta)
 	var to := dest - cart.global_position
 	to.y = 0.0

@@ -5,6 +5,7 @@ class_name SlowZone extends Node3D
 var radius := 3.0
 var lifetime := 6.0
 var slow_factor := 0.6
+var traction_factor := 1.0
 var immune_actor: Actor = null
 var disc: MeshInstance3D
 var label: Label3D
@@ -12,12 +13,14 @@ var _total_life := 6.0
 var _pulse := 0.0
 
 static func create(root: Node3D, pos: Vector3, zone_radius: float, life: float,
-		factor: float, immune: Actor, title: String, color: Color) -> SlowZone:
+		factor: float, immune: Actor, title: String, color: Color,
+		traction := 1.0) -> SlowZone:
 	var z := SlowZone.new()
 	z.radius = zone_radius
 	z.lifetime = life
 	z._total_life = life
 	z.slow_factor = factor
+	z.traction_factor = traction
 	z.immune_actor = immune
 	z.position = Vector3(pos.x, 0.0, pos.z)
 
@@ -77,4 +80,7 @@ func _physics_process(delta: float) -> void:
 		var offset := a.global_position - global_position
 		offset.y = 0.0
 		if offset.length() <= radius:
-			a.apply_slow(slow_factor, 0.16)
+			if traction_factor < 1.0:
+				a.apply_wet(slow_factor, traction_factor, 0.16)
+			else:
+				a.apply_slow(slow_factor, 0.16)

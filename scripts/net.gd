@@ -378,7 +378,8 @@ func _gather_players() -> Dictionary:
 				p.imbalance, p.stamina, p.downed, p.braced,
 				p.channel_progress, p.body_root.rotation.x,
 				p.locate_cd, p.prop_cd, p.brace_cd,
-				p.char_cd, p.stance_time, p.stun_time])
+				p.char_cd, p.stance_time, p.stun_time,
+				p.taser_time, p.taser_immunity_time, p.obscure_time, p.obscure_factor])
 		_sync_text("pp%d" % i, "pp", i, p.prompt_text)
 	return {"p": ps}
 
@@ -462,8 +463,12 @@ func ev_locate(idxs: Array) -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func ev_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
-		immune_seat: int, title: String, color: Color) -> void:
-	main.client_slow_zone(pos, radius, life, factor, immune_seat, title, color)
+		immune_seat: int, title: String, color: Color, traction := 1.0) -> void:
+	main.client_slow_zone(pos, radius, life, factor, immune_seat, title, color, traction)
+
+@rpc("authority", "call_remote", "reliable")
+func ev_obscure_zone(pos: Vector3, radius: float, life: float, factor: float) -> void:
+	main.client_obscure_zone(pos, radius, life, factor)
 
 @rpc("authority", "call_remote", "reliable")
 func ev_li_exposed(li_seat: int, duration: float) -> void:

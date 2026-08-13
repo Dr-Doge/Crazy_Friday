@@ -77,6 +77,11 @@ func _players(k: float, delta: float) -> void:
 			p.stance_time = a[13]
 			p.stance = a[13] > 0.0
 			p.stun_time = a[14]
+		if a.size() > 18:
+			p.taser_time = a[15]
+			p.taser_immunity_time = a[16]
+			p.obscure_time = a[17]
+			p.obscure_factor = a[18]
 		p.puppet_update(delta)
 
 ## 购物车:三轴旋转都要插值(会翻车,不能只插y)

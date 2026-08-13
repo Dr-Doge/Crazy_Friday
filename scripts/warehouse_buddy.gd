@@ -27,6 +27,14 @@ func setup(p: Player, index: int) -> void:
 	collision_mask = Catalog.L_WORLD | Catalog.L_CART
 	add_to_group("warehouse_buddies")
 	_snap_home()
+	ignore_player_cart(p.cart)
+
+## 玩家购物车与随从双向忽略，避免刚体车斗把跟随者卡进车身。
+func ignore_player_cart(player_cart: Cart) -> void:
+	if not is_instance_valid(player_cart):
+		return
+	add_collision_exception_with(player_cart)
+	player_cart.add_collision_exception_with(self)
 
 func deploy() -> void:
 	if not is_instance_valid(leader) or downed:
@@ -51,6 +59,10 @@ func _physics_process(delta: float) -> void:
 		if return_delay <= 0.0:
 			_recover_buddy()
 		return
+	if taser_time > 0.0:
+		hand_pose = "stunned"
+		apply_motion(delta, Vector3.ZERO, 0.0)
+		return
 	if active:
 		_tick_attack(delta)
 	else:
@@ -59,10 +71,24 @@ func _physics_process(delta: float) -> void:
 func add_imbalance(amount: float, source: Node = null) -> void:
 	if downed or immune:
 		return
+	# 马德胜一方不会误伤自己的随从；随从只接受对手造成的失衡伤害。
+	if is_friendly_source(source):
+		return
 	_last_hit_time = Time.get_ticks_msec() * 0.001
 	imbalance = clampf(imbalance + amount, 0.0, BUDDY_MAX_IMBALANCE)
 	if imbalance >= BUDDY_MAX_IMBALANCE:
 		knockdown()
+
+func is_friendly_source(source: Node) -> bool:
+	if source == null or not is_instance_valid(leader):
+		return false
+	if source == leader:
+		return true
+	if source is WarehouseBuddy:
+		return source.leader == leader
+	if source is Cart:
+		return source.cart_owner == leader or source.attached_agent == leader
+	return false
 
 func knockdown() -> void:
 	if downed:
@@ -82,7 +108,6 @@ func _recover_buddy() -> void:
 	imbalance = 0.0
 	body_root.rotation.x = 0.0
 	collision_layer = Catalog.L_CHAR
-	_snap_home()
 
 func _recover() -> void:
 	_recover_buddy()
@@ -101,10 +126,10 @@ func _follow_owner(delta: float) -> void:
 	var home := leader.global_position + _home_offset()
 	var to := home - global_position
 	to.y = 0.0
-	if to.length() > 5.0:
-		_snap_home()
-		return
-	apply_motion(delta, to.normalized() if to.length() > 0.2 else Vector3.ZERO, 3.5)
+	var speed := leader.buddy_move_speed()
+	# 只做温和的队形追赶，不改变玩家档位，也不再用远距离瞬移追上。
+	var catchup := lerpf(1.0, 1.35, clampf((to.length() - 1.2) / 6.0, 0.0, 1.0))
+	apply_motion(delta, to.normalized() if to.length() > 0.2 else Vector3.ZERO, speed * catchup)
 
 func _tick_attack(delta: float) -> void:
 	active_time -= delta
@@ -125,7 +150,7 @@ func _tick_attack(delta: float) -> void:
 		target = null
 		return
 	if d > 1.65:
-		var speed := 4.8 * (1.2 if CharSkills.is_foreman_marked(target, leader) else 1.0)
+		var speed := leader.buddy_move_speed() * (1.2 if CharSkills.is_foreman_marked(target, leader) else 1.0)
 		apply_motion(delta, to.normalized(), speed)
 		return
 	apply_motion(delta, Vector3.ZERO, 0.0)
@@ -156,7 +181,7 @@ func _find_target() -> Actor:
 		if not _valid_target(a):
 			continue
 		var d := leader.global_position.distance_to(a.global_position)
-		if d > SEARCH_RANGE:
+		if d > SEARCH_RANGE * perception_factor():
 			continue
 		var score := -d + (30.0 if CharSkills.is_foreman_marked(a, leader) else 0.0)
 		# 两人尽量分头；没有第二目标时才夹击。

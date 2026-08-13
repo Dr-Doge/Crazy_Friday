@@ -166,6 +166,12 @@ func _start_match(tut: bool) -> void:
 			add_child(demo_item)
 			all_items.append(demo_item)
 			demo_item.set_free_at(player.cart.to_global(Vector3((i % 3 - 1) * 0.22, 1.1 + (i / 3) * 0.32, (i % 2) * 0.18)))
+	var show_throw_effect := OS.get_environment("WHITEBOX_SHOW_THROW_EFFECT")
+	if show_throw_effect != "" and Catalog.ITEMS.has(show_throw_effect):
+		get_tree().create_timer(0.7).timeout.connect(func() -> void:
+			if is_instance_valid(player):
+				_apply_throw_effect(show_throw_effect,
+						player.global_position + cam_rig.forward() * 2.4, player, null))
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
 func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
@@ -398,6 +404,10 @@ func _spawn_players(data: Dictionary, nplayers: int) -> void:
 				buddy.setup(p, buddy_slot)
 				p.buddies.append(buddy)
 				warehouse_buddies.append(buddy)
+	# 所有玩家车都与两名随从双向忽略；这里在玩家全部生成后补齐跨玩家组合。
+	for buddy in warehouse_buddies:
+		for p in players:
+			buddy.ignore_player_cart(p.cart)
 	player = players[local_idx]
 
 var _granny_spawns: Array = []
@@ -769,21 +779,23 @@ func trigger_char_skill(p: Player = null, dir := Vector3.ZERO) -> void:
 		p = player
 	if game_over or p == null:
 		return
+	if p.taser_time > 0.0:
+		return
 	CharSkills.trigger(self, p, dir)
 
 ## 主机创建减速区并广播视觉参数。客户端不做区域判定，位置仍由权威状态包同步。
 func spawn_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
-		immune_actor: Actor, title: String, color: Color) -> SlowZone:
-	var zone := SlowZone.create(self, pos, radius, life, factor, immune_actor, title, color)
+		immune_actor: Actor, title: String, color: Color, traction := 1.0) -> SlowZone:
+	var zone := SlowZone.create(self, pos, radius, life, factor, immune_actor, title, color, traction)
 	if net_mp and not net_client:
 		var immune_seat := players.find(immune_actor) if immune_actor is Player else -1
-		net.rpc("ev_slow_zone", pos, radius, life, factor, immune_seat, title, color)
+		net.rpc("ev_slow_zone", pos, radius, life, factor, immune_seat, title, color, traction)
 	return zone
 
 func client_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
-		immune_seat: int, title: String, color: Color) -> void:
+		immune_seat: int, title: String, color: Color, traction := 1.0) -> void:
 	var immune_actor: Actor = players[immune_seat] if immune_seat >= 0 and immune_seat < players.size() else null
-	SlowZone.create(self, pos, radius, life, factor, immune_actor, title, color)
+	SlowZone.create(self, pos, radius, life, factor, immune_actor, title, color, traction)
 
 ## 购物车内所有自由商品都可作为弹药；排序固定，供滚轮与联机按商品ID选择。
 func cart_throw_items(p: Player) -> Array[Item]:
@@ -817,7 +829,7 @@ func selected_cart_item_id(p: Player) -> String:
 func trigger_throw_cart_item(p: Player = null, dir := Vector3.ZERO, wanted_id := "") -> void:
 	if p == null:
 		p = player
-	if game_over or p == null:
+	if game_over or p == null or p.taser_time > 0.0:
 		return
 	if p.prop_cd > 0.0:
 		if p == player:
@@ -849,39 +861,87 @@ func trigger_throw_cart_item(p: Player = null, dir := Vector3.ZERO, wanted_id :=
 
 func _throw_item_body(it: Item, owner: Player, fwd: Vector3) -> void:
 	it.mark_flung()
-	it.set_free_at(owner.global_position + Vector3.UP * 1.55 + fwd * 0.75)
-	# 飞行阶段不撞其他商品，避免刚离开满载车斗就被邻近货物提前引爆。
-	it.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
+	# 出手点使用上半身高度，并只沿水平朝向前置：低视角不会把商品生成到脚下。
+	var aim := fwd.normalized() if fwd.length() > 0.01 else -owner.global_transform.basis.z
+	var horizontal := Vector3(aim.x, 0.0, aim.z)
+	if horizontal.length() < 0.1:
+		horizontal = -owner.global_transform.basis.z
+		horizontal.y = 0.0
+	if horizontal.length() < 0.1:
+		horizontal = Vector3.FORWARD
+	horizontal = horizontal.normalized()
+	# 保留上抛瞄准，但不允许向下的初速度直接把物品送进地面。
+	aim = Vector3(horizontal.x, maxf(aim.y, -0.05), horizontal.z).normalized()
+	var throw_origin := owner.global_position + Vector3.UP * 1.62
+	var spawn_position := throw_origin + horizontal * 1.15
+	it.set_free_at(spawn_position)
+	# 离手保护期仍可命中对手，但暂不与地面/场景接触。
+	it.collision_mask = Catalog.L_CHAR | Catalog.L_CART
 	it.contact_monitor = true
 	it.max_contacts_reported = 6
 	it.set_meta("throw_active", true)
 	it.set_meta("throw_owner", owner)
+	it.set_meta("throw_origin", throw_origin)
+	it.set_meta("throw_spawn_position", spawn_position)
+	it.set_meta("throw_started_msec", Time.get_ticks_msec())
 	it.add_collision_exception_with(owner)
 	if is_instance_valid(owner.cart):
 		it.add_collision_exception_with(owner.cart)
-	it.linear_velocity = fwd * 16.0 + Vector3.UP * 1.2
+	it.linear_velocity = aim * 16.0 + Vector3.UP * 1.2
 	it.angular_velocity = Vector3(randf_range(-9, 9), randf_range(-5, 5), randf_range(-9, 9))
-	it.body_entered.connect(func(body: Node) -> void: _thrown_item_hit(it, body, owner), CONNECT_ONE_SHOT)
+	it.body_entered.connect(func(body: Node) -> void: _thrown_item_hit(it, body, owner))
+	# 飞出足够距离后再开启场景碰撞，并复查此刻的真实接触体。
+	get_tree().create_timer(Catalog.THROW_WORLD_ARM_TIME).timeout.connect(func() -> void:
+		if not is_instance_valid(it) or not bool(it.get_meta("throw_active", false)):
+			return
+		it.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
+		var contacts := it.get_colliding_bodies()
+		for contact in contacts:
+			if contact == owner or contact == owner.cart:
+				continue
+			_thrown_item_hit(it, contact, owner)
+			break)
 
 func _thrown_item_hit(it: Item, body: Node, owner: Player) -> void:
 	if not is_instance_valid(it) or not bool(it.get_meta("throw_active", false)):
 		return
+	# 物理异常之外的结算层保险：投掷者和其购物车永远不能成为首个落点。
+	if body == owner or body == owner.cart:
+		return
+	var throw_origin: Vector3 = it.get_meta("throw_origin", owner.global_position)
+	var from_origin := it.global_position - throw_origin
+	from_origin.y = 0.0
+	var age := (Time.get_ticks_msec() - int(it.get_meta("throw_started_msec", 0))) * 0.001
+	# 角色和购物车可近身直击；只有脚边世界碰撞需要等待投掷物真正离手。
+	if not (body is Actor) and not (body is Cart) \
+			and age < Catalog.THROW_WORLD_ARM_TIME \
+			and from_origin.length() < Catalog.THROW_WORLD_ARM_DISTANCE:
+		return
 	it.set_meta("throw_active", false)
 	var pos := it.global_position
 	pos.y = 0.0
-	var victim: Actor = body if body is Actor else (body.attached_agent if body is Cart else null)
+	it.set_meta("throw_effect_position", pos)
+	var direct_actor: Actor = body if body is Actor else null
+	var hit_cart: Cart = body if body is Cart else null
+	var victim: Actor = direct_actor if direct_actor != null else (hit_cart.attached_agent if hit_cart != null else null)
+	var damage_multiplier := Catalog.THROW_ACTOR_DAMAGE_MULTIPLIER \
+			if direct_actor != null else Catalog.THROW_CART_DAMAGE_MULTIPLIER
+	if victim != null and victim.is_friendly_source(owner):
+		victim = null
 	if victim != null and victim != owner and not victim.immune:
-		var damage := Catalog.throw_imbalance(it.item_id)
+		var damage := Catalog.throw_imbalance(it.item_id) * damage_multiplier
 		victim.add_imbalance(damage, owner)
 		var away := victim.global_position - owner.global_position
 		away.y = 0.0
 		if away.length() > 0.1:
-			victim.push_velocity += away.normalized() * clampf(damage * 0.12, 1.5, 7.0)
+			victim.push_velocity += away.normalized() * Catalog.THROW_DIRECT_PUSH
 		Main.float_text(victim, victim.global_position + Vector3.UP * 2.1,
-				"%s砸中 +%d失衡!" % [it.display_name, int(damage)], Color(1.0, 0.58, 0.25), 66)
+				"%s%s +%d失衡!" % [it.display_name,
+						(" 直击×1.5" if direct_actor != null else " 砸车×1.0"), int(damage)],
+				Color(1.0, 0.58, 0.25), 66)
 		shake_for(victim, clampf(damage / 70.0, 0.25, 0.8))
 		CharSkills.mark_foreman_target(victim, owner)
-	_apply_throw_effect(it.item_id, pos, owner)
+	_apply_throw_effect(it.item_id, pos, owner, direct_actor)
 	# 命中后商品仍留在场内，可再次拾取/装车；仅关闭角色碰撞避免持续蹭伤。
 	get_tree().create_timer(0.35).timeout.connect(func() -> void:
 		if is_instance_valid(it):
@@ -890,39 +950,116 @@ func _thrown_item_hit(it: Item, body: Node, owner: Player) -> void:
 			if is_instance_valid(owner.cart):
 				it.remove_collision_exception_with(owner.cart))
 
-func _apply_throw_effect(id: String, pos: Vector3, owner: Player) -> void:
+func _apply_throw_effect(id: String, pos: Vector3, owner: Player, direct_actor: Actor = null) -> void:
 	match Catalog.prop_kind(id):
-		"slip_large": _make_slip_effect(pos, Vector2(5.4, 5.4), 15.0, "洗衣液泼洒!")
-		"slip_long": _make_slip_effect(pos, Vector2(3.0, 3.0), 24.0, "冰淇淋融化!")
-		"slip_small": _make_slip_effect(pos, Vector2(3.2, 3.2), 10.0, "液体洒了一地!")
-		"sticky": spawn_slow_zone(pos, 2.8, 7.0, 0.6, null, "软糖黏地!", Color(1.0, 0.48, 0.72))
-		"sticky_small": spawn_slow_zone(pos, 2.2, 6.0, 0.72, null, "油腻地面", Color(1.0, 0.62, 0.25))
-		"burst": _throw_aoe(pos, owner, 3.2, 18.0, 5.0, "汽水爆开!")
-		"burst_small": _throw_aoe(pos, owner, 2.4, 10.0, 3.2, "碎片四溅!")
-		"gust": _throw_aoe(pos, owner, 3.0, 0.0, 7.0, "气流推开!")
-		"trip":
-			spawn_slow_zone(pos, 2.4, 6.0, 0.68, null, "扫地机器人乱跑!", Color(0.35, 0.75, 0.9))
+		Catalog.PROP_BURST:
+			_throw_burst(pos, owner)
+		Catalog.PROP_WET:
+			spawn_slow_zone(pos, Catalog.WET_RADIUS, Catalog.WET_LIFE,
+					Catalog.WET_MOVE_FACTOR, null, "湿滑地面", Catalog.prop_effect_color(id),
+					Catalog.WET_TRACTION_FACTOR)
+		Catalog.PROP_SCATTER:
+			spawn_obscure_zone(pos)
+		Catalog.PROP_TASER:
+			if direct_actor != null and direct_actor != owner:
+				direct_actor.apply_taser(Catalog.TASER_TIME, Catalog.TASER_IMMUNITY, owner)
 
-func _make_slip_effect(pos: Vector3, size: Vector2, life: float, text_value: String) -> void:
-	SlipperyZone.create(self, pos, Vector3(size.x, 2, size.y), life)
-	if net_mp and not net_client:
-		net.rpc("ev_slippery", pos, life, size)
-	Main.float_text(self, pos + Vector3.UP, text_value, Color(0.45, 0.7, 1.0), 58)
-
-func _throw_aoe(pos: Vector3, owner: Player, radius: float, damage: float, push: float, text_value: String) -> void:
+func _throw_burst(pos: Vector3, owner: Player) -> void:
+	_spawn_burst_vfx(pos)
 	for node in get_tree().get_nodes_in_group("characters"):
-		if not (node is Actor) or node == owner:
+		if not (node is Actor):
 			continue
 		var a: Actor = node
+		if a.is_friendly_source(owner):
+			continue
 		var away := a.global_position - pos
 		away.y = 0.0
-		if away.length() > radius:
+		if away.length() > Catalog.BURST_RADIUS:
 			continue
-		if damage > 0.0:
-			a.add_imbalance(damage, owner)
-		if away.length() > 0.05:
-			a.push_velocity += away.normalized() * push
-	Main.float_text(self, pos + Vector3.UP, text_value, Color(1.0, 0.62, 0.28), 58)
+		if away.length() <= 0.05:
+			away = a.global_position - owner.global_position
+			away.y = 0.0
+		if away.length() <= 0.05:
+			away = Vector3.FORWARD
+		a.push_velocity += away.normalized() * Catalog.BURST_ACTOR_PUSH
+	for node in get_tree().get_nodes_in_group("carts"):
+		if not (node is Cart):
+			continue
+		var pushed_cart: Cart = node
+		var cart_away := pushed_cart.global_position - pos
+		cart_away.y = 0.0
+		if cart_away.length() <= Catalog.BURST_RADIUS:
+			if cart_away.length() <= 0.05:
+				cart_away = pushed_cart.global_position - owner.global_position
+				cart_away.y = 0.0
+			if cart_away.length() <= 0.05:
+				cart_away = Vector3.FORWARD
+			var impulse := (cart_away.normalized() * Catalog.BURST_CART_PUSH \
+					+ Vector3.UP * Catalog.BURST_CART_LIFT) * pushed_cart.mass
+			pushed_cart.apply_central_impulse(impulse)
+			var flip_axis := Vector3(cart_away.z, 0.15, -cart_away.x).normalized()
+			pushed_cart.apply_torque_impulse(flip_axis * Catalog.BURST_CART_TORQUE * pushed_cart.mass)
+	Main.float_text(self, pos + Vector3.UP, "爆裂推离!", Color(1.0, 0.42, 0.08), 62)
+
+func _spawn_burst_vfx(pos: Vector3) -> void:
+	var root := Node3D.new()
+	root.position = pos + Vector3.UP * 0.08
+	add_child(root)
+	for i in 3:
+		var ring := MeshInstance3D.new()
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = 0.7 + i * 0.18
+		mesh.bottom_radius = mesh.top_radius
+		mesh.height = 0.045 + i * 0.018
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.2 + i * 0.16, 0.03, 0.72 - i * 0.12)
+		mat.emission_enabled = true
+		mat.emission = Color(1.0, 0.22 + i * 0.15, 0.02)
+		mat.emission_energy_multiplier = 2.4
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mesh.material = mat
+		ring.mesh = mesh
+		ring.scale = Vector3.ONE * 0.12
+		ring.position.y = i * 0.12
+		root.add_child(ring)
+		var tween := root.create_tween().set_parallel(true)
+		tween.tween_property(ring, "scale", Vector3.ONE * (3.4 + i * 0.8), 0.38 + i * 0.08) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(ring, "transparency", 1.0, 0.42 + i * 0.08)
+	var flash := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.7
+	sphere.height = 1.4
+	var flash_mat := StandardMaterial3D.new()
+	flash_mat.albedo_color = Color(1.0, 0.72, 0.18, 0.76)
+	flash_mat.emission_enabled = true
+	flash_mat.emission = Color(1.0, 0.38, 0.03)
+	flash_mat.emission_energy_multiplier = 3.2
+	flash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sphere.material = flash_mat
+	flash.mesh = sphere
+	flash.position.y = 0.7
+	root.add_child(flash)
+	var flash_tween := root.create_tween().set_parallel(true)
+	flash_tween.tween_property(flash, "scale", Vector3.ONE * 2.5, 0.28).set_trans(Tween.TRANS_QUAD)
+	flash_tween.tween_property(flash, "transparency", 1.0, 0.3)
+	get_tree().create_timer(0.65).timeout.connect(func() -> void:
+		if is_instance_valid(root):
+			root.queue_free())
+
+func spawn_obscure_zone(pos: Vector3) -> ObscureZone:
+	var zone := ObscureZone.create(self, pos, Catalog.SCATTER_RADIUS,
+			Catalog.SCATTER_LIFE, Catalog.SCATTER_PERCEPTION_FACTOR)
+	if net_mp and not net_client:
+		net.rpc("ev_obscure_zone", pos, Catalog.SCATTER_RADIUS,
+				Catalog.SCATTER_LIFE, Catalog.SCATTER_PERCEPTION_FACTOR)
+	Main.float_text(self, pos + Vector3.UP, "散落遮挡!", Color(1.0, 0.86, 0.58), 58)
+	return zone
+
+func client_obscure_zone(pos: Vector3, radius: float, life: float, factor: float) -> void:
+	ObscureZone.create(self, pos, radius, life, factor)
 
 ## 随机位置生成地滑区(开局3块由种子决定两端一致;运行时的临时块走网络事件)
 func _spawn_random_slippery(count: int, life: float) -> void:
@@ -962,7 +1099,7 @@ func missing_list_ids(idx: int = -1) -> Dictionary:
 func trigger_locate_skill(p: Player = null) -> void:
 	if p == null:
 		p = player
-	if game_over or p == null:
+	if game_over or p == null or p.taser_time > 0.0:
 		return
 	if p.locate_cd > 0.0:
 		if p == player:
@@ -1057,11 +1194,14 @@ func _update_skill_hud() -> void:
 	var s2 := "右键 投掷:%s" % prop_text if player.prop_cd <= 0.0 else "右键 投掷:%.1f秒" % player.prop_cd
 	hud.set_item_wheel(wheel_items, player.throw_selection,
 			player.attached or (is_instance_valid(player.cart) and player.global_position.distance_to(player.cart.global_position) <= 2.8))
+	hud.set_obscured(player.obscure_time > 0.0)
 	var s3 := "Ctrl稳住:就绪" if player.brace_cd <= 0.0 else ("Ctrl 稳住:格挡中!" if player.braced else "Ctrl 稳住:%d秒" % int(ceil(player.brace_cd)))
 	var sk := CharacterDef.skill_name(player.char_id)
 	var max_cd := CharacterDef.skill_cd(player.char_id)
 	var s4 := "空格 %s:就绪" % sk
-	if player.stun_time > 0.0:
+	if player.taser_time > 0.0:
+		s4 = "空格 %s:被电定身(%.1f秒)" % [sk, player.taser_time]
+	elif player.stun_time > 0.0:
 		s4 = "空格 %s:收不住脚(%.1f秒)" % [sk, player.stun_time]
 	elif player.char_cd > 0.0:
 		s4 = "空格 %s:%d秒" % [sk, int(ceil(player.char_cd))]
@@ -1295,11 +1435,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			net.send_action("locate")
 		elif event.is_action_pressed("use_prop"):
 			var selected_id := selected_cart_item_id(player)
-			net.send_action("throw:" + selected_id, cam_rig.aim_direction())
+			net.send_action("throw:" + selected_id, player._aim_dir())
 		elif event.is_action_pressed("char_skill"):
-			net.send_action("char_skill", cam_rig.forward())
+			net.send_action("char_skill", player._aim_dir())
 		elif event.is_action_pressed("elbow"):
-			net.send_action("elbow", cam_rig.forward())
+			net.send_action("elbow", player._aim_dir())
 		return
 	if event.is_action_pressed("dev_mode") and not game_over and not net_mp:
 		var showing := not hud.dev_panel.visible

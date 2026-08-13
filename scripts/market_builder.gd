@@ -258,6 +258,7 @@ static func _csg_box(parent: Node3D, name: String, pos: Vector3, size: Vector3,
 	b.material = _mat(color)
 	b.use_collision = false     # 碰撞由父级 StaticBody3D 提供
 	body.add_child(b)
+	_register_camera_lod(b, size)
 	return b
 
 ## 无碰撞的薄地贴/透明装饰
@@ -270,6 +271,11 @@ static func _decal(parent: Node3D, name: String, pos: Vector3, size: Vector3, co
 	b.position = pos
 	parent.add_child(b)
 	return b
+
+## 只登记视觉节点：镜头贴得过近时隐藏网格，但父级碰撞体继续阻挡角色和购物车。
+static func _register_camera_lod(node: Node3D, size: Vector3) -> void:
+	node.add_to_group("camera_near_lod")
+	node.set_meta("camera_lod_half_extents", size * 0.5)
 
 static func _wall(parent: Node3D, solids: Array[Rect2], name: String, pos: Vector3, size: Vector3) -> void:
 	if size.x <= 0.01 or size.z <= 0.01:
@@ -353,6 +359,7 @@ static func _sign(parent: Node3D, name: String, pos: Vector3, text: String, colo
 	plate.use_collision = false
 	plate.position = pos
 	g.add_child(plate)
+	_register_camera_lod(plate, plate.size)
 
 	var lb := Label3D.new()
 	lb.name = "Text"
@@ -367,6 +374,7 @@ static func _sign(parent: Node3D, name: String, pos: Vector3, text: String, colo
 	lb.outline_modulate = color.darkened(0.55)
 	lb.position = pos
 	g.add_child(lb)
+	_register_camera_lod(lb, Vector3(7.5, 1.7, 0.3))
 
 static func _mat(color: Color, transparent := false) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()

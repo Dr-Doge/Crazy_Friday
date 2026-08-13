@@ -161,6 +161,10 @@ func _s_buddy_fire() -> void:
 		p.buddies.append(buddy)
 		_m.warehouse_buddies.append(buddy)
 		_test_buddies.append(buddy)
+	_check(_test_buddies[0].get_collision_exceptions().has(p.cart),
+			"随从:忽略玩家购物车碰撞，避免卡进车身")
+	_check(is_equal_approx(p.buddy_move_speed(), Player.WALK_SPEED),
+			"随从:基础移动速度绑定玩家步行速度")
 	_m.trigger_char_skill(p, _fwd(p))
 	_check(_test_buddies.all(func(b): return b.active), "都给我上:两名随从同时出动")
 	_check(p.imbalance >= CharSkills.BUDDY_SELF_IMB - 1.0,
@@ -173,6 +177,11 @@ func _s_buddy_check() -> void:
 			"都给我上:随从会追击并肘击目标(实际失衡 %.0f)" % _dummy.imbalance)
 	_check(p.stamina > 70.0, "班组长:随从首次命中标记目标返还体力(实际 %.0f)" % p.stamina)
 	var buddy := _test_buddies[0]
+	var friendly_before := buddy.imbalance
+	buddy.add_imbalance(30.0, p)
+	buddy.add_imbalance(30.0, _test_buddies[1])
+	_check(is_equal_approx(buddy.imbalance, friendly_before),
+			"随从:免疫所属马德胜及同队随从造成的所有失衡伤害")
 	buddy.add_imbalance(WarehouseBuddy.BUDDY_MAX_IMBALANCE, _dummy)
 	_check(buddy.downed, "随从:60 失衡时被击倒并开始返场")
 

@@ -43,9 +43,11 @@ var threat_layer: Control          # 「余光」被动:屏幕边缘威胁方向
 var threat_arrows: Array[Label] = []
 var item_wheel: Control            # 右下购物车商品投掷轮盘
 var crosshair: Control             # 屏幕中心白点准星
+var obscure_overlay: Control       # 散落遮挡类商品的本机视野效果
 var _wheel_items: Array = []
 var _wheel_selected := 0
 var _wheel_available := false
+var _obscured := false
 ## 局内 HUD 元素:开始界面阶段一律隐藏(开局前显示计时与体力条毫无意义)
 var _ingame_nodes: Array[Control] = []
 
@@ -56,6 +58,18 @@ var _mq_time := 0.0
 const BAR_W := 440.0      # 加长加粗的状态条
 const BAR_H := 24.0
 const MQ_SPEED := 480.0   # 横幅滚动速度(像素/秒)
+const ITEM_RING_INNER_RADIUS := 270.0
+const ITEM_RING_OLD_OUTER_RADIUS := 354.0
+## 外圈直径扩大为旧版1.5倍；内圈直径保持不变。
+const ITEM_RING_OUTER_RADIUS := ITEM_RING_OLD_OUTER_RADIUS * 1.5
+const ITEM_RING_RADIUS := (ITEM_RING_INNER_RADIUS + ITEM_RING_OUTER_RADIUS) * 0.5
+const ITEM_RING_GAP := ITEM_RING_OUTER_RADIUS - ITEM_RING_INNER_RADIUS
+## 商品圆正好嵌入环带，预留描边和框选线宽。
+const ITEM_NODE_RADIUS := ITEM_RING_GAP * 0.5 - 12.0
+const ITEM_RING_SIZE := ITEM_RING_OUTER_RADIUS + 22.0
+const ITEM_SELECTOR_ANGLE := -PI * 0.75
+const OBSCURE_SCREEN_ALPHA := 0.38
+const OBSCURE_BLOB_ALPHA := 0.68
 
 func _ready() -> void:
 	# 开始界面暂停游戏树时,HUD(含菜单按钮)仍需响应
@@ -172,18 +186,28 @@ func _ready() -> void:
 	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
 	hint.add_theme_constant_override("outline_size", 6)
 	root.add_child(hint)
-	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+	hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+	hint.offset_top += 145
+	hint.offset_bottom += 145
 
-	# 右下商品轮盘：中心显示当前弹药，环上显示购物车内其余商品。
+	# 完整圆环的圆心贴住屏幕右下角，视口只露出左上四分之一。
+	# 商品按整圆循环排列，固定金框内的商品就是右键投掷目标。
 	item_wheel = Control.new()
 	item_wheel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	item_wheel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	item_wheel.offset_left = -340
-	item_wheel.offset_top = -500
-	item_wheel.offset_right = -20
-	item_wheel.offset_bottom = -180
+	item_wheel.offset_left = -ITEM_RING_SIZE
+	item_wheel.offset_top = -ITEM_RING_SIZE
+	item_wheel.offset_right = 0
+	item_wheel.offset_bottom = 0
 	item_wheel.draw.connect(_draw_item_wheel)
 	root.add_child(item_wheel)
+
+	# 散落物范围内的视野干扰；置于轮盘之上、准星之下，仍保留基本瞄准能力。
+	obscure_overlay = Control.new()
+	obscure_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	obscure_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	obscure_overlay.draw.connect(_draw_obscure_overlay)
+	root.add_child(obscure_overlay)
 
 	# 极简准星：只保留屏幕中心白点和一圈暗边，避免遮挡商品标签。
 	crosshair = Control.new()
@@ -297,7 +321,7 @@ func _ready() -> void:
 	root.add_child(menu)
 
 	# 菜单阶段隐藏所有局内 HUD(逐个 append:数组字面量无法直接赋给 Array[Control])
-	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, hint, item_wheel, crosshair, threat_layer]:
+	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, hint, item_wheel, obscure_overlay, crosshair, threat_layer]:
 		_ingame_nodes.append(n)
 	_set_ingame_visible(false)
 
@@ -414,32 +438,124 @@ func _draw_crosshair() -> void:
 	crosshair.draw_circle(c, 5.5, Color(0, 0, 0, 0.72))
 	crosshair.draw_circle(c, 3.0, Color(1, 1, 1, 0.98))
 
-func _draw_item_wheel() -> void:
-	var c := item_wheel.size * 0.5
-	item_wheel.draw_circle(c, 69, Color(0.03, 0.04, 0.06, 0.76))
-	item_wheel.draw_arc(c, 70, 0, TAU, 64, Color(1, 0.72, 0.18, 0.8), 3.0, true)
-	if _wheel_items.is_empty():
-		item_wheel.draw_string(Catalog.ui_font_bold(), c + Vector2(-58, 4), "购物车无弹药",
-				HORIZONTAL_ALIGNMENT_CENTER, 116, 19, Color(0.75, 0.75, 0.75))
+func set_obscured(active: bool) -> void:
+	if _obscured == active:
 		return
-	var count := mini(_wheel_items.size(), 8)
-	for slot in count:
-		var idx := posmod(_wheel_selected + slot - count / 2, _wheel_items.size())
-		var angle := -PI * 0.5 + TAU * float(slot) / float(count)
-		var p := c + Vector2(cos(angle), sin(angle)) * 112.0
+	_obscured = active
+	obscure_overlay.queue_redraw()
+
+func _draw_obscure_overlay() -> void:
+	if not _obscured:
+		return
+	var size := obscure_overlay.size
+	var center := size * 0.5
+	obscure_overlay.draw_rect(Rect2(Vector2.ZERO, size),
+			Color(0.10, 0.085, 0.055, OBSCURE_SCREEN_ALPHA), true)
+	var blobs := [
+		[Vector2(0.0, 0.0), 0.30],
+		[Vector2(-0.30, -0.20), 0.28], [Vector2(0.28, -0.22), 0.27],
+		[Vector2(-0.30, 0.23), 0.29], [Vector2(0.31, 0.24), 0.28],
+		[Vector2(-0.48, 0.02), 0.25], [Vector2(0.49, -0.01), 0.25],
+		[Vector2(-0.05, -0.44), 0.25], [Vector2(0.06, 0.44), 0.26],
+	]
+	for entry in blobs:
+		var p: Vector2 = center + Vector2(entry[0].x * size.x, entry[0].y * size.y)
+		var r: float = float(entry[1]) * minf(size.x, size.y)
+		obscure_overlay.draw_circle(p, r, Color(0.34, 0.30, 0.20, OBSCURE_BLOB_ALPHA))
+		obscure_overlay.draw_circle(p + Vector2(r * 0.12, -r * 0.08), r * 0.72,
+				Color(0.76, 0.66, 0.43, OBSCURE_BLOB_ALPHA * 0.58))
+		obscure_overlay.draw_arc(p, r, 0, TAU, 40,
+				Color(0.94, 0.82, 0.54, 0.58), 8.0, true)
+
+func _draw_item_wheel() -> void:
+	var c := item_wheel.size # 圆心即屏幕右下角
+	# 只绘制左上象限；其余三象限在屏幕外，仅作为循环排布空间存在。
+	item_wheel.draw_arc(c, ITEM_RING_RADIUS, PI, PI * 1.5, 64,
+			Color(0.015, 0.02, 0.035, 0.9), ITEM_RING_GAP, true)
+	item_wheel.draw_arc(c, ITEM_RING_INNER_RADIUS, PI, PI * 1.5, 64,
+			Color(1, 0.7, 0.08, 1.0), 9.0, true)
+	item_wheel.draw_arc(c, ITEM_RING_OUTER_RADIUS, PI, PI * 1.5, 64,
+			Color(1, 0.48, 0.04, 1.0), 9.0, true)
+	if _wheel_items.is_empty():
+		item_wheel.draw_string(Catalog.ui_font_bold(), c + Vector2(-350, -205), "购物车无商品",
+				HORIZONTAL_ALIGNMENT_CENTER, 250, 20, Color(0.75, 0.75, 0.75))
+		return
+	var count := _wheel_items.size()
+	# 放大后的商品正好填满宽环带；可见象限容纳3个，更多商品随滚轮循环进入。
+	var visible_count := mini(count, 3)
+	var left_count := mini(1, int(ceil((visible_count - 1) * 0.5)))
+	var right_count := visible_count - 1 - left_count
+	var arc_step := (PI * 0.5 - 0.32) / 2.0
+	for offset in range(-left_count, right_count + 1):
+		var idx := posmod(_wheel_selected + offset, count)
+		var angle := ITEM_SELECTOR_ANGLE + float(offset) * arc_step
+		var p := c + Vector2(cos(angle), sin(angle)) * ITEM_RING_RADIUS
 		var chosen := idx == _wheel_selected
-		item_wheel.draw_circle(p, 25 if chosen else 20,
-				Color(1, 0.66, 0.12, 0.95) if chosen else Color(0.1, 0.12, 0.16, 0.82))
+		var node_radius := ITEM_NODE_RADIUS if chosen else ITEM_NODE_RADIUS - 8.0
+		var effect_color := Catalog.prop_effect_color(_wheel_items[idx].item_id)
+		item_wheel.draw_circle(p, node_radius,
+				effect_color.darkened(0.18) if chosen else effect_color.darkened(0.72))
+		item_wheel.draw_arc(p, node_radius, 0, TAU, 40,
+				effect_color.lightened(0.28) if chosen else effect_color.darkened(0.18), 7.0, true)
+		_draw_prop_type_icon(p + Vector2(0, -42), Catalog.prop_kind(_wheel_items[idx].item_id),
+				effect_color.lightened(0.28), 23.0 if chosen else 19.0)
 		var short_name: String = str(_wheel_items[idx].display_name).left(4)
-		item_wheel.draw_string(Catalog.ui_font_bold(), p + Vector2(-30, 5), short_name,
-				HORIZONTAL_ALIGNMENT_CENTER, 60, 14, Color.WHITE)
+		var text_width := node_radius * 1.65
+		item_wheel.draw_string(Catalog.ui_font_bold(), p + Vector2(-text_width * 0.5, 18), short_name,
+				HORIZONTAL_ALIGNMENT_CENTER, text_width, 23 if chosen else 20, Color.WHITE)
+		var type_label := Catalog.prop_effect_short(_wheel_items[idx].item_id)
+		item_wheel.draw_string(Catalog.ui_font_bold(), p + Vector2(-text_width * 0.5, 49), type_label,
+				HORIZONTAL_ALIGNMENT_CENTER, text_width, 17 if chosen else 15, effect_color.lightened(0.32))
+	# 固定框选位：滚轮改变商品角度，停在框里的商品就是当前弹药。
+	var selector := c + Vector2(cos(ITEM_SELECTOR_ANGLE), sin(ITEM_SELECTOR_ANGLE)) * ITEM_RING_RADIUS
+	var selector_half := Vector2(ITEM_NODE_RADIUS + 11.0, ITEM_NODE_RADIUS + 11.0)
+	var selector_rect := Rect2(selector - selector_half, selector_half * 2.0)
+	item_wheel.draw_rect(selector_rect, Color(1, 0.78, 0.18, 0.12), true)
+	item_wheel.draw_rect(selector_rect, Color(1, 0.88, 0.18, 1.0), false, 8.0)
 	var selected_item: Item = _wheel_items[_wheel_selected]
-	var title := selected_item.display_name.left(7)
-	var detail := "%d失衡 · %s" % [int(Catalog.throw_imbalance(selected_item.item_id)), Catalog.prop_effect_name(selected_item.item_id)]
-	item_wheel.draw_string(Catalog.ui_font_bold(), c + Vector2(-62, -8), title,
-			HORIZONTAL_ALIGNMENT_CENTER, 124, 20, Color(1, 0.9, 0.5) if _wheel_available else Color(0.65, 0.65, 0.65))
-	item_wheel.draw_string(Catalog.ui_font(), c + Vector2(-70, 18), detail,
-			HORIZONTAL_ALIGNMENT_CENTER, 140, 13, Color.WHITE if _wheel_available else Color(0.6, 0.6, 0.6))
+	var title := selected_item.display_name.left(9)
+	var selected_color := Catalog.prop_effect_color(selected_item.item_id)
+	var detail := "【%s】 · %d失衡" % [Catalog.prop_effect_name(selected_item.item_id), int(Catalog.throw_imbalance(selected_item.item_id))]
+	var info_rect := Rect2(selector + Vector2(-190, -238), Vector2(380, 88))
+	item_wheel.draw_rect(info_rect, Color(0.03, 0.04, 0.065, 0.9), true)
+	item_wheel.draw_rect(info_rect, selected_color, false, 6.0)
+	item_wheel.draw_line(info_rect.position + Vector2(190, 88), selector - Vector2(0, ITEM_NODE_RADIUS + 12.0), selected_color, 7.0)
+	_draw_prop_type_icon(info_rect.position + Vector2(32, 27), Catalog.prop_kind(selected_item.item_id), selected_color, 16.0)
+	item_wheel.draw_string(Catalog.ui_font_bold(), info_rect.position + Vector2(12, 35), title,
+			HORIZONTAL_ALIGNMENT_CENTER, 356, 25, selected_color.lightened(0.35) if _wheel_available else Color(0.65, 0.65, 0.65))
+	item_wheel.draw_string(Catalog.ui_font(), info_rect.position + Vector2(12, 68), detail,
+			HORIZONTAL_ALIGNMENT_CENTER, 356, 17, Color.WHITE if _wheel_available else Color(0.6, 0.6, 0.6))
+
+func _draw_prop_type_icon(center: Vector2, kind: String, color: Color, radius: float) -> void:
+	match kind:
+		Catalog.PROP_BURST:
+			item_wheel.draw_circle(center, radius * 0.28, color)
+			for i in 8:
+				var dir := Vector2.from_angle(TAU * float(i) / 8.0)
+				item_wheel.draw_line(center + dir * radius * 0.42,
+						center + dir * radius, color, maxf(2.0, radius * 0.14), true)
+		Catalog.PROP_WET:
+			var points := PackedVector2Array([
+				center + Vector2(0, -radius),
+				center + Vector2(radius * 0.72, radius * 0.25),
+				center + Vector2(0, radius),
+				center + Vector2(-radius * 0.72, radius * 0.25),
+			])
+			item_wheel.draw_colored_polygon(points, color)
+		Catalog.PROP_SCATTER:
+			item_wheel.draw_circle(center + Vector2(-radius * 0.38, radius * 0.14), radius * 0.46, color)
+			item_wheel.draw_circle(center + Vector2(radius * 0.34, radius * 0.08), radius * 0.52, color)
+			item_wheel.draw_circle(center + Vector2(0, -radius * 0.34), radius * 0.48, color)
+		Catalog.PROP_TASER:
+			var bolt := PackedVector2Array([
+				center + Vector2(radius * 0.15, -radius),
+				center + Vector2(-radius * 0.55, radius * 0.05),
+				center + Vector2(-radius * 0.05, radius * 0.02),
+				center + Vector2(-radius * 0.28, radius),
+				center + Vector2(radius * 0.62, -radius * 0.2),
+				center + Vector2(radius * 0.12, -radius * 0.18),
+			])
+			item_wheel.draw_colored_polygon(bolt, color)
 
 func set_npc_count_display(n: int) -> void:
 	npc_slider.set_value_no_signal(n)

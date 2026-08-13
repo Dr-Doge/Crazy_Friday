@@ -103,8 +103,8 @@ func _physics_process(delta: float) -> void:
 		brace_cd = 0.0
 	_tick_char_skill(delta)
 
-	# 突进/硬直/扎马步期间接管移动:三者互斥,且都不接受方向输入
-	if dash_time > 0.0 or dash_windup > 0.0 or stun_time > 0.0 or stance_time > 0.0:
+	# 突进/硬直/扎马步/电击期间接管移动，均不接受方向输入。
+	if dash_time > 0.0 or dash_windup > 0.0 or stun_time > 0.0 or stance_time > 0.0 or taser_time > 0.0:
 		_drive_char_state(delta)
 		_update_interactions()
 		return
@@ -186,6 +186,16 @@ func _tick_char_skill(delta: float) -> void:
 
 ## 技能占用期间的移动:三种状态都不接受方向输入
 func _drive_char_state(delta: float) -> void:
+	if taser_time > 0.0:
+		hand_pose = "stunned"
+		_cancel_channel()
+		if attached and is_instance_valid(cart):
+			cart.linear_velocity *= 0.55
+			cart.angular_velocity *= 0.4
+			_hold_cart_handle()
+		else:
+			apply_motion(delta, Vector3.ZERO, 0.0)
+		return
 	if stance_time > 0.0:
 		hand_pose = "brace"
 		if attached and is_instance_valid(cart):
@@ -234,6 +244,18 @@ func speed_factor() -> float:
 			return 0.5
 	return 1.0
 
+## 随从以玩家当前的移动档位为基准：抱大件、冲刺、推车速度都会同步影响。
+func buddy_move_speed() -> float:
+	var speed := WALK_SPEED * speed_factor()
+	if is_running():
+		speed *= SPRINT_MULT
+	if attached and is_instance_valid(cart):
+		var cart_speed := Vector2(cart.linear_velocity.x, cart.linear_velocity.z).length()
+		speed = maxf(speed, cart_speed)
+	if braced:
+		speed *= 0.45
+	return speed
+
 # ---------- 推车 ----------
 
 ## 汽车式驾驶:W沿车头前进,A/D转向,S刹车/倒车
@@ -248,7 +270,7 @@ func _drive_cart(delta: float, input: Vector2, sprint: bool) -> void:
 	cart.sprint_level = 1.0 if cart.sprinting else move_toward(cart.sprint_level, 0.0, delta * 3.0)
 	# 赵冬梅「压弯」:侧向抓地×1.2(更不漂),每帧设置以便松手/换人后自动复位
 	var carve := CharSkills.has_carve(self)
-	cart.grip_mult = CharSkills.ZHAO_GRIP_MULT if carve else 1.0
+	cart.grip_mult = (CharSkills.ZHAO_GRIP_MULT if carve else 1.0) * traction_factor()
 	var lf := cart.load_factor()   # 满载→推力体感下降、转向变笨
 	var fwd := -cart.global_transform.basis.z
 	fwd.y = 0.0
@@ -319,7 +341,10 @@ func _unhandled_input(event: InputEvent) -> void:
 ## 出手方向:投掷读取屏幕中心准星射线；肘击只使用其中的水平分量。
 func _aim_dir() -> Vector3:
 	if main != null:
-		return main.cam_rig.aim_direction()
+		var exclusions: Array[RID] = [get_rid()]
+		if is_instance_valid(cart):
+			exclusions.append(cart.get_rid())
+		return main.cam_rig.aim_direction_from(global_position + Vector3.UP * 1.55, exclusions)
 	return Vector3.ZERO
 
 ## 肘击统一入口(本地/联机远程共用):结算体力,不够抡不动
@@ -327,7 +352,7 @@ func do_elbow(dir: Vector3) -> void:
 	if downed or finished:
 		return
 	# 突进/蓄力/硬直/扎马步期间抡不动(技能占用双手)
-	if dash_windup > 0.0 or dash_time > 0.0 or stun_time > 0.0 or stance_time > 0.0:
+	if dash_windup > 0.0 or dash_time > 0.0 or stun_time > 0.0 or stance_time > 0.0 or taser_time > 0.0:
 		return
 	if stamina < ELBOW_STAMINA:
 		Main.float_text(self, global_position + Vector3.UP * 2.2, "胳膊抡不动了...(体力不足)", Color(0.8, 0.8, 0.8))

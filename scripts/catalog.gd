@@ -2,7 +2,7 @@ class_name Catalog
 ## 商品目录与全局常量:分类、分区、计分、价格与黑五折扣、物理层位
 
 # 游戏版本号:改版时同步更新 export_presets.cfg 里的导出文件名
-const GAME_VERSION := "v0.16"
+const GAME_VERSION := "v0.17"
 
 # 商品分类(计分见策划案第十节)
 const CAT_NEED := "need"      # 必需品 15分,库存<需求,必然争抢
@@ -95,16 +95,54 @@ const THROW_IMBALANCE := {
 	"tv": 55.0, "treadmill": 65.0, "sale_box": 25.0,
 }
 
-# 只有符合商品直觉的品类附带落点效果；其余商品保留差异化直击失衡。
+# 投掷效果只保留四个统一类别。同类商品的范围、时长、控制和表现完全一致，
+# 单件商品之间只由 THROW_IMBALANCE 保留直击失衡差异。
+const PROP_BURST := "burst"
+const PROP_WET := "wet"
+const PROP_SCATTER := "scatter"
+const PROP_TASER := "taser"
+
 const THROW_EFFECT := {
-	"detergent": "slip_large", "ice_cream": "slip_long", "kettle": "slip_small",
-	"shampoo": "slip_small", "candy": "sticky", "pizza": "sticky_small",
-	"cola": "burst", "chips": "burst_small", "lego": "burst_small",
-	"hair_dryer": "gust", "drone": "gust", "robot_vac": "trip",
+	# 爆裂推离（7）
+	"thermos": PROP_BURST, "cola": PROP_BURST, "air_fryer": PROP_BURST,
+	"rice_cooker": PROP_BURST, "microwave": PROP_BURST,
+	"king_crab": PROP_BURST, "wagyu": PROP_BURST,
+	# 湿滑地面（7）
+	"ice_cream": PROP_WET, "detergent": PROP_WET, "shampoo": PROP_WET,
+	"kettle": PROP_WET, "salmon": PROP_WET, "dumplings": PROP_WET,
+	"pizza": PROP_WET,
+	# 散落遮挡（7）
+	"tissue": PROP_SCATTER, "rice_bag": PROP_SCATTER, "chips": PROP_SCATTER,
+	"lego": PROP_SCATTER, "sale_box": PROP_SCATTER, "candy": PROP_SCATTER,
+	"teddy": PROP_SCATTER,
+	# 电击定身（6）
+	"robot_vac": PROP_TASER, "game_console": PROP_TASER,
+	"hair_dryer": PROP_TASER, "drone": PROP_TASER, "tv": PROP_TASER,
+	"treadmill": PROP_TASER,
 }
 
+const BURST_RADIUS := 3.2
+const BURST_ACTOR_PUSH := 7.5
+const BURST_CART_PUSH := 7.2
+const BURST_CART_LIFT := 11.5
+const BURST_CART_TORQUE := 5.4
+const WET_RADIUS := 2.8
+const WET_LIFE := 8.0
+const WET_MOVE_FACTOR := 0.65
+const WET_TRACTION_FACTOR := 0.55
+const SCATTER_RADIUS := 3.5
+const SCATTER_LIFE := 4.0
+const SCATTER_PERCEPTION_FACTOR := 0.35
+const TASER_TIME := 1.2
+const TASER_IMMUNITY := 4.0
+const THROW_DIRECT_PUSH := 2.4
+const THROW_WORLD_ARM_TIME := 0.12
+const THROW_WORLD_ARM_DISTANCE := 1.6
+const THROW_CART_DAMAGE_MULTIPLIER := 1.0
+const THROW_ACTOR_DAMAGE_MULTIPLIER := 1.5
+
 static func prop_kind(id: String) -> String:
-	return str(THROW_EFFECT.get(id, "impact"))
+	return str(THROW_EFFECT.get(id, PROP_SCATTER))
 
 static func is_prop(id: String) -> bool:
 	return ITEMS.has(id)
@@ -117,16 +155,27 @@ static func throw_imbalance(id: String) -> float:
 
 static func prop_effect_name(id: String) -> String:
 	match prop_kind(id):
-		"slip_large": return "大范围湿滑"
-		"slip_long": return "持久融化"
-		"slip_small": return "小范围湿滑"
-		"sticky": return "黏地减速"
-		"sticky_small": return "油腻减速"
-		"burst": return "汽水爆发"
-		"burst_small": return "碎片震荡"
-		"gust": return "冲击推离"
-		"trip": return "扫地绊倒"
-	return "直击 %d失衡" % int(throw_imbalance(id))
+		PROP_BURST: return "爆裂推离"
+		PROP_WET: return "湿滑地面"
+		PROP_SCATTER: return "散落遮挡"
+		PROP_TASER: return "电击定身"
+	return "散落遮挡"
+
+static func prop_effect_short(id: String) -> String:
+	match prop_kind(id):
+		PROP_BURST: return "推离"
+		PROP_WET: return "湿滑"
+		PROP_SCATTER: return "遮挡"
+		PROP_TASER: return "定身"
+	return "遮挡"
+
+static func prop_effect_color(id: String) -> Color:
+	match prop_kind(id):
+		PROP_BURST: return Color(1.0, 0.34, 0.08)
+		PROP_WET: return Color(0.28, 0.62, 1.0)
+		PROP_SCATTER: return Color(0.94, 0.84, 0.58)
+		PROP_TASER: return Color(0.35, 0.9, 1.0)
+	return Color.WHITE
 
 # 中文UI字体:Godot默认字体无CJK,回落到系统字体
 static func ui_font() -> SystemFont:
