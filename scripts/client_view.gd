@@ -82,7 +82,26 @@ func _players(k: float, delta: float) -> void:
 			p.taser_immunity_time = a[16]
 			p.obscure_time = a[17]
 			p.obscure_factor = a[18]
+		if a.size() > 19:
+			_apply_cart_attachment(p, bool(a[19]))
 		p.puppet_update(delta)
+
+## 主机权威的上/下车状态必须在客户端显式落地。位置插值只能让角色看起来跟着车走，
+## 不能替代 attached：本机相机、商品轮盘和右键投掷都以此字段切换模式。
+func _apply_cart_attachment(p: Player, attached: bool) -> void:
+	if not is_instance_valid(p.cart):
+		p.attached = false
+		return
+	p.attached = attached
+	if attached:
+		p.cart.attached_agent = p
+		p.collision_layer = 0
+		p.collision_mask = 0
+	else:
+		if p.cart.attached_agent == p:
+			p.cart.attached_agent = null
+		p.collision_layer = Catalog.L_CHAR
+		p.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
 
 ## 购物车:三轴旋转都要插值(会翻车,不能只插y)
 func _carts(k: float) -> void:

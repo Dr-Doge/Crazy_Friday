@@ -6,8 +6,8 @@ class_name Net extends Node
 const PORT := 7788
 const MAX_CLIENTS := 5     # 主机+5客户端=6人
 const SYNC_INTERVAL := 3   # 每3个物理帧同步一次(约20Hz)
-const NET_VERSION := 7     # v7:新增马德胜双随从世界状态包
-                           # v6:购物车全商品轮盘投掷，动作携带选中商品ID与三维准星方向
+const NET_VERSION := 8     # v8:玩家包同步购物车挂接状态，修复客户端驾驶仍卡第一人称
+                           # v7:新增马德胜双随从世界状态包
 
 var main: Main
 var is_host := false
@@ -379,7 +379,8 @@ func _gather_players() -> Dictionary:
 				p.channel_progress, p.body_root.rotation.x,
 				p.locate_cd, p.prop_cd, p.brace_cd,
 				p.char_cd, p.stance_time, p.stun_time,
-				p.taser_time, p.taser_immunity_time, p.obscure_time, p.obscure_factor])
+				p.taser_time, p.taser_immunity_time, p.obscure_time, p.obscure_factor,
+				p.attached])
 		_sync_text("pp%d" % i, "pp", i, p.prompt_text)
 	return {"p": ps}
 

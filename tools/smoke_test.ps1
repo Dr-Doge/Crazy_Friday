@@ -212,7 +212,8 @@ function Invoke-MpCase {
 	Start-Sleep -Seconds 2   # 等主机把房建起来再让客户端连
 	for ($n = 1; $n -le $ClientCount; $n++) {
 		$instances += Start-Instance -Name "mp-client$n" -FrameCount $FrameCount -EnvVars @{
-			WHITEBOX_JOIN = $ip
+			WHITEBOX_JOIN          = $ip
+			WHITEBOX_MP_DRIVE_TEST = '1'
 		}
 		Start-Sleep -Milliseconds 700
 	}
@@ -222,7 +223,12 @@ function Invoke-MpCase {
 	$results = @()
 	foreach ($i in $instances) {
 		$expect = @("联机开局")
-		if ($i.Name -eq 'mp-host') { $expect += "host=true" } else { $expect += "host=false" }
+		if ($i.Name -eq 'mp-host') {
+			$expect += "host=true"
+		}
+		else {
+			$expect += @("host=false", "CLIENT_DRIVE_CAMERA=PASS")
+		}
 		$results += Test-Instance -Instance $i -Expect $expect
 	}
 	# 补充断言:座位号必须两两不同,否则种子世界/计分会串

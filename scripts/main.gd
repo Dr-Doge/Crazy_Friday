@@ -231,6 +231,20 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
 	_set_mouse_captured(true)
 	hud.set_menu_status("")
 	_log_milestone("联机开局 seat=%d/%d host=%s npc=%d" % [local_idx, nplayers, host, npc])
+	if net_client and OS.get_environment("WHITEBOX_MP_DRIVE_TEST") != "":
+		# 联机回归：客户端按F只向主机发动作，必须等权威玩家包把attached同步回来。
+		get_tree().create_timer(0.7).timeout.connect(func() -> void:
+			if is_instance_valid(player):
+				net.send_action("drive"))
+		get_tree().create_timer(1.8).timeout.connect(func() -> void:
+			if not is_instance_valid(player):
+				return
+			_update_camera(0.2)
+			var passed := player.attached and player.cart.attached_agent == player \
+					and not cam_rig.is_first_person() and player.body_root.visible
+			print("[mp] CLIENT_DRIVE_CAMERA=%s seat=%d attached=%s first_person=%s" % [
+					"PASS" if passed else "FAIL", local_idx, str(player.attached),
+					str(cam_rig.is_first_person())]))
 	if host:
 		hud.broadcast("联机对局开始!%d位\"热心顾客\"已入场,黑五愉快,手下无情~" % nplayers)
 
