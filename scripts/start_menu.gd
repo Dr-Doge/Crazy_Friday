@@ -69,15 +69,31 @@ func _ready() -> void:
 	add_child(dim)
 
 	for id in [PAGE_MAIN, PAGE_SOLO, PAGE_MP, PAGE_JOIN, PAGE_ROOM]:
+		# 页面内容超过当前窗口时允许纵向滚动。旧实现直接把 VBox 放进
+		# CenterContainer：当选角页的最小高度略大于 900px 时会从上下两端
+		# 同时溢出，导致标题在标准 1600×900 下被裁掉。
+		var scroll := ScrollContainer.new()
+		scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+		scroll.draw_focus_border = false
+		scroll.visible = false
+		add_child(scroll)
+		var margin := MarginContainer.new()
+		margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		margin.add_theme_constant_override("margin_top", 28)
+		margin.add_theme_constant_override("margin_bottom", 28)
+		scroll.add_child(margin)
 		var center := CenterContainer.new()
-		center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		center.visible = false
-		add_child(center)
+		center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		margin.add_child(center)
 		var page := VBoxContainer.new()
 		page.alignment = BoxContainer.ALIGNMENT_CENTER
 		page.add_theme_constant_override("separation", 12)
 		center.add_child(page)
-		_pages[id] = center
+		_pages[id] = scroll
 		match id:
 			PAGE_MAIN: _build_main(page)
 			PAGE_SOLO: _build_solo(page)
@@ -391,7 +407,7 @@ func _char_detail_text(cid: String, compact: bool) -> String:
 	var out := "[color=#%s][b]%s「%s」[/b][/color]  [color=#aaaaaa]%s · %s[/color]\n" % [
 			acc, d["name"], d["nick"], d["job"], d["role"]]
 	out += "[color=#dddd88]\"%s\"[/color]\n\n" % d["quote"]
-	out += "[color=#ffd24d][b]Ctrl 主技能 · %s[/b][/color]  [color=#aaaaaa](冷却 %d 秒)[/color]\n" % [
+	out += "[color=#ffd24d][b]空格 主技能 · %s[/b][/color]  [color=#aaaaaa](冷却 %d 秒)[/color]\n" % [
 			d["skill"], int(d["skill_cd"])]
 	out += "[color=#ffffff]%s[/color]\n" % d["skill_line"]
 	if not compact:

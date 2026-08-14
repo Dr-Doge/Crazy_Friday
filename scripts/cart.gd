@@ -8,6 +8,14 @@ const ITEM_GRAVITY_FULL := 6.0      # 车内商品大重力(失衡0时)
 const ITEM_GRAVITY_LOOSE := 0.55    # 失衡拉满时车内商品几乎没抓地,一撞就飞
 const LATERAL_GRIP := 6.0           # 驾驶时的侧向抓地,产生"车"的循迹感(越大越不漂)
 
+## 撞击结算后给双方的分离冲量(每千克)。追尾与车头对撞时两车会正面顶住,
+## 没有这一下就会"焊在一起"谁也推不动。
+const SEPARATE_IMPULSE := 2.2
+const CONTACT_UNLOCK_TIME := 0.22  # 两车持续接触多久后主动解除互锁
+const CONTACT_UNLOCK_IMPULSE := 0.9
+const ACTOR_RESCUE_INTERVAL := 0.08
+const CART_CCD_RANGE := 4.5
+
 ## 车内商品相对车斗的最大速度(米/秒)。
 ##
 ## 这是防穿模的**治本一环**:实测显示扁平商品被挤压时能被弹射到 21 m/s,
@@ -41,11 +49,18 @@ var grip_mult := 1.0
 ## 车头撞击倍率与其剩余时长(赵冬梅「贴地冲撞」推车突进时 ×1.5)
 var hit_mult := 1.0
 var hit_mult_time := 0.0
+## 限速上限的临时加成(赵冬梅「贴地冲撞」推车突进用)。
+## 常规限速 cap=6.0 会把突进速度在几帧内钳回去,必须在窗口内抬高上限。
+var speed_cap_bonus := 0.0
+var _speed_cap_timer := 0.0
 var _recent_hits := {}
+var _cart_contact_time := {}
 var _mass_timer := 0.0
 var _alert_timer := 0.0
 var _grav_timer := 0.0
 var _grav_items: Array[Item] = []
+var _actor_rescue_timer := 0.0
+var _ccd_scan_timer := 0.0
 
 static func create(color: Color, title: String) -> Cart:
 	var c := Cart.new()
@@ -57,6 +72,8 @@ static func create(color: Color, title: String) -> Cart:
 	c.angular_damp = 6.5
 	c.contact_monitor = true
 	c.max_contacts_reported = 8
+	# 单车常开CCD会扰动车内商品；仅在邻车接近或技能高速窗口动态开启。
+	c.continuous_cd = false
 	c.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
 	c.center_of_mass = Vector3(0, 0.18, 0)
 	var pm := PhysicsMaterial.new()
@@ -178,7 +195,7 @@ static func create(color: Color, title: String) -> Cart:
 	area.monitoring = true
 	area.monitorable = false
 	area.collision_layer = 0
-	area.collision_mask = Catalog.L_ITEM
+	area.collision_mask = Catalog.L_ITEM | Catalog.L_CHAR
 	var acs := CollisionShape3D.new()
 	var abs_shape := BoxShape3D.new()
 	abs_shape.size = Vector3(1.0, 1.0, 1.45)
@@ -187,6 +204,8 @@ static func create(color: Color, title: String) -> Cart:
 	area.add_child(acs)
 	c.add_child(area)
 	c.basket_area = area
+	area.body_entered.connect(c._on_basket_body_entered)
+	area.body_exited.connect(c._on_basket_body_exited)
 
 	# 红色高亮壳:玩家清单商品在这辆车里时点亮(反面剔除→外描边观感)
 	var hl := MeshInstance3D.new()
@@ -235,6 +254,14 @@ func items_in_basket() -> Array[Item]:
 			out.append(b)
 	return out
 
+func _on_basket_body_entered(body: Node3D) -> void:
+	if body is Item and body.state == Item.ItemState.FREE:
+		body.set_cart_label_hidden(self, true)
+
+func _on_basket_body_exited(body: Node3D) -> void:
+	if body is Item:
+		body.set_cart_label_hidden(self, false)
+
 func _physics_process(delta: float) -> void:
 	_mass_timer -= delta
 	if _mass_timer <= 0.0:
@@ -256,6 +283,10 @@ func _physics_process(delta: float) -> void:
 		for it in _grav_items:
 			if is_instance_valid(it) and not current.has(it):
 				it.gravity_scale = 1.0
+				it.set_cart_label_hidden(self, false)
+		for it in current:
+			if is_instance_valid(it):
+				it.set_cart_label_hidden(self, true)
 		_grav_items = current
 	var imb := attached_agent.imbalance if attached_agent != null else 0.0
 	var gscale := lerpf(ITEM_GRAVITY_FULL, ITEM_GRAVITY_LOOSE, clampf(imb / 100.0, 0.0, 1.0))
@@ -278,6 +309,20 @@ func _physics_process(delta: float) -> void:
 		hit_mult_time -= delta
 		if hit_mult_time <= 0.0:
 			hit_mult = 1.0
+	if _speed_cap_timer > 0.0:
+		_speed_cap_timer -= delta
+		if _speed_cap_timer <= 0.0:
+			speed_cap_bonus = 0.0
+	_ccd_scan_timer -= delta
+	if _ccd_scan_timer <= 0.0:
+		_ccd_scan_timer = 0.1
+		_refresh_cart_ccd()
+	# 持续接触复查:body_entered 只在接触起始帧触发,追尾/对撞贴住时会漏判
+	_sweep_contacts(delta)
+	_actor_rescue_timer -= delta
+	if _actor_rescue_timer <= 0.0:
+		_actor_rescue_timer = ACTOR_RESCUE_INTERVAL
+		_rescue_trapped_actors()
 	if attached_agent != null:
 		var side := global_transform.basis.x
 		side.y = 0.0
@@ -290,8 +335,10 @@ func _physics_process(delta: float) -> void:
 		grip_mult = 1.0
 
 	# 限速:软限制,避免硬钳制造成的高速抖动
+	# speed_cap_bonus:突进窗口内临时放开(见 lift_speed_cap)
 	var hv := Vector3(linear_velocity.x, 0, linear_velocity.z)
-	var cap := 6.0 + 2.8 * sprint_level
+	var movement_mult := attached_agent.movement_factor() if attached_agent != null else 1.0
+	var cap := (6.0 + 2.8 * sprint_level + speed_cap_bonus) * movement_mult
 	if hv.length() > cap:
 		hv = hv.lerp(hv.normalized() * cap, 0.35)
 		linear_velocity.x = hv.x
@@ -307,6 +354,12 @@ func _physics_process(delta: float) -> void:
 ## 载重越大越难加速/转向的系数(1=空车)
 func load_factor() -> float:
 	return BASE_MASS / mass
+
+## 临时抬高限速上限(赵冬梅「贴地冲撞」推车突进)。
+## 不这么做的话,突进给的车速会被 _physics_process 里的软限速在几帧内清回 6m/s。
+func lift_speed_cap(bonus: float, dur: float) -> void:
+	speed_cap_bonus = maxf(speed_cap_bonus, bonus)
+	_speed_cap_timer = maxf(_speed_cap_timer, dur)
 
 ## 从车斗抽走最上面一件(偷窃/扫码共用)
 func take_top_item() -> Item:
@@ -369,25 +422,106 @@ func spill(fraction: float) -> void:
 			it.apply_central_impulse(Vector3(randf_range(-2.5, 2.5), randf_range(3.0, 5.0), randf_range(-2.5, 2.5)) * it.mass)
 	apply_torque_impulse(Vector3(randf_range(-14, 14), randf_range(-8, 8), randf_range(-14, 14)))
 
-## 撞击结算(策划案第六节表格)
+## 撞击结算入口(body_entered 信号)。
+##
+## 只靠这个信号是不够的:它**只在接触开始的那一帧**触发。追尾与车头对撞时
+## 两车常常贴住不再分开,于是不会有新的 entered 事件,表现就是"撞上了没判定、
+## 人还被卡住"。因此 _physics_process 里另有一路每帧复查(见 _sweep_contacts)。
 func _on_body_entered(body: Node) -> void:
-	if body is Item:
+	_try_hit(body)
+
+## 每帧复查持续接触:补上 body_entered 漏掉的"贴住不分开"情形,并给卡住的车解套
+func _sweep_contacts(delta: float) -> void:
+	var hv := Vector3(linear_velocity.x, 0, linear_velocity.z)
+	var touching := {}
+	for body in get_colliding_bodies():
+		if body is Cart:
+			touching[body.get_instance_id()] = true
+			_resolve_cart_contact(body, delta)
+		if (body is Cart or body is Actor) and hv.length() >= MIN_HIT_SPEED:
+			_try_hit(body)
+	for key in _cart_contact_time.keys():
+		if not touching.has(key):
+			_cart_contact_time.erase(key)
+
+## 持续接触不依赖撞击速度：先消掉彼此相向的速度，再周期性施加分离冲量。
+## 这样两名驾驶者同时顶住油门时也不会把两辆车“焊”成一个刚体团。
+func _resolve_cart_contact(other: Cart, delta: float) -> void:
+	if not is_instance_valid(other) or get_instance_id() > other.get_instance_id():
 		return
+	var away := global_position - other.global_position
+	away.y = 0.0
+	if away.length() < 0.02:
+		away = global_transform.basis.x
+		away.y = 0.0
+	if away.length() < 0.02:
+		away = Vector3.RIGHT
+	away = away.normalized()
+	# 清除继续压向对方的速度分量，保留侧向滑开空间。
+	var mine_inward := linear_velocity.dot(away)
+	if mine_inward < 0.0:
+		linear_velocity -= away * mine_inward
+	var other_inward := other.linear_velocity.dot(-away)
+	if other_inward < 0.0:
+		other.linear_velocity += away * other_inward
+	var key := other.get_instance_id()
+	var held := float(_cart_contact_time.get(key, 0.0)) + delta
+	_cart_contact_time[key] = held
+	if held < CONTACT_UNLOCK_TIME:
+		return
+	_cart_contact_time[key] = 0.0
+	# 先直接建立一个很小的分离速度，避免下一物理步的驾驶力再次把冲量抵消。
+	linear_velocity += away * 0.7
+	other.linear_velocity -= away * 0.7
+	apply_central_impulse(away * CONTACT_UNLOCK_IMPULSE * mass)
+	other.apply_central_impulse(-away * CONTACT_UNLOCK_IMPULSE * other.mass)
+	angular_velocity *= 0.72
+	other.angular_velocity *= 0.72
+
+func _rescue_trapped_actors() -> void:
+	if basket_area == null:
+		return
+	for body in basket_area.get_overlapping_bodies():
+		if not (body is Actor) or body == attached_agent:
+			continue
+		var local := to_local(body.global_position)
+		if local.y >= FLOOR_TOP - 0.18 and absf(local.x) < INNER_HALF_X + 0.15 \
+				and absf(local.z) < INNER_HALF_Z + 0.15:
+			body.escape_from_cart(self)
+
+## 两车进入可能高速相遇的范围后提前打开CCD；脱离后恢复常规求解，保护车内货物。
+func _refresh_cart_ccd() -> void:
+	var near_cart := false
+	for node in get_tree().get_nodes_in_group("carts"):
+		if node != self and is_instance_valid(node) \
+				and global_position.distance_squared_to(node.global_position) <= CART_CCD_RANGE * CART_CCD_RANGE:
+			near_cart = true
+			break
+	continuous_cd = near_cart or _speed_cap_timer > 0.0
+
+## 单次撞击结算(策划案第六节表格)。返回是否真的结算了一次撞击。
+func _try_hit(body: Node) -> bool:
+	if body is Item or not is_instance_valid(body):
+		return false
 	var now := Time.get_ticks_msec() * 0.001
 	var key := body.get_instance_id()
 	if now - float(_recent_hits.get(key, -10.0)) < 0.8:
-		return
-	_recent_hits[key] = now
+		return false
 
 	var myv := linear_velocity
 	myv.y = 0.0
 	var speed := myv.length()
 	if speed < MIN_HIT_SPEED:
-		return
+		return false
 	var toward: Vector3 = body.global_position - global_position
 	toward.y = 0.0
 	if toward.length() < 0.01 or myv.normalized().dot(toward.normalized()) < 0.3:
-		return
+		return false
+
+	# 去重登记必须放在**所有校验通过之后**:否则一次没打中的轻碰(速度不足/方向
+	# 不对)就会占掉 0.8 秒的去重窗口,把紧接着的真正高速撞击一并吃掉——
+	# 这是"撞到了却没判定"的另一半原因。
+	_recent_hits[key] = now
 
 	if body is Cart:
 		var victim: Actor = body.attached_agent
@@ -396,7 +530,7 @@ func _on_body_entered(body: Node) -> void:
 		# 扎马步(马德胜):受方免疫且反弹失衡给攻方,本次撞击不再走常规结算
 		if victim != null and victim.stance:
 			CharSkills.stance_counter(victim, self)
-			return
+			return true
 		var local: Vector3 = body.to_local(global_position)
 		var amount := 0.0
 		var kind := ""
@@ -423,6 +557,8 @@ func _on_body_entered(body: Node) -> void:
 			victim.add_imbalance(amount, self)
 			Main.float_text(victim, victim.global_position + Vector3.UP * 2.2, "%s %s+%d" % [Main.bam(), kind, int(amount)], Color(1, 0.5, 0.2), 80)
 			victim.on_cart_hit(self)
+		# 撞完把两车弹开:追尾/对撞时车头车尾会互相顶住,不给分离冲量就会"焊在一起"
+		_separate_from(body)
 		# 涉及玩家的撞击→震对应玩家所在机器的相机(用局部引用,攻方可能已被击倒分离)
 		if Main.instance != null:
 			var sv := clampf(speed / 10.0, 0.3, 0.8)
@@ -430,5 +566,22 @@ func _on_body_entered(body: Node) -> void:
 				Main.instance.shake_for(atk, sv)
 			if victim is Player:
 				Main.instance.shake_for(victim, sv)
+		return true
 	elif body is Actor:
 		body.hit_by_cart(self)
+		return true
+	return false
+
+## 撞击后的分离冲量:治"两车顶住互相卡死推不动"
+func _separate_from(other: Node3D) -> void:
+	var away: Vector3 = global_position - other.global_position
+	away.y = 0.0
+	if away.length() < 0.01:
+		away = global_transform.basis.z
+		away.y = 0.0
+	if away.length() < 0.01:
+		return
+	away = away.normalized()
+	apply_central_impulse(away * SEPARATE_IMPULSE * mass)
+	if other is Cart:
+		other.apply_central_impulse(-away * SEPARATE_IMPULSE * other.mass)

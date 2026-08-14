@@ -1,19 +1,15 @@
 class_name MarketBuilder
 ##卖场生成器:地板、外墙、4分区货架、中央爆款专区、收银区标识、寻路网格。
 ##
-## 【白盒资产策略】所有几何体一律用 **CSG 节点**(CSGBox3D)搭建,而非
-## MeshInstance3D + StaticBody3D + CollisionShape3D 三件套。这样做的目的是
-## 后续替换正式美术时,可以直接在编辑器里把某个 CSGBox3D 换成导入的模型节点,
-## 位置/尺寸/父子关系原样保留,无需回来改代码。
-##
-## CSGBox3D 的 use_collision 会自动生成与外形一致的碰撞体,因此换模型时
-## 只要把碰撞交给新模型(或保留一个不可见的 CSGBox3D 当碰撞代理)即可。
+## 【白盒资产策略】每个实心构件由 StaticBody3D + BoxShape3D 凸体碰撞代理
+## 承载，CSGBox3D 只负责白盒视觉。运行时生成的节点不能在编辑器里永久替换；
+## 正式美术应在本生成器里按语义节点名实例化 PackedScene，并保留现有碰撞代理。
 ##
 ## 所有坐标取自 MapLayout,本文件不出现魔法数字。
 ##
 ## 生成的场景树(命名规整,便于按名字批量替换):
 ##   Market
-##   ├── Floor                CSGBox3D
+##   ├── Floor/{Collider,Visual}
 ##   ├── Walls/Wall_*外墙与防坠围栏
 ##   ├── Decals/Decal_*       分区地贴、出口引导(无碰撞)
 ##   ├── Signs/Sign_*         灯牌底板 + Label3D
@@ -41,7 +37,7 @@ static func build(root: Node3D) -> Dictionary:
 	_build_premium(market, solid_rects, slots)
 	var tv_slots := _build_large_pads(market, solid_rects)
 
-	# 地滑区由 main 在运行时随机生成(开局3块 + 保洁定时拖地 + 玩家水瓶)
+	# 地滑区由 main 在运行时随机生成(开局3块 + 保洁定时拖地 + 洗衣液道具)
 
 	return {
 		"slots": slots,
@@ -275,6 +271,17 @@ static func _decal(parent: Node3D, name: String, pos: Vector3, size: Vector3, co
 	parent.add_child(b)
 	return b
 
+## 只登记头顶悬浮分区牌；货架、墙体、地台和其他场景实体永不进入此组。
+static func _register_camera_lod(node: Node3D, size: Vector3,
+		hide_distance := -1.0, show_distance := -1.0) -> void:
+	node.add_to_group("third_person_sign_lod")
+	node.set_meta("camera_lod_kind", "overhead_sign")
+	node.set_meta("camera_lod_half_extents", size * 0.5)
+	if hide_distance >= 0.0:
+		node.set_meta("camera_lod_hide_distance", hide_distance)
+	if show_distance >= 0.0:
+		node.set_meta("camera_lod_show_distance", show_distance)
+
 static func _wall(parent: Node3D, solids: Array[Rect2], name: String, pos: Vector3, size: Vector3) -> void:
 	if size.x <= 0.01 or size.z <= 0.01:
 		return
@@ -357,6 +364,8 @@ static func _sign(parent: Node3D, name: String, pos: Vector3, text: String, colo
 	plate.use_collision = false
 	plate.position = pos
 	g.add_child(plate)
+	# 大型分区牌开启更早的近镜头隐藏，避免无深度测试的文字横在镜头前。
+	_register_camera_lod(plate, plate.size, 2.0, 2.65)
 
 	var lb := Label3D.new()
 	lb.name = "Text"
@@ -371,6 +380,7 @@ static func _sign(parent: Node3D, name: String, pos: Vector3, text: String, colo
 	lb.outline_modulate = color.darkened(0.55)
 	lb.position = pos
 	g.add_child(lb)
+	_register_camera_lod(lb, Vector3(7.5, 1.7, 0.3), 2.0, 2.65)
 
 static func _mat(color: Color, transparent := false) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()

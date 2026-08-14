@@ -6,8 +6,8 @@ class_name Net extends Node
 const PORT := 7788
 const MAX_CLIENTS := 5     # 主机+5客户端=6人
 const SYNC_INTERVAL := 3   # 每3个物理帧同步一次(约20Hz)
-const NET_VERSION := 4     # 联机协议版本:两端不一致直接拒绝,防止种子世界不同步
-                           # v4:大厅与开局包新增"所选角色";红壳数据带商品名
+const NET_VERSION := 8     # v8:玩家包同步购物车挂接状态，修复客户端驾驶仍卡第一人称
+                           # v7:新增马德胜双随从世界状态包
 
 var main: Main
 var is_host := false
@@ -42,12 +42,17 @@ static func local_ips() -> String:
 			ips.append(a)
 	return ", ".join(ips) if not ips.is_empty() else "127.0.0.1"
 
+## 实际监听/连接端口。WHITEBOX_PORT 是自动化多实例钩子，建房端与加入端
+## 必须读取同一个值；旧实现只有 create_server 使用它，客户端仍固定连 7788。
+static func configured_port() -> int:
+	var raw := OS.get_environment("WHITEBOX_PORT")
+	if raw == "":
+		return PORT
+	return clampi(int(raw), 1, 65535)
+
 func host_room() -> String:
 	var p := ENetMultiplayerPeer.new()
-	var port := PORT
-	var env_port := OS.get_environment("WHITEBOX_PORT")
-	if env_port != "":
-		port = int(env_port)   # 单机多实例测试用
+	var port := configured_port()
 	var err := p.create_server(port, MAX_CLIENTS)
 	if err != OK:
 		print("[Net] 创建服务器失败 err=", err)
@@ -74,7 +79,8 @@ func join_room(ip: String) -> bool:
 	peers = []
 	seat_peers = []
 	var p := ENetMultiplayerPeer.new()
-	if p.create_client(ip.strip_edges(), PORT) != OK:
+	var port := configured_port()
+	if p.create_client(ip.strip_edges(), port) != OK:
 		return false
 	multiplayer.multiplayer_peer = p
 	if not multiplayer.connected_to_server.is_connected(_on_connected_ok):
@@ -83,7 +89,7 @@ func join_room(ip: String) -> bool:
 		multiplayer.connection_failed.connect(_on_connect_fail)
 	if not multiplayer.server_disconnected.is_connected(_on_server_lost):
 		multiplayer.server_disconnected.connect(_on_server_lost)
-	print("[Net] 开始连接 ", ip.strip_edges(), ":", PORT)
+	print("[Net] 开始连接 ", ip.strip_edges(), ":", port)
 	return true
 
 ## 客户端:主机没了→回开始界面
@@ -371,8 +377,10 @@ func _gather_players() -> Dictionary:
 		ps.append([p.global_position, p.body_root.rotation.y, p.hand_pose,
 				p.imbalance, p.stamina, p.downed, p.braced,
 				p.channel_progress, p.body_root.rotation.x,
-				p.locate_cd, p.bottle_cd, p.brace_cd,
-				p.char_cd, p.stance_time, p.stun_time])
+				p.locate_cd, p.prop_cd, p.brace_cd,
+				p.char_cd, p.stance_time, p.stun_time,
+				p.taser_time, p.taser_immunity_time, p.obscure_time, p.obscure_factor,
+				p.attached])
 		_sync_text("pp%d" % i, "pp", i, p.prompt_text)
 	return {"p": ps}
 
@@ -417,7 +425,14 @@ func _gather_world() -> Dictionary:
 		for j in 14:
 			its.append(act[(_item_cursor + j) % act.size()])
 		_item_cursor = (_item_cursor + 14) % act.size()
-	return {"g": gs, "i": its}
+	var bs: Array = []
+	for buddy in main.warehouse_buddies:
+		if is_instance_valid(buddy):
+			bs.append([buddy.global_position, buddy.body_root.rotation.y,
+					buddy.body_root.rotation.x, buddy.imbalance, buddy.downed, buddy.active])
+		else:
+			bs.append(null)
+	return {"g": gs, "i": its, "b": bs}
 
 @rpc("authority", "call_remote", "unreliable")
 func sync_state(d: Dictionary) -> void:
@@ -447,18 +462,26 @@ func ev_hud(rows: Array, score: int, hot_carts: Array) -> void:
 func ev_locate(idxs: Array) -> void:
 	main.client_locate(idxs)
 
-## 「上链接」的追踪标记:kind="track"(你被抢了,能看见他) / "exposed"(你抢了人,位置暴露)
 @rpc("authority", "call_remote", "reliable")
-func ev_mark(kind: String, seat: int, dur: float) -> void:
-	main.client_mark(kind, seat, dur)
+func ev_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
+		immune_seat: int, title: String, color: Color, traction := 1.0) -> void:
+	main.client_slow_zone(pos, radius, life, factor, immune_seat, title, color, traction)
+
+@rpc("authority", "call_remote", "reliable")
+func ev_obscure_zone(pos: Vector3, radius: float, life: float, factor: float) -> void:
+	main.client_obscure_zone(pos, radius, life, factor)
+
+@rpc("authority", "call_remote", "reliable")
+func ev_li_exposed(li_seat: int, duration: float) -> void:
+	main._show_li_exposure(li_seat, duration)
 
 @rpc("authority", "call_remote", "reliable")
 func ev_spawn_items(ids: Array, poss: Array) -> void:
 	main.client_spawn_items(ids, poss)
 
 @rpc("authority", "call_remote", "reliable")
-func ev_slippery(pos: Vector3, life: float) -> void:
-	SlipperyZone.create(main, pos, Vector3(3.5, 2, 3.5), life)
+func ev_slippery(pos: Vector3, life: float, size := Vector2(3.5, 3.5)) -> void:
+	SlipperyZone.create(main, pos, Vector3(size.x, 2, size.y), life)
 
 @rpc("authority", "call_remote", "reliable")
 func ev_item_gone(idx: int) -> void:

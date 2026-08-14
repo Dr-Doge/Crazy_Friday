@@ -26,7 +26,7 @@ func apply_state(d: Dictionary) -> void:
 	for k in d:
 		state[k] = d[k]
 
-## hot_carts: [[车下标, 商品名或""], ...] —— 名字非空时(李洋「爆款嗅觉」)车顶显示品名
+## hot_carts: [[车下标, 提示或""], ...] —— 李洋只收到链接图标，不泄露商品名
 func set_hud(new_rows: Array, new_score: int, hot_carts: Array) -> void:
 	rows = new_rows
 	score = new_score
@@ -48,6 +48,7 @@ func interpolate(delta: float) -> void:
 	_players(k, delta)
 	_carts(k)
 	_grannies(k, delta)
+	_buddies(k, delta)
 	_items(k)
 	_gates()
 	_clock()
@@ -68,7 +69,7 @@ func _players(k: float, delta: float) -> void:
 		p.channel_progress = a[7]
 		p.body_root.rotation.x = lerpf(p.body_root.rotation.x, a[8], k)
 		p.locate_cd = a[9]
-		p.bottle_cd = a[10]
+		p.prop_cd = a[10]
 		p.brace_cd = a[11]
 		# 角色技能状态(HUD 显示用;客户端不做判定)
 		if a.size() > 14:
@@ -76,7 +77,31 @@ func _players(k: float, delta: float) -> void:
 			p.stance_time = a[13]
 			p.stance = a[13] > 0.0
 			p.stun_time = a[14]
+		if a.size() > 18:
+			p.taser_time = a[15]
+			p.taser_immunity_time = a[16]
+			p.obscure_time = a[17]
+			p.obscure_factor = a[18]
+		if a.size() > 19:
+			_apply_cart_attachment(p, bool(a[19]))
 		p.puppet_update(delta)
+
+## 主机权威的上/下车状态必须在客户端显式落地。位置插值只能让角色看起来跟着车走，
+## 不能替代 attached：本机相机、商品轮盘和右键投掷都以此字段切换模式。
+func _apply_cart_attachment(p: Player, attached: bool) -> void:
+	if not is_instance_valid(p.cart):
+		p.attached = false
+		return
+	p.attached = attached
+	if attached:
+		p.cart.attached_agent = p
+		p.collision_layer = 0
+		p.collision_mask = 0
+	else:
+		if p.cart.attached_agent == p:
+			p.cart.attached_agent = null
+		p.collision_layer = Catalog.L_CHAR
+		p.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
 
 ## 购物车:三轴旋转都要插值(会翻车,不能只插y)
 func _carts(k: float) -> void:
@@ -107,6 +132,22 @@ func _grannies(k: float, delta: float) -> void:
 		g.hand_pose = gs[i][2]
 		g.body_root.rotation.x = lerpf(g.body_root.rotation.x, gs[i][3], k)
 		g.puppet_update(delta)
+
+func _buddies(k: float, delta: float) -> void:
+	var bs: Array = state.get("b", [])
+	for i in mini(bs.size(), _m.warehouse_buddies.size()):
+		if bs[i] == null:
+			continue
+		var buddy: WarehouseBuddy = _m.warehouse_buddies[i]
+		if not is_instance_valid(buddy):
+			continue
+		buddy.global_position = buddy.global_position.lerp(bs[i][0], k)
+		buddy.body_root.rotation.y = lerp_angle(buddy.body_root.rotation.y, bs[i][1], k)
+		buddy.body_root.rotation.x = lerpf(buddy.body_root.rotation.x, bs[i][2], k)
+		buddy.imbalance = bs[i][3]
+		buddy.downed = bs[i][4]
+		buddy.active = bs[i][5]
+		buddy.puppet_update(delta)
 
 ## 商品:四态同步;已扫码的标签本地也要转绿
 func _items(k: float) -> void:

@@ -28,6 +28,7 @@ var state: ItemState = ItemState.FREE
 var box_size := Vector3.ONE
 var label: Label3D
 var ping_shell: MeshInstance3D   # 找货雷达的绿色高亮壳
+var _cart_label_sources := {}    # 正处于哪些车斗感应区；非空时隐藏商品头顶名称
 ## >0 时表示刚被甩出,购物车不要接管它的重力与速度
 var fling_grace := 0.0
 
@@ -70,7 +71,7 @@ static func create(id: String) -> Item:
 	it.add_child(col)
 
 	var lb := Label3D.new()
-	lb.text = data["name"]
+	lb.text = str(data["name"])
 	lb.font = Catalog.ui_font()
 	lb.font_size = 54
 	lb.pixel_size = 0.004
@@ -123,8 +124,29 @@ func _physics_process(delta: float) -> void:
 	if fling_grace > 0.0:
 		fling_grace -= delta
 
+## 车内商品只保留实体外观和轮盘提示，不再用一叠穿透文字遮挡驾驶视野。
+## 用来源集合处理两辆购物车感应区短暂重叠的情况，任意车斗仍包含它就继续隐藏。
+func set_cart_label_hidden(source: Object, hidden: bool) -> void:
+	if source == null:
+		return
+	var key := source.get_instance_id()
+	if hidden:
+		_cart_label_sources[key] = true
+	else:
+		_cart_label_sources.erase(key)
+	_refresh_label_visibility()
+
+func clear_cart_label_hides() -> void:
+	_cart_label_sources.clear()
+	_refresh_label_visibility()
+
+func _refresh_label_visibility() -> void:
+	if label != null:
+		label.visible = _cart_label_sources.is_empty()
+
 ## 冻结摆上货架
 func set_shelved(pos: Vector3) -> void:
+	clear_cart_label_hides()
 	state = ItemState.SHELVED
 	freeze = true
 	gravity_scale = 1.0
@@ -137,6 +159,7 @@ func set_shelved(pos: Vector3) -> void:
 
 ## 被拿到手上:冻结、关碰撞,由持有者每帧摆位
 func set_held() -> void:
+	clear_cart_label_hides()
 	state = ItemState.HELD
 	freeze = true
 	gravity_scale = 1.0
@@ -145,6 +168,7 @@ func set_held() -> void:
 
 ## 释放为自由物理体(落地/入车/被打飞)
 func set_free_at(pos: Vector3, impulse := Vector3.ZERO) -> void:
+	clear_cart_label_hides()
 	state = ItemState.FREE
 	global_position = pos
 	gravity_scale = 1.0
@@ -159,6 +183,7 @@ func set_free_at(pos: Vector3, impulse := Vector3.ZERO) -> void:
 
 ## 已扫码:冻结在收银带上,不可偷不可撞散
 func set_scanned_at(pos: Vector3) -> void:
+	clear_cart_label_hides()
 	state = ItemState.SCANNED
 	freeze = true
 	collision_layer = 0

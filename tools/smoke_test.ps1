@@ -14,7 +14,7 @@
 
 .PARAMETER Mode
 	single    单机对局(默认)
-	tutorial  教学关九步
+	tutorial  串联式五房间教学关
 	mp        局域网联机:1 主机 + -Clients 个客户端
 	all       依次跑上面三种
 
@@ -30,7 +30,7 @@
 #>
 [CmdletBinding()]
 param(
-	[ValidateSet('single', 'tutorial', 'mp', 'phys', 'char', 'all')]
+	[ValidateSet('single', 'tutorial', 'mp', 'phys', 'char', 'npc', 'prop', 'all')]
 	[string]$Mode = 'single',
 
 	[ValidateRange(1, 5)]
@@ -63,13 +63,35 @@ function Find-Godot {
 
 	$roots = @($env:USERPROFILE, "$env:USERPROFILE\Downloads", "$env:USERPROFILE\Desktop") |
 		Where-Object { $_ -and (Test-Path $_) }
-	# console 版排前面:GUI 版是 Windows 子系统程序,启动即detach,拿不到输出与退出码
-	$found = Get-ChildItem -Path $roots -Filter 'Godot*_console.exe' -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-		Select-Object -First 1
-	if (-not $found) {
-		$found = Get-ChildItem -Path $roots -Filter 'Godot*.exe' -File -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-			Where-Object { $_.Length -gt 50MB } | Select-Object -First 1
+	# 优先选择 project.godot 声明的引擎系列,再优先 console 版。
+	# 旧实现直接取文件系统扫描到的第一个 console.exe,本机同时装有4.6/4.7时
+	# 会悄悄用4.6跑绿,无法证明目标基线4.7真的通过。
+	$requiredVersion = '4.7'
+	$projectFile = Join-Path $ProjectRoot 'project.godot'
+	if (Test-Path $projectFile) {
+		$projectText = Get-Content -LiteralPath $projectFile -Raw -Encoding UTF8
+		if ($projectText -match 'config/features=PackedStringArray\("([0-9]+\.[0-9]+)"') {
+			$requiredVersion = $Matches[1]
+		}
 	}
+	$candidates = @(
+		Get-ChildItem -Path $roots -Filter 'Godot*_console.exe' -File -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+			# console.exe 只是启动器，必须有同目录同名的主程序；残缺解压目录不能入选。
+			Where-Object {
+				$mainName = $_.Name -replace '_console\.exe$', '.exe'
+				Test-Path -LiteralPath (Join-Path $_.DirectoryName $mainName) -PathType Leaf
+			}
+	)
+	$candidates += @(
+		Get-ChildItem -Path $roots -Filter 'Godot*.exe' -File -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+			Where-Object { $_.Length -gt 50MB }
+	)
+	$versionPattern = 'v' + [regex]::Escape($requiredVersion) + '([.-]|$)'
+	$found = $candidates | Sort-Object `
+		@{ Expression = { if ($_.Name -match $versionPattern) { 0 } else { 1 } } }, `
+		@{ Expression = { if ($_.Name -like '*_console.exe') { 0 } else { 1 } } }, `
+		@{ Expression = { $_.LastWriteTime }; Descending = $true } |
+		Select-Object -First 1
 	if (-not $found) {
 		throw "未找到 Godot 可执行文件。请用 -Godot <路径> 指定,或设置环境变量 GODOT_BIN。"
 	}
@@ -190,7 +212,8 @@ function Invoke-MpCase {
 	Start-Sleep -Seconds 2   # 等主机把房建起来再让客户端连
 	for ($n = 1; $n -le $ClientCount; $n++) {
 		$instances += Start-Instance -Name "mp-client$n" -FrameCount $FrameCount -EnvVars @{
-			WHITEBOX_JOIN = $ip
+			WHITEBOX_JOIN          = $ip
+			WHITEBOX_MP_DRIVE_TEST = '1'
 		}
 		Start-Sleep -Milliseconds 700
 	}
@@ -200,7 +223,12 @@ function Invoke-MpCase {
 	$results = @()
 	foreach ($i in $instances) {
 		$expect = @("联机开局")
-		if ($i.Name -eq 'mp-host') { $expect += "host=true" } else { $expect += "host=false" }
+		if ($i.Name -eq 'mp-host') {
+			$expect += "host=true"
+		}
+		else {
+			$expect += @("host=false", "CLIENT_DRIVE_CAMERA=PASS")
+		}
 		$results += Test-Instance -Instance $i -Expect $expect
 	}
 	# 补充断言:座位号必须两两不同,否则种子世界/计分会串
@@ -259,8 +287,10 @@ if ($Mode -in @('single', 'all')) {
 		-FrameCount $singleFrames -Expect $expect -TimeoutSec $timeout -Note $note
 }
 if ($Mode -in @('tutorial', 'all')) {
-	$all += Invoke-SingleCase -Name 'tutorial' -EnvVars @{ WHITEBOX_TUTORIAL = '1' } `
-		-FrameCount $QUICK_FRAMES -Expect @('白盒Demo') -Note "(教学关 $QUICK_FRAMES 帧)"
+	$all += Invoke-SingleCase -Name 'tutorial' -EnvVars @{
+		WHITEBOX_TUTORIAL = '1'; WHITEBOX_TUTORIALTEST = '1'
+	} -FrameCount $QUICK_FRAMES -Expect @('白盒Demo', '教学完成 rooms=5', 'RESULT=PASS') `
+		-Note "(五房教学门禁/检查点/结业回归)"
 }
 if ($Mode -in @('phys', 'all')) {
 	# 车斗物理回归:守住"薄商品被挤出车外/穿模掉出地图"。
@@ -277,6 +307,17 @@ if ($Mode -in @('char', 'all')) {
 	$all += Invoke-SingleCase -Name 'char' -EnvVars @{ WHITEBOX_CHARTEST = '1'; WHITEBOX_NPC = '0' } `
 		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
 		-Note '(角色技能自检:三主动 + 三被动)'
+}
+if ($Mode -in @('npc', 'all')) {
+	# NPC争抢回归:主动抢玩家、NPC互抢/互肘，以及HUD满槽宽度一致性。
+	$all += Invoke-SingleCase -Name 'npc' -EnvVars @{ WHITEBOX_NPCTEST = '1'; WHITEBOX_NPC = '2' } `
+		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
+		-Note '(NPC争抢/互殴 + HUD满槽自检)'
+}
+if ($Mode -in @('prop', 'all')) {
+	$all += Invoke-SingleCase -Name 'prop' -EnvVars @{ WHITEBOX_PROPTEST = '1'; WHITEBOX_NPC = '0' } `
+		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
+		-Note '(购物车轮盘/全商品投掷/准星/徒步受撞)'
 }
 if ($Mode -in @('mp', 'all')) {
 	$all += Invoke-MpCase -ClientCount $Clients -FrameCount $mpFrames

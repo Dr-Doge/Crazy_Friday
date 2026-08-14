@@ -18,10 +18,11 @@ const KEYS := {
 	"load_cart": [KEY_R],
 	"drive": [KEY_F],
 	"locate": [KEY_Q],
-	"brace": [KEY_SPACE],
-	"char_skill": [KEY_CTRL],
+	"brace": [KEY_CTRL],
+	"char_skill": [KEY_SPACE],
 	"debug_time": [KEY_T],
 	"dev_mode": [KEY_F1],
+	"tutorial_reset": [KEY_F2],
 	"debug_sale": [KEY_F3],
 	"debug_down": [KEY_F4],
 	"restart": [KEY_ENTER],
@@ -30,7 +31,7 @@ const KEYS := {
 ## 鼠标绑定表
 const MOUSE_BUTTONS := {
 	"elbow": MOUSE_BUTTON_LEFT,
-	"throw": MOUSE_BUTTON_RIGHT,
+	"use_prop": MOUSE_BUTTON_RIGHT,
 }
 
 ## 幂等:已注册过则直接返回

@@ -6,7 +6,7 @@ const SPRINT_MULT := 1.55
 const PUSH_FORCE := 620.0
 const DRIVE_STEER := 110.0    # 驾驶转向力(过高会原地打转)
 const BRAKE_MULT := 1.5       # S刹车强度
-const REVERSE_MULT := 0.45    # 倒车推力比例
+const REVERSE_MULT := 1.0     # 倒车推力比例(与前进一致)
 const SEARCH_TIME := 0.8   # 货架搜货
 const STEAL_TIME := 1.2    # 偷别人车里的货
 const ELBOW_STAMINA := 4.0 # 肘击耗体力:一管体力=25次肘击
@@ -16,14 +16,17 @@ var settled_once := false   # 是否已结算
 var finished := false       # 本局已完赛(结算/打烊/掉线),停止操控
 var avatar_color := Color(0.25, 0.5, 0.9)
 var seat_label := "你"      # 头顶名牌(玩家自定义的昵称)
-var brace_time := 0.0       # 空格:冲击准备剩余时长
+var brace_time := 0.0       # Ctrl:冲击准备剩余时长
 var brace_cd := 0.0
 var locate_cd := 0.0        # 技能CD按人各算(联机双人)
-var bottle_cd := 0.0
+var prop_cd := 0.0          # 右键场内商品道具冷却
+var throw_selection := 0    # 购物车商品轮盘当前索引（本地UI状态）
+var throw_aiming := false   # 按住右键进入越肩瞄准，松开时才真正投掷
+var buddies: Array = []      # 马德胜常驻的两名物流随从
 
 # ---------- 角色(见 character_def.gd / char_skills.gd) ----------
 var char_id := CharacterDef.ORDER[0]
-var char_cd := 0.0          # Ctrl 角色技能冷却
+var char_cd := 0.0          # 空格 角色技能冷却
 
 # 赵冬梅「贴地冲撞」状态
 var dash_windup := 0.0      #蓄力剩余(全场可见的前摇)
@@ -34,12 +37,6 @@ var stun_time := 0.0        # 落空硬直:不能移动/肘击
 
 # 马德胜「扎马步」状态(stance 本身在 Actor 基类上,供撞击结算读取)
 var stance_time := 0.0
-
-# 李洋「上链接」状态
-var grab_anim := 0.0        # 出杆动作计时(手部表现)
-var track_time := 0.0       # 被抢货后:追踪标记剩余时长
-var track_target: Actor = null   # 追踪对象(抢你货的人)
-var exposed_time := 0.0     # 抢了别人之后:自己被对方追踪的剩余时长
 
 # 联机:远程玩家由主机模拟,输入来自网络(含客户端镜头朝向)
 var remote := false
@@ -74,6 +71,10 @@ func _ready() -> void:
 	hold_capacity = 2
 
 func is_running() -> bool:
+	# 主机模拟远程玩家时不能读取房主本机的 Shift。湿滑地面等权威逻辑
+	# 会调用此函数，必须使用该远程玩家最新上报的持续输入。
+	if remote:
+		return net_sprint and stamina > 1.0
 	return Input.is_action_pressed("sprint") and stamina > 1.0
 
 func _physics_process(delta: float) -> void:
@@ -91,13 +92,20 @@ func _physics_process(delta: float) -> void:
 	var brace_key := net_brace if remote else Input.is_action_pressed("brace")
 
 	locate_cd = maxf(0.0, locate_cd - delta)
-	bottle_cd = maxf(0.0, bottle_cd - delta)
+	prop_cd = maxf(0.0, prop_cd - delta)
 	char_cd = maxf(0.0, char_cd - delta)
-	grab_anim = maxf(0.0, grab_anim - delta)
+	# 开发者模式:所有技能无冷却。统一在这里清零,覆盖全部赋值点。
+	# 注意只清 CD,不清 dash_windup/stun_time/stance_time——那些是技能的
+	# 表现与代价,清掉会让状态机可重入。
+	if Main.dev_no_cd:
+		locate_cd = 0.0
+		prop_cd = 0.0
+		char_cd = 0.0
+		brace_cd = 0.0
 	_tick_char_skill(delta)
 
-	# 突进/硬直/扎马步期间接管移动:三者互斥,且都不接受方向输入
-	if dash_time > 0.0 or dash_windup > 0.0 or stun_time > 0.0 or stance_time > 0.0:
+	# 突进/硬直/扎马步/电击期间接管移动，均不接受方向输入。
+	if dash_time > 0.0 or dash_windup > 0.0 or stun_time > 0.0 or stance_time > 0.0 or taser_time > 0.0:
 		_drive_char_state(delta)
 		_update_interactions()
 		return
@@ -112,7 +120,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		stamina = minf(100.0, stamina + 15.0 * delta)
 
-	# 空格:冲击准备1秒——期间被车撞不涨失衡(内置2.5秒冷却防常驻)
+	# Ctrl:冲击准备1秒——期间被车撞不涨失衡(内置2.5秒冷却防常驻)
 	brace_cd = maxf(0.0, brace_cd - delta)
 	if brace_time > 0.0:
 		brace_time -= delta
@@ -138,9 +146,7 @@ func _physics_process(delta: float) -> void:
 		apply_motion(delta, wish, speed)
 
 	# 手部姿态
-	if grab_anim > 0.0:
-		hand_pose = "grab"
-	elif braced:
+	if braced:
 		hand_pose = "brace"
 	elif attached:
 		hand_pose = "push"
@@ -156,14 +162,8 @@ func _physics_process(delta: float) -> void:
 
 # ---------- 角色技能状态机(见 char_skills.gd) ----------
 
-## 推进技能计时:蓄力→突进→硬直,以及扎马步、被抢追踪标记
+## 角色技能计时:贴地冲撞的蓄力→突进→硬直，以及扎马步
 func _tick_char_skill(delta: float) -> void:
-	if exposed_time > 0.0:
-		exposed_time = maxf(0.0, exposed_time - delta)
-	if track_time > 0.0:
-		track_time = maxf(0.0, track_time - delta)
-		if track_time <= 0.0:
-			track_target = null
 	if stance_time > 0.0:
 		stance_time -= delta
 		if stance_time <= 0.0:
@@ -187,6 +187,16 @@ func _tick_char_skill(delta: float) -> void:
 
 ## 技能占用期间的移动:三种状态都不接受方向输入
 func _drive_char_state(delta: float) -> void:
+	if taser_time > 0.0:
+		hand_pose = "stunned"
+		_cancel_channel()
+		if attached and is_instance_valid(cart):
+			cart.linear_velocity *= 0.55
+			cart.angular_velocity *= 0.4
+			_hold_cart_handle()
+		else:
+			apply_motion(delta, Vector3.ZERO, 0.0)
+		return
 	if stance_time > 0.0:
 		hand_pose = "brace"
 		if attached and is_instance_valid(cart):
@@ -201,6 +211,8 @@ func _drive_char_state(delta: float) -> void:
 		return
 	if dash_time > 0.0 and not attached:
 		hand_pose = "speed"
+		# 必须走 apply_motion(move_and_slide):move_and_collide 不会滑动,
+		# 一旦向下的分量碰到地板就会整体中止位移,横向也就跟着没了。
 		apply_motion(delta, dash_dir, CharSkills.DASH_SPEED)
 		return
 	# 蓄力 / 硬直 / 推车突进:原地或维持车上姿态
@@ -218,6 +230,7 @@ func _hold_cart_handle() -> void:
 
 ## 倒地/完赛时清掉技能状态,避免"定身/硬直"跨状态残留
 func _reset_char_states() -> void:
+	throw_aiming = false
 	dash_windup = 0.0
 	dash_time = 0.0
 	stun_time = 0.0
@@ -233,6 +246,18 @@ func speed_factor() -> float:
 			return 0.5
 	return 1.0
 
+## 随从以玩家当前的移动档位为基准：抱大件、冲刺、推车速度都会同步影响。
+func buddy_move_speed() -> float:
+	var speed := WALK_SPEED * speed_factor()
+	if is_running():
+		speed *= SPRINT_MULT
+	if attached and is_instance_valid(cart):
+		var cart_speed := Vector2(cart.linear_velocity.x, cart.linear_velocity.z).length()
+		speed = maxf(speed, cart_speed)
+	if braced:
+		speed *= 0.45
+	return speed
+
 # ---------- 推车 ----------
 
 ## 汽车式驾驶:W沿车头前进,A/D转向,S刹车/倒车
@@ -247,15 +272,16 @@ func _drive_cart(delta: float, input: Vector2, sprint: bool) -> void:
 	cart.sprint_level = 1.0 if cart.sprinting else move_toward(cart.sprint_level, 0.0, delta * 3.0)
 	# 赵冬梅「压弯」:侧向抓地×1.2(更不漂),每帧设置以便松手/换人后自动复位
 	var carve := CharSkills.has_carve(self)
-	cart.grip_mult = CharSkills.ZHAO_GRIP_MULT if carve else 1.0
+	cart.grip_mult = (CharSkills.ZHAO_GRIP_MULT if carve else 1.0) * traction_factor()
 	var lf := cart.load_factor()   # 满载→推力体感下降、转向变笨
 	var fwd := -cart.global_transform.basis.z
 	fwd.y = 0.0
 	fwd = fwd.normalized()
 	var fwd_speed := fwd.dot(cart.linear_velocity)
+	var movement_mult := movement_factor()
 
 	if throttle > 0.05:
-		cart.apply_central_force(fwd * PUSH_FORCE * throttle * (1.7 if sprint else 1.0))
+		cart.apply_central_force(fwd * PUSH_FORCE * throttle * (1.7 if sprint else 1.0) * movement_mult)
 	elif throttle < -0.05:
 		if fwd_speed > 0.6:
 			# 刹车
@@ -270,7 +296,7 @@ func _drive_cart(delta: float, input: Vector2, sprint: bool) -> void:
 		var floor_eff := CharSkills.ZHAO_STEER_FLOOR if carve else 0.12
 		var steer_eff := clampf(absf(fwd_speed) / 3.5, floor_eff, 1.0)
 		var steer_sign := -1.0 if fwd_speed < -0.2 else 1.0
-		var steer_force := DRIVE_STEER * (CharSkills.ZHAO_STEER_MULT if carve else 1.0)
+		var steer_force := DRIVE_STEER * (CharSkills.ZHAO_STEER_MULT if carve else 1.0) * movement_mult
 		cart.apply_torque(Vector3(0, -steer * steer_sign * steer_force * cart.mass * 0.12 * steer_eff * (0.4 + 0.6 * lf), 0))
 
 	# 人挂在车把上
@@ -305,19 +331,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		_drop_held()
 	elif event.is_action_pressed("locate"):
 		main.trigger_locate_skill()
-	elif event.is_action_pressed("throw"):
-		main.trigger_throw_bottle()
 	elif event.is_action_pressed("char_skill"):
-		# Ctrl:角色专属技能(赵冬梅冲撞 / 马德胜扎马步 / 李洋上链接)
+		# 空格:角色专属技能(赵冬梅冲撞 / 马德胜扎马步 / 李洋促销圈)
 		main.trigger_char_skill(self, _aim_dir())
 	elif event.is_action_pressed("elbow"):
 		# 肘击自动朝镜头面朝的方向
 		do_elbow(_aim_dir())
 
-## 出手方向:一律用镜头朝向(与肘击口径一致)
+## 出手方向:投掷读取屏幕中心准星射线；肘击只使用其中的水平分量。
 func _aim_dir() -> Vector3:
 	if main != null:
-		return Basis(Vector3.UP, main.cam_yaw) * Vector3.FORWARD
+		var exclusions: Array[RID] = [get_rid()]
+		if is_instance_valid(cart):
+			exclusions.append(cart.get_rid())
+		return main.cam_rig.aim_direction_from(global_position + Vector3.UP * Main.THROW_ORIGIN_HEIGHT, exclusions)
 	return Vector3.ZERO
 
 ## 肘击统一入口(本地/联机远程共用):结算体力,不够抡不动
@@ -325,7 +352,7 @@ func do_elbow(dir: Vector3) -> void:
 	if downed or finished:
 		return
 	# 突进/蓄力/硬直/扎马步期间抡不动(技能占用双手)
-	if dash_windup > 0.0 or dash_time > 0.0 or stun_time > 0.0 or stance_time > 0.0:
+	if dash_windup > 0.0 or dash_time > 0.0 or stun_time > 0.0 or stance_time > 0.0 or taser_time > 0.0:
 		return
 	if stamina < ELBOW_STAMINA:
 		Main.float_text(self, global_position + Vector3.UP * 2.2, "胳膊抡不动了...(体力不足)", Color(0.8, 0.8, 0.8))
@@ -353,7 +380,7 @@ func _on_interact_pressed() -> void:
 		"search":
 			_start_channel("search", pick["target"], SEARCH_TIME)
 		"steal":
-			_start_channel("steal", pick["target"], STEAL_TIME)
+			_start_channel("steal", pick["target"], CharSkills.steal_time_for(self))
 		"load":
 			_load_held_into_cart()
 
@@ -375,6 +402,11 @@ func _update_channel(delta: float, input: Vector2) -> void:
 		_cancel_channel()
 		return
 	if _channel_target is Node3D and global_position.distance_to(_channel_target.global_position) > 2.8:
+		_cancel_channel()
+		return
+	# 搜货期间必须持续用屏幕中心准星锁住开始选择的那件商品。
+	if _channel_kind == "search" and (main == null \
+			or main.cam_rig.aimed_shelf_item() != _channel_target):
 		_cancel_channel()
 		return
 	if not _interact_held:
@@ -444,12 +476,6 @@ func _best_interaction() -> Dictionary:
 			if can_hold(it):
 				best = {"kind": "pickup", "target": it, "label": "E 拾取 " + it.display_name}
 				best_d = d
-		elif it.state == Item.ItemState.SHELVED and d < 1.9 and d < best_d:
-			if can_hold(it):
-				best = {"kind": "search", "target": it, "label": "按住E 搜货:" + it.display_name}
-			else:
-				best = {"kind": "search_full", "target": it, "label": "手上拿不下了(R先装车)"}
-			best_d = d
 	# 别人的车(无人推、有货)
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
@@ -458,7 +484,8 @@ func _best_interaction() -> Dictionary:
 		var d2 := global_position.distance_to(c.global_position)
 		if d2 < 2.1 and d2 < best_d and c.attached_agent == null and not c.items_in_basket().is_empty():
 			if held_slots_used() < hold_capacity:
-				best = {"kind": "steal", "target": c, "label": "按住E 偷取车内商品(1.2秒)"}
+				var steal_time := CharSkills.steal_time_for(self)
+				best = {"kind": "steal", "target": c, "label": "按住E 偷取车内商品(%.2f秒)" % steal_time}
 				best_d = d2
 	# 手里有货且在自己车旁:E 放入购物车
 	if not held.is_empty() and cart != null and is_instance_valid(cart):
@@ -466,6 +493,19 @@ func _best_interaction() -> Dictionary:
 		if d3 < 2.6 and d3 < best_d:
 			best = {"kind": "load", "target": cart, "label": "E 放入购物车"}
 			best_d = d3
+	# 货架货不再按“离谁最近”自动选择，只允许准星射线明确命中的那一件覆盖候选。
+	var aimed_item: Item = main.cam_rig.aimed_shelf_item() if main != null else null
+	var aimed_horizontal_distance := INF
+	if is_instance_valid(aimed_item):
+		aimed_horizontal_distance = Vector2(global_position.x, global_position.z).distance_to(
+				Vector2(aimed_item.global_position.x, aimed_item.global_position.z))
+	if is_instance_valid(aimed_item) and aimed_horizontal_distance < 1.9:
+		if can_hold(aimed_item):
+			best = {"kind": "search", "target": aimed_item,
+					"label": "按住E 拿取准星商品:" + aimed_item.display_name}
+		else:
+			best = {"kind": "search_full", "target": aimed_item,
+					"label": "手上拿不下了(R先装车)"}
 	return best
 
 func _item_in_any_basket(it: Item) -> bool:

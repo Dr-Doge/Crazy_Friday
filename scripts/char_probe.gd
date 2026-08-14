@@ -9,8 +9,8 @@ class_name CharProbe extends RefCounted
 ## 判定:所有断言通过 → RESULT=PASS。
 ##
 ## 覆盖范围:
-##   主动 ×3  贴地冲撞(蓄力→突进→命中结算→自身代价) / 扎马步(免疫+锁货+反击) / 上链接(夺取+代价+标记)
-##   被动 ×3  压弯(驾驶参数) / 余光(威胁列表) / 爆款嗅觉(红壳距离规则)
+##   主动 ×3  贴地冲撞 / 都给我上(双随从追击) / 上链接(精准截货)
+##   被动 ×3  压弯 / 班组长(标记追击与体力返还) / 主播手速(偷取耗时与链接提示)
 
 var _m
 var _t := 0.0
@@ -21,10 +21,11 @@ var _notes: Array[String] = []
 var _dummy: Actor          # 靶子(不含 _physics_process,站着不动)
 var _atk_dummy: Actor      # 反击测试里的攻方
 var _atk_cart: Cart
-var _far_cart: Cart        # 爆款嗅觉:20米外的一辆车
+var _far_cart: Cart        # 李洋技能与近距链接提示的测试车
 var _grab_item: Item
 var _zhao_imb_before := 0.0
 var _dummy_imb_before := 0.0
+var _test_buddies: Array[WarehouseBuddy] = []
 
 func _init(m) -> void:
 	_m = m
@@ -60,11 +61,11 @@ func tick(delta: float) -> void:
 	var schedule := [
 		[1.0, _s_dash_fire], [2.2, _s_dash_check],
 		[2.6, _s_carve_setup], [3.4, _s_carve_check],
-		[3.8, _s_stance_fire], [4.4, _s_stance_check],
-		[5.2, _s_sense_setup], [5.8, _s_sense_check],
-		[6.4, _s_grab_setup], [7.0, _s_grab_fire], [7.6, _s_grab_check],
-		[8.0, _s_sniff_setup], [8.8, _s_sniff_check],
-		[9.2, _s_report],
+		[3.8, _s_buddy_fire], [5.5, _s_buddy_check], [7.2, _s_buddy_return_check],
+		[7.5, _s_remote_running_check],
+		[7.8, _s_link_setup], [8.5, _s_link_fire], [8.8, _s_link_check],
+		[9.1, _s_link_hint_setup], [9.5, _s_link_hint_check],
+		[10.0, _s_report],
 	]
 	while _step < schedule.size() and _t >= float(schedule[_step][0]):
 		var fn: Callable = schedule[_step][1]
@@ -89,6 +90,10 @@ func _use_char(id: String) -> void:
 	p.stance_time = 0.0
 	p.stance = false
 	p.imbalance = 0.0
+	p.downed = false
+	p.immune = false
+	p.finished = false
+	p.body_root.rotation.x = 0.0
 	if is_instance_valid(p.cart):
 		p.cart.hit_mult = 1.0
 		p.cart.hit_mult_time = 0.0
@@ -139,6 +144,108 @@ func _s_carve_check() -> void:
 	_check(CharSkills.ZHAO_STAMINA_MULT < 1.0 and CharSkills.ZHAO_STAMINA_MULT >= 0.75,
 			"压弯:冲刺体力消耗系数 %.2f(≤25%% 的红线内)" % CharSkills.ZHAO_STAMINA_MULT)
 	p.detach_cart()
+
+# ---------------------------------------------------------------- ③ 都给我上 / 班组长
+
+func _s_buddy_fire() -> void:
+	var p: Player = _m.player
+	_use_char(CharacterDef.MA)
+	p.stamina = 70.0
+	_dummy.global_position = p.global_position + _fwd(p) * 1.5
+	_dummy.imbalance = 0.0
+	CharSkills.mark_foreman_target(_dummy, p)
+	for i in 2:
+		var buddy := WarehouseBuddy.new()
+		_m.add_child(buddy)
+		buddy.setup(p, i)
+		p.buddies.append(buddy)
+		_m.warehouse_buddies.append(buddy)
+		_test_buddies.append(buddy)
+	_check(_test_buddies[0].get_collision_exceptions().has(p.cart),
+			"随从:忽略玩家购物车碰撞，避免卡进车身")
+	_check(is_equal_approx(p.buddy_move_speed(), Player.WALK_SPEED),
+			"随从:基础移动速度绑定玩家步行速度")
+	_m.trigger_char_skill(p, _fwd(p))
+	_check(_test_buddies.all(func(b): return b.active), "都给我上:两名随从同时出动")
+	_check(p.imbalance >= CharSkills.BUDDY_SELF_IMB - 1.0,
+			"都给我上:自身付出 +%d 失衡" % int(CharSkills.BUDDY_SELF_IMB))
+	_check(p.char_cd > 0.0, "都给我上:进入 30 秒冷却")
+
+func _s_buddy_check() -> void:
+	var p: Player = _m.player
+	_check(_dummy.imbalance >= WarehouseBuddy.HIT_IMBALANCE or _dummy.downed,
+			"都给我上:随从会追击并肘击目标(实际失衡 %.0f)" % _dummy.imbalance)
+	_check(p.stamina > 70.0, "班组长:随从首次命中标记目标返还体力(实际 %.0f)" % p.stamina)
+	var buddy := _test_buddies[0]
+	var friendly_before := buddy.imbalance
+	buddy.add_imbalance(30.0, p)
+	buddy.add_imbalance(30.0, _test_buddies[1])
+	_check(is_equal_approx(buddy.imbalance, friendly_before),
+			"随从:免疫所属马德胜及同队随从造成的所有失衡伤害")
+	buddy.add_imbalance(WarehouseBuddy.BUDDY_MAX_IMBALANCE, _dummy)
+	_check(buddy.downed, "随从:60 失衡时被击倒并开始返场")
+
+func _s_buddy_return_check() -> void:
+	var buddy := _test_buddies[0]
+	_check(not buddy.downed and buddy.imbalance == 0.0, "随从:倒地 1.5 秒后回到马德胜身边")
+
+# ---------------------------------------------------------------- ④ 上链接 / 主播手速
+
+func _s_link_setup() -> void:
+	var p: Player = _m.player
+	_use_char(CharacterDef.LI)
+	if p.attached:
+		p.detach_cart()
+	for buddy in _test_buddies:
+		buddy.active = false
+	_atk_cart.linear_velocity = Vector3.ZERO
+	_atk_cart.freeze = true
+	_dummy.global_position = p.global_position + Vector3(20.0, 0, 20.0)
+	_atk_dummy.global_position = p.global_position + Vector3(-20.0, 0, 20.0)
+	_far_cart = Cart.create(Color(0.5, 0.5, 0.5), "链接测试车")
+	_m.add_child(_far_cart)
+	_far_cart.freeze = true
+	_far_cart.global_position = p.global_position + _fwd(p) * 2.6 + Vector3.UP * 0.2
+	var want_id := str(_m.pdata[0]["list"][0]["id"])
+	_grab_item = Item.create(want_id)
+	_m.add_child(_grab_item)
+	_m.all_items.append(_grab_item)
+	_grab_item.set_free_at(_far_cart.to_global(Vector3(0, 0.95, 0)))
+	_grab_item.freeze = true
+
+func _s_link_fire() -> void:
+	var p: Player = _m.player
+	_check(_far_cart.items_in_basket().has(_grab_item), "上链接:测试商品已进入目标车斗")
+	_check(not p.downed and p.char_id == CharacterDef.LI and p.char_cd <= 0.0,
+			"上链接:施放者状态允许使用技能")
+	_m.trigger_char_skill(p, _fwd(p))
+
+func _s_link_check() -> void:
+	var p: Player = _m.player
+	_check(p.held.has(_grab_item) or _grab_item.global_position.distance_to(p.global_position) < 2.0,
+			"上链接:从面前购物车截走一件自己需要的商品")
+	_check(p.imbalance >= CharSkills.LINK_SELF_IMB - 1.0, "上链接:成功时自身 +20 失衡")
+	_check(p.char_cd > 20.0, "上链接:成功后进入完整冷却")
+	_check(is_equal_approx(CharSkills.steal_time_for(p), CharSkills.LI_STEAL_TIME),
+			"主播手速:拿取耗时缩短至 %.2f 秒" % CharSkills.LI_STEAL_TIME)
+
+func _s_link_hint_setup() -> void:
+	var p: Player = _m.player
+	# 将测试货放回车内并验证 8 米链接提示及距离边界。
+	if p.held.has(_grab_item):
+		p.held.erase(_grab_item)
+	_far_cart.global_position = p.global_position + Vector3(7.0, 0.2, 0)
+	_grab_item.set_free_at(_far_cart.to_global(Vector3(0, 0.95, 0)))
+	_grab_item.freeze = true
+
+func _s_link_hint_check() -> void:
+	var p: Player = _m.player
+	_m._apply_highlights_local()
+	_check(_far_cart.highlight_mesh.visible, "主播手速:8 米内需求车亮红壳")
+	_check(_far_cart.hot_label != null and _far_cart.hot_label.text == "🔗", "主播手速:仅显示链接图标而非商品名")
+	_far_cart.global_position = p.global_position + Vector3(9.0, 0.2, 0)
+	_m._apply_highlights_local()
+	_check(not _far_cart.highlight_mesh.visible, "主播手速:超过 8 米不再提示")
 
 # ---------------------------------------------------------------- ③ 扎马步
 
@@ -211,37 +318,48 @@ func _s_sense_setup() -> void:
 func _s_sense_check() -> void:
 	pass
 
-# ---------------------------------------------------------------- ⑤ 上链接
+## 联机遥控玩家不能读取主机键盘状态，否则湿滑区抓地等依赖“是否冲刺”的逻辑会串台。
+func _s_remote_running_check() -> void:
+	var p: Player = _m.player
+	var old_remote := p.remote
+	var old_sprint := p.net_sprint
+	var old_stamina := p.stamina
+	p.remote = true
+	p.stamina = 100.0
+	p.net_sprint = true
+	_check(p.is_running(), "联机输入:遥控玩家按网络冲刺状态判定为奔跑")
+	p.net_sprint = false
+	_check(not p.is_running(), "联机输入:遥控玩家不受主机键盘冲刺键串扰")
+	p.remote = old_remote
+	p.net_sprint = old_sprint
+	p.stamina = old_stamina
 
-func _s_grab_setup() -> void:
+# ---------------------------------------------------------------- ⑤ 全网最低价
+
+func _s_promo_setup() -> void:
 	var p: Player = _m.player
 	_use_char(CharacterDef.LI)
-	p.drop_all_held(false)
-	_dummy.global_position = p.global_position + _fwd(p) * 2.2
-	# 给靶子手里塞一件货
-	var it := Item.create("thermos")
-	_m.add_child(it)
-	_m.all_items.append(it)
-	it.set_held()
-	_dummy.take_item(it)
-	_grab_item = it
+	p.slow_time = 0.0
+	p.slow_factor = 1.0
+	_dummy.slow_time = 0.0
+	_dummy.slow_factor = 1.0
+	_dummy.global_position = p.global_position + Vector3(3.0, 0, 0)
 
-func _s_grab_fire() -> void:
+func _s_promo_fire() -> void:
 	var p: Player = _m.player
-	_check(_dummy.held.size() == 1, "上链接:测试前置——靶子手里有 1 件货")
 	p.imbalance = 0.0
 	_m.trigger_char_skill(p, _fwd(p))
 
-func _s_grab_check() -> void:
+func _s_promo_check() -> void:
 	var p: Player = _m.player
-	_check(_dummy.held.is_empty(), "上链接:靶子手里的货被抢走")
-	var got: bool = p.held.has(_grab_item) or _grab_item.state == Item.ItemState.FREE
-	_check(got, "上链接:货到了李洋手上(或手满时落在脚边)")
-	_check(p.imbalance >= CharSkills.GRAB_SELF_IMB - 1.0,
-			"上链接:自身付出 +%d 失衡代价(实际 %.0f)" % [int(CharSkills.GRAB_SELF_IMB), p.imbalance])
-	_check(p.char_cd > 0.0, "上链接:进入冷却")
-	_check(p.exposed_time > 0.0,
-			"上链接:抢完自己进入暴露状态 %.1f 秒(被抢方的反制)" % p.exposed_time)
+	var zones: Array = _m.get_children().filter(func(n): return n is SlowZone)
+	_check(not zones.is_empty(), "全网最低价:原地生成直播促销减速区")
+	_check(is_equal_approx(p.movement_factor(), 1.0), "全网最低价:李洋本人免疫自己的减速区")
+	_check(_dummy.movement_factor() <= CharSkills.PROMO_SLOW + 0.01,
+			"全网最低价:范围内对手保留约%d%%移动能力" % int(CharSkills.PROMO_SLOW * 100.0))
+	_check(p.imbalance >= CharSkills.PROMO_SELF_IMB - 1.0,
+			"全网最低价:自身付出 +%d 失衡代价(实际 %.0f)" % [int(CharSkills.PROMO_SELF_IMB), p.imbalance])
+	_check(p.char_cd > 0.0, "全网最低价:进入冷却")
 
 # ---------------------------------------------------------------- ⑥ 爆款嗅觉(被动)
 

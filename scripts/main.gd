@@ -5,8 +5,17 @@ class_name Main extends Node3D
 const MATCH_TIME := 300.0        # 5分钟
 const GRACE_TIME := 30.0         # 打烊宽限
 const CLOSING_WARN := 120.0      # 剩2分钟进入打烊冲刺
+const THROW_SPEED := 16.0
+const THROW_UPWARD_SPEED := 1.2
+const THROW_ORIGIN_HEIGHT := 1.62
+const THROW_FORWARD_OFFSET := 1.15
 
 static var instance: Main
+
+## 开发者模式:所有技能无冷却(F1 面板开关)。
+## 做成 static 是为了让 player.gd 在不持有 Main 引用时也能读到;
+## 每帧在 Player._physics_process 里统一清零,因此无论 CD 在哪里被赋值都能覆盖。
+static var dev_no_cd := false
 
 # 碰撞拟声词库(浮夸搞笑)
 const BAM := ["哐当!!", "咣!!!", "duang~!!", "嘭!!!", "咔嚓!!", "哐叽!!", "biu嘭!!"]
@@ -30,9 +39,11 @@ var cam_yaw: float:
 		if cam_rig != null:
 			cam_rig.yaw = value
 var mouse_captured := true
+var _camera_first_person := false
 var grid: AStarGrid2D
 var checkouts: Array[Checkout] = []
 var grannies: Array[Granny] = []
+var warehouse_buddies: Array = []
 var all_items: Array[Item] = []
 
 # 每名玩家一份对局数据:{list, score, counts, orig, saved, settled, done}
@@ -78,6 +89,7 @@ func _ready() -> void:
 	hud = Hud.new()
 	add_child(hud)
 	hud.npc_count_changed.connect(_set_npc_count)
+	hud.no_cd_changed.connect(func(on: bool) -> void: Main.dev_no_cd = on)
 	hud.start_game_pressed.connect(func() -> void: _start_match(false))
 	hud.start_tutorial_pressed.connect(func() -> void: _start_match(true))
 	hud.host_pressed.connect(_menu_host)
@@ -132,6 +144,9 @@ func _start_match(tut: bool) -> void:
 	if tut:
 		tutorial_guide = TutorialGuide.new(self)
 		tutorial_guide.setup()
+		if OS.get_environment("WHITEBOX_TUTORIALTEST") != "":
+			tutorial_probe = TutorialProbe.new(self, tutorial_guide)
+			tutorial_probe.setup()
 	# 测试钩子:车斗物理压力测试(回归"薄商品被挤出车外/穿模")
 	if OS.get_environment("WHITEBOX_PHYSTEST") != "":
 		phys_stress = PhysStress.new(self)
@@ -140,6 +155,56 @@ func _start_match(tut: bool) -> void:
 	if OS.get_environment("WHITEBOX_CHARTEST") != "":
 		char_probe = CharProbe.new(self)
 		char_probe.setup()
+	# 测试钩子:NPC争抢/互殴与HUD满槽回归。
+	if OS.get_environment("WHITEBOX_NPCTEST") != "":
+		npc_probe = NpcProbe.new(self)
+		npc_probe.setup()
+	if OS.get_environment("WHITEBOX_PROPTEST") != "":
+		prop_probe = PropProbe.new(self)
+		prop_probe.setup()
+	# GUI视觉回归：自动展示当前角色主技能，配合 WHITEBOX_SHOT 截图。
+	if OS.get_environment("WHITEBOX_SHOW_CHAR_SKILL") != "":
+		get_tree().create_timer(0.7).timeout.connect(func() -> void:
+			if is_instance_valid(player):
+				trigger_char_skill(player, cam_rig.forward()))
+	if OS.get_environment("WHITEBOX_WHEEL_DEMO") != "":
+		for i in ["detergent", "thermos", "cola", "tv", "candy"].size():
+			var id: String = ["detergent", "thermos", "cola", "tv", "candy"][i]
+			var demo_item := Item.create(id)
+			add_child(demo_item)
+			all_items.append(demo_item)
+			demo_item.set_free_at(player.cart.to_global(Vector3((i % 3 - 1) * 0.22, 1.1 + (i / 3) * 0.32, (i % 2) * 0.18)))
+	# GUI回归钩子：搭配轮盘演示和截图，固定展示按住右键后的肩射构图与轨迹线。
+	if OS.get_environment("WHITEBOX_AIM_PREVIEW") != "":
+		get_tree().create_timer(0.8).timeout.connect(func() -> void:
+			if is_instance_valid(player):
+				if not player.attached and is_instance_valid(player.cart):
+					player.attach_cart()
+				player.throw_aiming = true)
+	if OS.get_environment("WHITEBOX_FIRST_PERSON_ZOOM") != "":
+		get_tree().create_timer(0.8).timeout.connect(func() -> void:
+			if is_instance_valid(player) and not player.attached:
+				player.throw_aiming = true)
+	if OS.get_environment("WHITEBOX_FIRST_PERSON_HANDS") != "":
+		get_tree().create_timer(0.75).timeout.connect(func() -> void:
+			if is_instance_valid(player):
+				if player.attached:
+					player.detach_cart()
+				if player.held.is_empty():
+					var held_demo := Item.create("thermos")
+					add_child(held_demo)
+					all_items.append(held_demo)
+					player.take_item(held_demo)
+				if OS.get_environment("WHITEBOX_FIRST_PERSON_PUNCH") != "":
+					player.do_elbow(cam_rig.forward())
+					Main.float_text(player, player.global_position + Vector3.UP * 2.2,
+							"咚!!  肘击+15", Color(1.0, 0.7, 0.2), 76))
+	var show_throw_effect := OS.get_environment("WHITEBOX_SHOW_THROW_EFFECT")
+	if show_throw_effect != "" and Catalog.ITEMS.has(show_throw_effect):
+		get_tree().create_timer(0.7).timeout.connect(func() -> void:
+			if is_instance_valid(player):
+				_apply_throw_effect(show_throw_effect,
+						player.global_position + cam_rig.forward() * 2.4, player, null))
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
 func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
@@ -166,6 +231,20 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
 	_set_mouse_captured(true)
 	hud.set_menu_status("")
 	_log_milestone("联机开局 seat=%d/%d host=%s npc=%d" % [local_idx, nplayers, host, npc])
+	if net_client and OS.get_environment("WHITEBOX_MP_DRIVE_TEST") != "":
+		# 联机回归：客户端按F只向主机发动作，必须等权威玩家包把attached同步回来。
+		get_tree().create_timer(0.7).timeout.connect(func() -> void:
+			if is_instance_valid(player):
+				net.send_action("drive"))
+		get_tree().create_timer(1.8).timeout.connect(func() -> void:
+			if not is_instance_valid(player):
+				return
+			_update_camera(0.2)
+			var passed := player.attached and player.cart.attached_agent == player \
+					and not cam_rig.is_first_person() and player.body_root.visible
+			print("[mp] CLIENT_DRIVE_CAMERA=%s seat=%d attached=%s first_person=%s" % [
+					"PASS" if passed else "FAIL", local_idx, str(player.attached),
+					str(cam_rig.is_first_person())]))
 	if host:
 		hud.broadcast("联机对局开始!%d位\"热心顾客\"已入场,黑五愉快,手下无情~" % nplayers)
 
@@ -228,6 +307,14 @@ func _menu_leave_room() -> void:
 
 func _build_world(wseed: int, npc: int, nplayers: int) -> void:
 	seed(wseed)
+	if tutorial:
+		tutorial_data = TutorialRoomBuilder.build(self)
+		grid = tutorial_data["grid"]
+		sale_points = []
+		_make_tutorial_list()
+		_spawn_players(tutorial_data, 1)
+		hud.set_npc_count_display(0)
+		return
 	var data := MarketBuilder.build(self)
 	grid = data["grid"]
 	sale_points = data["sale_points"]
@@ -253,6 +340,20 @@ func _build_world(wseed: int, npc: int, nplayers: int) -> void:
 	hud.set_npc_count_display(grannies.size())
 	hud.broadcast("亲爱的顾客,欢迎光临疯抢超市。今天是疯抢星期五,每人限购,理性消费,祝您购物愉快～")
 	hud.broadcast("温馨提示:货架商品先到先得,请文明抢购～")
+
+## 教学关固定三件结业清单，避免随机清单与房间内训练物资错位。
+func _make_tutorial_list() -> void:
+	var list: Array = []
+	for id in ["tissue", "thermos", "drone"]:
+		list.append({
+			"id": id,
+			"name": Catalog.ITEMS[id]["name"],
+			"cat": Catalog.ITEMS[id]["cat"],
+			"scanned": false,
+			"via_sale": false,
+		})
+	pdata = [{"list": list, "score": 0, "counts": {}, "orig": 0, "saved": 0,
+			"settled": false, "done": false}]
 
 var _large_slots: Array = []
 
@@ -365,6 +466,17 @@ func _spawn_players(data: Dictionary, nplayers: int) -> void:
 		cart.global_position = p.global_position + Vector3(-1.6, 0.2, -0.5)
 		p.cart = cart
 		players.append(p)
+		if p.char_id == CharacterDef.MA:
+			for buddy_slot in 2:
+				var buddy := WarehouseBuddy.new()
+				add_child(buddy)
+				buddy.setup(p, buddy_slot)
+				p.buddies.append(buddy)
+				warehouse_buddies.append(buddy)
+	# 所有玩家车都与两名随从双向忽略；这里在玩家全部生成后补齐跨玩家组合。
+	for buddy in warehouse_buddies:
+		for p in players:
+			buddy.ignore_player_cart(p.cart)
 	player = players[local_idx]
 
 var _granny_spawns: Array = []
@@ -374,17 +486,25 @@ func _spawn_one_granny() -> void:
 	var pos: Vector3 = _granny_spawns[_granny_seq % _granny_spawns.size()]
 	_granny_seq += 1
 	var normals := Catalog.ids_of_cat(Catalog.CAT_NORMAL)
-	# 与所有玩家清单的重叠池(大件除外):保证对抗
+	# 与所有玩家清单的重叠池(常规品+大件都参与对抗)
 	var overlap_pool: Array = []
+	var large_pool: Array = []
 	for pd in pdata:
 		for entry in pd["list"]:
-			if entry["cat"] != Catalog.CAT_LARGE and not overlap_pool.has(entry["id"]):
+			if entry["cat"] == Catalog.CAT_LARGE:
+				if not large_pool.has(entry["id"]):
+					large_pool.append(entry["id"])
+			elif not overlap_pool.has(entry["id"]):
 				overlap_pool.append(entry["id"])
 	var g := Granny.new()
 	g.main = self
 	g.body_color = Color.from_hsv(randf(), 0.45, 0.85)
 	overlap_pool.shuffle()
 	var list: Array = [overlap_pool[0], overlap_pool[1], overlap_pool[2]]
+	# 每位大妈有概率(60%)额外追加一件大件到清单,保证大件货也有人抢
+	large_pool.shuffle()
+	if not large_pool.is_empty() and randf() < 0.6:
+		list.append(large_pool[0])
 	normals.shuffle()
 	for id in normals:
 		if list.size() >= 5:
@@ -430,6 +550,9 @@ func _make_client_puppets() -> void:
 		p.set_process_unhandled_input(false)
 	for g in grannies:
 		g.set_physics_process(false)
+	for buddy in warehouse_buddies:
+		if is_instance_valid(buddy):
+			buddy.set_physics_process(false)
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
 		c.freeze = true
@@ -439,14 +562,22 @@ func _make_client_puppets() -> void:
 
 # ---------- 教学关 ----------
 
-## 仅教学模式下创建;九步指引的全部逻辑在 tutorial.gd
+## 仅教学模式下创建；独立五房地图数据与教学导演。
 var tutorial_guide: TutorialGuide
+var tutorial_data: Dictionary = {}
+var tutorial_probe
 
 ## 仅 WHITEBOX_PHYSTEST 下创建:车斗物理压力测试,见 phys_stress.gd
 var phys_stress: PhysStress
 
 ## 仅 WHITEBOX_CHARTEST 下创建:角色技能自检,见 char_probe.gd
 var char_probe: CharProbe
+
+## 仅 WHITEBOX_NPCTEST 下创建:NPC争抢/互殴与HUD满槽自检,见 npc_probe.gd
+var npc_probe: NpcProbe
+
+## 仅 WHITEBOX_PROPTEST 下创建:场内商品道具专项回归,见 prop_probe.gd
+var prop_probe: PropProbe
 
 # ---------- 环境与相机 ----------
 
@@ -521,8 +652,14 @@ func _process(delta: float) -> void:
 		phys_stress.tick(delta)
 	if char_probe != null:
 		char_probe.tick(delta)
+	if npc_probe != null:
+		npc_probe.tick(delta)
+	if prop_probe != null:
+		prop_probe.tick(delta)
 
 	if tutorial:
+		if tutorial_probe != null:
+			tutorial_probe.tick()
 		tutorial_guide.tick(delta)
 	else:
 		elapsed += delta
@@ -583,7 +720,7 @@ func _process(delta: float) -> void:
 ##
 ## 距离规则(《05·三》与《16·五·5.2》):
 ## - 通用版:仅 12 米内亮壳,不显示商品名
-## - 李洋「爆款嗅觉」:全场无距离限制,并在车顶浮出具体商品名
+## - 李洋「主播手速」:仅 8 米内提示链接图标,不显示具体商品名
 func _apply_highlights_local() -> void:
 	var missing_hl := missing_list_ids(local_idx)
 	var sniff := CharSkills.has_sniff(player)
@@ -601,13 +738,14 @@ func _apply_highlights_local() -> void:
 				hot_name = it2.display_name
 				break
 		var hot := hot_name != ""
-		if hot and not sniff and origin.distance_to(c.global_position) > CharSkills.SNIFF_RANGE_OTHERS:
+		var sense_range := CharSkills.LI_LINK_RANGE if sniff else CharSkills.SNIFF_RANGE_OTHERS
+		if hot and origin.distance_to(c.global_position) > sense_range:
 			hot = false
 		c.set_highlight(hot)
-		c.set_hot_name(hot_name if (hot and sniff) else "")
+		c.set_hot_name("🔗" if (hot and sniff) else "")
 
 ## 发给某客户端的红壳数据:[[车下标, 商品名或""], ...]
-## 商品名只对李洋(爆款嗅觉)非空;非李洋还要过 12 米距离门槛
+## 李洋只在 8 米内收到链接图标；非李洋沿用 12 米通用红壳。
 func _hot_carts_for(idx: int) -> Array:
 	var missing := missing_list_ids(idx)
 	var p := players[idx]
@@ -624,9 +762,10 @@ func _hot_carts_for(idx: int) -> Array:
 				break
 		if hot_name == "":
 			continue
-		if not sniff and p.global_position.distance_to(c.global_position) > CharSkills.SNIFF_RANGE_OTHERS:
+		var sense_range := CharSkills.LI_LINK_RANGE if sniff else CharSkills.SNIFF_RANGE_OTHERS
+		if p.global_position.distance_to(c.global_position) > sense_range:
 			continue
-		out.append([i, hot_name if sniff else ""])
+		out.append([i, "🔗" if sniff else ""])
 	return out
 
 # ---------- 客户端渲染 ----------
@@ -637,6 +776,31 @@ var client_view: ClientView
 func apply_net_state(d: Dictionary) -> void:
 	if client_view != null:
 		client_view.apply_state(d)
+
+## 李洋截货成功后，仅让受害玩家看见李洋名牌的红色追踪描边。
+func expose_li_to(victim_seat: int, li_seat: int, duration: float) -> void:
+	if victim_seat < 0 or li_seat < 0 or li_seat >= players.size():
+		return
+	if victim_seat == local_idx:
+		_show_li_exposure(li_seat, duration)
+	if net_mp and not net_client and victim_seat > 0:
+		var peer := net.peer_of_seat(victim_seat)
+		if peer > 0:
+			net.rpc_id(peer, "ev_li_exposed", li_seat, duration)
+
+func _show_li_exposure(li_seat: int, duration: float) -> void:
+	var li: Player = players[li_seat]
+	if not is_instance_valid(li) or li.name_label == null:
+		return
+	var until := Time.get_ticks_msec() * 0.001 + duration
+	li.set_meta("li_exposed_until", until)
+	li.name_label.outline_modulate = Color(1.0, 0.05, 0.08, 0.98)
+	li.name_label.outline_size = 24
+	get_tree().create_timer(duration).timeout.connect(func() -> void:
+		if is_instance_valid(li) and li.name_label != null \
+				and float(li.get_meta("li_exposed_until", 0.0)) <= Time.get_ticks_msec() * 0.001:
+			li.name_label.outline_modulate = Color(0, 0, 0, 0.85)
+			li.name_label.outline_size = 14)
 
 func client_hud(rows: Array, score: int, hot_carts: Array) -> void:
 	if client_view != null:
@@ -682,102 +846,309 @@ func _update_hud_client() -> void:
 
 # ---------- 技能 ----------
 
-## Ctrl:角色专属技能。实现见 char_skills.gd(主机权威:联机时远程动作也走这里)
+## 空格:角色专属技能。实现见 char_skills.gd(主机权威:联机时远程动作也走这里)
 func trigger_char_skill(p: Player = null, dir := Vector3.ZERO) -> void:
 	if p == null:
 		p = player
 	if game_over or p == null:
 		return
-	CharSkills.trigger(self, p, dir)
-
-##「上链接」抢到货的播报与标记下发(只在主机侧调用)。
-##注意:victim 可能是大妈或测试靶子,而 players 是 Array[Player]——
-## 不先判类型就 find() 会触发 TypedArray 校验报错(踩过)
-func on_char_grab(thief: Player, victim: Actor, item: Item) -> void:
-	if net_client:
+	if p.taser_time > 0.0:
 		return
-	var thief_seat := players.find(thief)
-	var vname := "大妈"
-	var victim_seat := -1
-	if victim is Player:
-		victim_seat = players.find(victim)
-		vname = seat_name_2nd(victim_seat)
-	hud.broadcast("直播间提示:%s 对着%s大喊\"上链接\",%s 就这么没了~" % [
-			seat_name(thief_seat), vname, item.display_name])
-	# 标记是低频事件,走可靠 RPC 而不是塞进 20Hz 状态包
-	if net_mp:
-		if victim_seat > 0:
-			var vpid := net.peer_of_seat(victim_seat)
-			if net.peer_alive(vpid):
-				net.rpc_id(vpid, "ev_mark", "track", thief_seat, CharSkills.GRAB_MARK)
-		if thief_seat > 0:
-			var tpid := net.peer_of_seat(thief_seat)
-			if net.peer_alive(tpid):
-				net.rpc_id(tpid, "ev_mark", "exposed", victim_seat, CharSkills.GRAB_MARK)
+	CharSkills.trigger(self, p, dir)
+	if tutorial_guide != null and p == player:
+		tutorial_guide.on_char_skill_used(p)
 
-## 客户端收到标记事件
-func client_mark(kind: String, seat: int, dur: float) -> void:
-	if kind == "track":
-		player.track_time = dur
-		player.track_target = players[seat] if seat >= 0 and seat < players.size() else null
-	else:
-		player.exposed_time = dur
+## 主机创建减速区并广播视觉参数。客户端不做区域判定，位置仍由权威状态包同步。
+func spawn_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
+		immune_actor: Actor, title: String, color: Color, traction := 1.0) -> SlowZone:
+	var zone := SlowZone.create(self, pos, radius, life, factor, immune_actor, title, color, traction)
+	if net_mp and not net_client:
+		var immune_seat := players.find(immune_actor) if immune_actor is Player else -1
+		net.rpc("ev_slow_zone", pos, radius, life, factor, immune_seat, title, color, traction)
+	return zone
 
-##右键:向镜头方向掷出水瓶,落地生成临时湿滑地面(CD8秒)
-func trigger_throw_bottle(p: Player = null, dir := Vector3.ZERO) -> void:
+func client_slow_zone(pos: Vector3, radius: float, life: float, factor: float,
+		immune_seat: int, title: String, color: Color, traction := 1.0) -> void:
+	var immune_actor: Actor = players[immune_seat] if immune_seat >= 0 and immune_seat < players.size() else null
+	SlowZone.create(self, pos, radius, life, factor, immune_actor, title, color, traction)
+
+## 购物车内所有自由商品都可作为弹药；排序固定，供滚轮与联机按商品ID选择。
+func cart_throw_items(p: Player) -> Array[Item]:
+	var out: Array[Item] = []
+	if p == null or not is_instance_valid(p.cart):
+		return out
+	for it in p.cart.items_in_basket():
+		if is_instance_valid(it) and it.state == Item.ItemState.FREE:
+			out.append(it)
+	out.sort_custom(func(a: Item, b: Item) -> bool:
+		if a.item_id == b.item_id:
+			return a.get_instance_id() < b.get_instance_id()
+		return a.item_id < b.item_id)
+	return out
+
+func cycle_cart_item(p: Player, step: int) -> void:
+	var items := cart_throw_items(p)
+	if items.is_empty():
+		p.throw_selection = 0
+		return
+	p.throw_selection = posmod(p.throw_selection + step, items.size())
+	if tutorial_guide != null and p == player:
+		tutorial_guide.on_wheel_cycled()
+
+func selected_cart_item_id(p: Player) -> String:
+	var items := cart_throw_items(p)
+	if items.is_empty():
+		return ""
+	p.throw_selection = posmod(p.throw_selection, items.size())
+	return items[p.throw_selection].item_id
+
+## 右键:从自己的购物车取出轮盘选中商品，沿屏幕中心准星投掷。
+func trigger_throw_cart_item(p: Player = null, dir := Vector3.ZERO, wanted_id := "") -> void:
 	if p == null:
 		p = player
-	if game_over or p == null:
+	if game_over or p == null or p.downed or p.finished or p.taser_time > 0.0:
 		return
-	if p.bottle_cd > 0.0:
+	if p.prop_cd > 0.0:
 		if p == player:
-			Main.float_text(self, p.global_position + Vector3.UP * 2.4, "水瓶冷却中(%d秒)" % int(ceil(p.bottle_cd)), Color(0.8, 0.8, 0.8))
+			Main.float_text(self, p.global_position + Vector3.UP * 2.4,
+					"道具冷却中(%d秒)" % int(ceil(p.prop_cd)), Color(0.8, 0.8, 0.8))
 		return
-	p.bottle_cd = 8.0
+	# 投掷是驾驶购物车时的专属动作；脱车右键只负责拉近观察镜头，静默不投掷。
+	if not p.attached or not is_instance_valid(p.cart):
+		return
+	var items := cart_throw_items(p)
+	var prop: Item = null
+	for it in items:
+		if wanted_id == "" or it.item_id == wanted_id:
+			prop = it
+			break
+	if prop == null:
+		if p == player:
+			Main.float_text(self, p.global_position + Vector3.UP * 2.4,
+					"购物车里没有可投掷商品", Color(1.0, 0.75, 0.35), 52)
+		return
+	p.prop_cd = Catalog.prop_cd(prop.item_id)
 	var fwd := dir
-	fwd.y = 0.0
 	if fwd.length() < 0.1:
-		fwd = cam_rig.forward()
+		fwd = cam_rig.aim_direction()
 	fwd = fwd.normalized()
-	var b := RigidBody3D.new()
-	b.mass = 1.0
-	b.collision_layer = 0
-	b.collision_mask = Catalog.L_WORLD
-	b.contact_monitor = true
-	b.max_contacts_reported = 4
-	var mi := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.09
-	cm.bottom_radius = 0.09
-	cm.height = 0.32
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.4, 0.75, 0.95, 0.9)
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	cm.material = mat
-	mi.mesh = cm
-	b.add_child(mi)
-	var cs := CollisionShape3D.new()
-	var sh := CylinderShape3D.new()
-	sh.radius = 0.09
-	sh.height = 0.32
-	cs.shape = sh
-	b.add_child(cs)
-	add_child(b)
-	b.global_position = p.global_position + Vector3.UP * 1.6 + fwd * 0.6
-	b.linear_velocity = fwd * 13.0 + Vector3.UP * 4.5
-	b.angular_velocity = Vector3(randf_range(-6, 6), 0, randf_range(-6, 6))
-	b.body_entered.connect(func(_bd: Node) -> void: _bottle_land(b))
+	_throw_item_body(prop, p, fwd)
 
-func _bottle_land(b: RigidBody3D) -> void:
-	if not is_instance_valid(b):
+func _throw_item_body(it: Item, owner: Player, fwd: Vector3) -> void:
+	it.mark_flung()
+	var launch := throw_launch_data(owner, fwd)
+	var throw_origin: Vector3 = launch["origin"]
+	var spawn_position: Vector3 = launch["spawn"]
+	it.set_free_at(spawn_position)
+	# 离手保护期仍可命中对手，但暂不与地面/场景接触。
+	it.collision_mask = Catalog.L_CHAR | Catalog.L_CART
+	it.contact_monitor = true
+	it.max_contacts_reported = 6
+	it.set_meta("throw_active", true)
+	it.set_meta("throw_owner", owner)
+	it.set_meta("throw_origin", throw_origin)
+	it.set_meta("throw_spawn_position", spawn_position)
+	it.set_meta("throw_started_msec", Time.get_ticks_msec())
+	it.add_collision_exception_with(owner)
+	if is_instance_valid(owner.cart):
+		it.add_collision_exception_with(owner.cart)
+	it.linear_velocity = launch["velocity"]
+	it.angular_velocity = Vector3(randf_range(-9, 9), randf_range(-5, 5), randf_range(-9, 9))
+	it.body_entered.connect(func(body: Node) -> void: _thrown_item_hit(it, body, owner))
+	# 飞出足够距离后再开启场景碰撞，并复查此刻的真实接触体。
+	get_tree().create_timer(Catalog.THROW_WORLD_ARM_TIME).timeout.connect(func() -> void:
+		if not is_instance_valid(it) or not bool(it.get_meta("throw_active", false)):
+			return
+		it.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
+		var contacts := it.get_colliding_bodies()
+		for contact in contacts:
+			if contact == owner or contact == owner.cart:
+				continue
+			_thrown_item_hit(it, contact, owner)
+			break)
+
+## 瞄准预览与真实投掷共用这一份出手参数，避免白线落点和商品轨迹漂移。
+func throw_launch_data(owner: Player, fwd: Vector3) -> Dictionary:
+	# 出手点使用上半身高度，并只沿水平朝向前置：低视角不会把商品生成到脚下。
+	var aim := fwd.normalized() if fwd.length() > 0.01 else -owner.global_transform.basis.z
+	var horizontal := Vector3(aim.x, 0.0, aim.z)
+	if horizontal.length() < 0.1:
+		horizontal = -owner.global_transform.basis.z
+		horizontal.y = 0.0
+	if horizontal.length() < 0.1:
+		horizontal = Vector3.FORWARD
+	horizontal = horizontal.normalized()
+	# 保留上抛瞄准，但不允许向下的初速度直接把物品送进地面。
+	aim = Vector3(horizontal.x, maxf(aim.y, -0.05), horizontal.z).normalized()
+	var throw_origin := owner.global_position + Vector3.UP * THROW_ORIGIN_HEIGHT
+	var spawn_position := throw_origin + horizontal * THROW_FORWARD_OFFSET
+	return {
+		"aim": aim,
+		"origin": throw_origin,
+		"spawn": spawn_position,
+		"velocity": aim * THROW_SPEED + Vector3.UP * THROW_UPWARD_SPEED,
+	}
+
+func _thrown_item_hit(it: Item, body: Node, owner: Player) -> void:
+	if not is_instance_valid(it) or not bool(it.get_meta("throw_active", false)):
 		return
-	var pos := b.global_position
+	# 物理异常之外的结算层保险：投掷者和其购物车永远不能成为首个落点。
+	if body == owner or body == owner.cart:
+		return
+	var throw_origin: Vector3 = it.get_meta("throw_origin", owner.global_position)
+	var from_origin := it.global_position - throw_origin
+	from_origin.y = 0.0
+	var age := (Time.get_ticks_msec() - int(it.get_meta("throw_started_msec", 0))) * 0.001
+	# 角色和购物车可近身直击；只有脚边世界碰撞需要等待投掷物真正离手。
+	if not (body is Actor) and not (body is Cart) \
+			and age < Catalog.THROW_WORLD_ARM_TIME \
+			and from_origin.length() < Catalog.THROW_WORLD_ARM_DISTANCE:
+		return
+	it.set_meta("throw_active", false)
+	var pos := it.global_position
 	pos.y = 0.0
-	b.queue_free()
-	SlipperyZone.create(self, pos, Vector3(3.5, 2, 3.5), 12.0)
+	it.set_meta("throw_effect_position", pos)
+	var direct_actor: Actor = body if body is Actor else null
+	var hit_cart: Cart = body if body is Cart else null
+	var victim: Actor = direct_actor if direct_actor != null else (hit_cart.attached_agent if hit_cart != null else null)
+	var damage_multiplier := Catalog.THROW_ACTOR_DAMAGE_MULTIPLIER \
+			if direct_actor != null else Catalog.THROW_CART_DAMAGE_MULTIPLIER
+	if victim != null and victim.is_friendly_source(owner):
+		victim = null
+	if victim != null and victim != owner and not victim.immune:
+		var damage := Catalog.throw_imbalance(it.item_id) * damage_multiplier
+		victim.add_imbalance(damage, owner)
+		var away := victim.global_position - owner.global_position
+		away.y = 0.0
+		if away.length() > 0.1:
+			victim.push_velocity += away.normalized() * Catalog.THROW_DIRECT_PUSH
+		Main.float_text(victim, victim.global_position + Vector3.UP * 2.1,
+				"%s%s +%d失衡!" % [it.display_name,
+						(" 直击×1.5" if direct_actor != null else " 砸车×1.0"), int(damage)],
+				Color(1.0, 0.58, 0.25), 66)
+		shake_for(victim, clampf(damage / 70.0, 0.25, 0.8))
+		CharSkills.mark_foreman_target(victim, owner)
+	_apply_throw_effect(it.item_id, pos, owner, direct_actor)
+	if tutorial_guide != null and owner == player:
+		tutorial_guide.on_throw_hit(it, body, pos)
+	# 命中后商品仍留在场内，可再次拾取/装车；仅关闭角色碰撞避免持续蹭伤。
+	get_tree().create_timer(0.35).timeout.connect(func() -> void:
+		if is_instance_valid(it):
+			it.collision_mask = Catalog.L_WORLD | Catalog.L_CART | Catalog.L_ITEM
+			it.remove_collision_exception_with(owner)
+			if is_instance_valid(owner.cart):
+				it.remove_collision_exception_with(owner.cart))
+
+func _apply_throw_effect(id: String, pos: Vector3, owner: Player, direct_actor: Actor = null) -> void:
+	match Catalog.prop_kind(id):
+		Catalog.PROP_BURST:
+			_throw_burst(pos, owner)
+		Catalog.PROP_WET:
+			spawn_slow_zone(pos, Catalog.WET_RADIUS, Catalog.WET_LIFE,
+					Catalog.WET_MOVE_FACTOR, null, "湿滑地面", Catalog.prop_effect_color(id),
+					Catalog.WET_TRACTION_FACTOR)
+		Catalog.PROP_SCATTER:
+			spawn_obscure_zone(pos)
+		Catalog.PROP_TASER:
+			if direct_actor != null and direct_actor != owner:
+				direct_actor.apply_taser(Catalog.TASER_TIME, Catalog.TASER_IMMUNITY, owner)
+
+func _throw_burst(pos: Vector3, owner: Player) -> void:
+	_spawn_burst_vfx(pos)
+	for node in get_tree().get_nodes_in_group("characters"):
+		if not (node is Actor):
+			continue
+		var a: Actor = node
+		if a.is_friendly_source(owner):
+			continue
+		var away := a.global_position - pos
+		away.y = 0.0
+		if away.length() > Catalog.BURST_RADIUS:
+			continue
+		if away.length() <= 0.05:
+			away = a.global_position - owner.global_position
+			away.y = 0.0
+		if away.length() <= 0.05:
+			away = Vector3.FORWARD
+		a.push_velocity += away.normalized() * Catalog.BURST_ACTOR_PUSH
+	for node in get_tree().get_nodes_in_group("carts"):
+		if not (node is Cart):
+			continue
+		var pushed_cart: Cart = node
+		var cart_away := pushed_cart.global_position - pos
+		cart_away.y = 0.0
+		if cart_away.length() <= Catalog.BURST_RADIUS:
+			if cart_away.length() <= 0.05:
+				cart_away = pushed_cart.global_position - owner.global_position
+				cart_away.y = 0.0
+			if cart_away.length() <= 0.05:
+				cart_away = Vector3.FORWARD
+			var impulse := (cart_away.normalized() * Catalog.BURST_CART_PUSH \
+					+ Vector3.UP * Catalog.BURST_CART_LIFT) * pushed_cart.mass
+			pushed_cart.apply_central_impulse(impulse)
+			var flip_axis := Vector3(cart_away.z, 0.15, -cart_away.x).normalized()
+			pushed_cart.apply_torque_impulse(flip_axis * Catalog.BURST_CART_TORQUE * pushed_cart.mass)
+	Main.float_text(self, pos + Vector3.UP, "爆裂推离!", Color(1.0, 0.42, 0.08), 62)
+
+func _spawn_burst_vfx(pos: Vector3) -> void:
+	var root := Node3D.new()
+	root.position = pos + Vector3.UP * 0.08
+	add_child(root)
+	for i in 3:
+		var ring := MeshInstance3D.new()
+		var mesh := CylinderMesh.new()
+		mesh.top_radius = 0.7 + i * 0.18
+		mesh.bottom_radius = mesh.top_radius
+		mesh.height = 0.045 + i * 0.018
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.2 + i * 0.16, 0.03, 0.72 - i * 0.12)
+		mat.emission_enabled = true
+		mat.emission = Color(1.0, 0.22 + i * 0.15, 0.02)
+		mat.emission_energy_multiplier = 2.4
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mesh.material = mat
+		ring.mesh = mesh
+		ring.scale = Vector3.ONE * 0.12
+		ring.position.y = i * 0.12
+		root.add_child(ring)
+		var tween := root.create_tween().set_parallel(true)
+		tween.tween_property(ring, "scale", Vector3.ONE * (3.4 + i * 0.8), 0.38 + i * 0.08) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(ring, "transparency", 1.0, 0.42 + i * 0.08)
+	var flash := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.7
+	sphere.height = 1.4
+	var flash_mat := StandardMaterial3D.new()
+	flash_mat.albedo_color = Color(1.0, 0.72, 0.18, 0.76)
+	flash_mat.emission_enabled = true
+	flash_mat.emission = Color(1.0, 0.38, 0.03)
+	flash_mat.emission_energy_multiplier = 3.2
+	flash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sphere.material = flash_mat
+	flash.mesh = sphere
+	flash.position.y = 0.7
+	root.add_child(flash)
+	var flash_tween := root.create_tween().set_parallel(true)
+	flash_tween.tween_property(flash, "scale", Vector3.ONE * 2.5, 0.28).set_trans(Tween.TRANS_QUAD)
+	flash_tween.tween_property(flash, "transparency", 1.0, 0.3)
+	get_tree().create_timer(0.65).timeout.connect(func() -> void:
+		if is_instance_valid(root):
+			root.queue_free())
+
+func spawn_obscure_zone(pos: Vector3) -> ObscureZone:
+	var zone := ObscureZone.create(self, pos, Catalog.SCATTER_RADIUS,
+			Catalog.SCATTER_LIFE, Catalog.SCATTER_PERCEPTION_FACTOR)
 	if net_mp and not net_client:
-		net.rpc("ev_slippery", pos, 12.0)
-	Main.float_text(self, pos + Vector3.UP * 1.0, "哗啦!!地面湿滑!", Color(0.4, 0.8, 1.0), 72)
+		net.rpc("ev_obscure_zone", pos, Catalog.SCATTER_RADIUS,
+				Catalog.SCATTER_LIFE, Catalog.SCATTER_PERCEPTION_FACTOR)
+	Main.float_text(self, pos + Vector3.UP, "散落遮挡!", Color(1.0, 0.86, 0.58), 58)
+	return zone
+
+func client_obscure_zone(pos: Vector3, radius: float, life: float, factor: float) -> void:
+	ObscureZone.create(self, pos, radius, life, factor)
 
 ## 随机位置生成地滑区(开局3块由种子决定两端一致;运行时的临时块走网络事件)
 func _spawn_random_slippery(count: int, life: float) -> void:
@@ -817,7 +1188,7 @@ func missing_list_ids(idx: int = -1) -> Dictionary:
 func trigger_locate_skill(p: Player = null) -> void:
 	if p == null:
 		p = player
-	if game_over or p == null:
+	if game_over or p == null or p.taser_time > 0.0:
 		return
 	if p.locate_cd > 0.0:
 		if p == player:
@@ -872,14 +1243,39 @@ func _tick_locate_visual(delta: float) -> void:
 func _update_camera(delta: float) -> void:
 	if player == null or cam_rig == null:
 		return
+	var aiming := player.throw_aiming and not player.downed and not player.finished and not game_over
+	var first_person := not player.attached and not player.downed and not player.finished
+	var entering_first_person := first_person and not _camera_first_person
+	_camera_first_person = first_person
+	cam_rig.set_first_person(first_person)
+	cam_rig.set_throw_aiming(aiming)
+	# 本机第一人称不渲染自己的胶囊、手和名牌；其他玩家实例不受影响。
+	if player.body_root != null:
+		player.body_root.visible = not first_person
+	if player.name_label != null:
+		player.name_label.visible = not first_person
 	# 推车时镜头跟车(视野中心是车头,便于瞄准撞击)
 	var target := player.global_position + Vector3.UP * 1.5
-	if player.attached and is_instance_valid(player.cart):
+	if player.attached and is_instance_valid(player.cart) and not aiming:
 		target = player.cart.global_position + Vector3.UP * 1.4
+	if entering_first_person:
+		cam_rig.global_position = target
 	cam_rig.follow(target, delta)
+	cam_rig.update_first_person_hands(player, delta)
+	if aiming and player.attached and selected_cart_item_id(player) != "" and player.prop_cd <= 0.0 \
+			and is_instance_valid(player.cart):
+		var launch := throw_launch_data(player, player._aim_dir())
+		var exclusions: Array[RID] = [player.get_rid(), player.cart.get_rid()]
+		cam_rig.update_throw_preview(launch["spawn"], launch["velocity"], exclusions)
+	else:
+		cam_rig.hide_throw_preview()
 
 func _set_mouse_captured(c: bool) -> void:
 	mouse_captured = c
+	if not c and player != null:
+		player.throw_aiming = false
+		if cam_rig != null:
+			cam_rig.set_throw_aiming(false)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if c else Input.MOUSE_MODE_VISIBLE
 
 func _update_timer_hud() -> void:
@@ -906,36 +1302,32 @@ func _update_timer_hud() -> void:
 
 func _update_skill_hud() -> void:
 	var s1 := "Q雷达:就绪" if player.locate_cd <= 0.0 else "Q 雷达:%d秒" % int(ceil(player.locate_cd))
-	var s2 := "右键 水瓶:就绪" if player.bottle_cd <= 0.0 else "右键 水瓶:%d秒" % int(ceil(player.bottle_cd))
-	var s3 := "空格稳住:就绪" if player.brace_cd <= 0.0 else ("空格 稳住:格挡中!" if player.braced else "空格 稳住:%d秒" % int(ceil(player.brace_cd)))
+	var wheel_items := cart_throw_items(player)
+	var selected_id := selected_cart_item_id(player)
+	var prop_text := "车内无商品" if selected_id == "" else "%s·%d失衡" % [Catalog.ITEMS[selected_id]["name"], int(Catalog.throw_imbalance(selected_id))]
+	var s2 := "按住右键:近距观察"
+	if player.attached:
+		s2 = "按住右键瞄准/松开投掷:%s" % prop_text if player.prop_cd <= 0.0 \
+				else "右键 投掷:%.1f秒" % player.prop_cd
+	hud.set_item_wheel(wheel_items, player.throw_selection, player.attached)
+	hud.set_obscured(player.obscure_time > 0.0)
+	var s3 := "Ctrl稳住:就绪" if player.brace_cd <= 0.0 else ("Ctrl 稳住:格挡中!" if player.braced else "Ctrl 稳住:%d秒" % int(ceil(player.brace_cd)))
 	var sk := CharacterDef.skill_name(player.char_id)
-	var s4 := "Ctrl %s:就绪" % sk
-	if player.stance_time > 0.0:
-		s4 = "Ctrl %s:扎住了!" % sk
+	var max_cd := CharacterDef.skill_cd(player.char_id)
+	var s4 := "空格 %s:就绪" % sk
+	if player.taser_time > 0.0:
+		s4 = "空格 %s:被电定身(%.1f秒)" % [sk, player.taser_time]
 	elif player.stun_time > 0.0:
-		s4 = "Ctrl %s:收不住脚(%.1f秒)" % [sk, player.stun_time]
+		s4 = "空格 %s:收不住脚(%.1f秒)" % [sk, player.stun_time]
 	elif player.char_cd > 0.0:
-		s4 = "Ctrl %s:%d秒" % [sk, int(ceil(player.char_cd))]
-	var ready: bool = player.locate_cd <= 0.0 and player.bottle_cd <= 0.0 \
+		s4 = "空格 %s:%d秒" % [sk, int(ceil(player.char_cd))]
+	var ready: bool = player.locate_cd <= 0.0 and player.prop_cd <= 0.0 \
 			and player.brace_cd <= 0.0 and player.char_cd <= 0.0
-	# 「上链接」的双向反馈:抢人者知道自己暴露,被抢者知道能看见对方
-	if player.exposed_time > 0.0:
-		s4 += "⚠ 位置暴露 %.1f秒!" % player.exposed_time
-	elif player.track_time > 0.0:
-		s4 += "  👁 已锁定抢你货的人 %.1f秒" % player.track_time
+	# 技能冷却圆环(塞尔达体力轮风格)
+	hud.set_skill_cd(clampf(player.char_cd / maxf(max_cd, 1.0), 0.0, 1.0))
 	hud.set_skill(s1 + " · " + s2 + " · " + s3 + " · " + s4, ready)
-	# 马德胜「余光」:屏幕边缘的威胁方向预警(只给信息,不给数值)
-	hud.set_threats(CharSkills.threats_for(self, player), cam_yaw)
-	# 李洋「上链接」的受害者:4秒内穿墙看到抢你货的人
-	_update_track_mark()
-
-## 被抢货后的追踪标记:只有受害者本机能看到那个红壳
-func _update_track_mark() -> void:
-	for p in players:
-		if not is_instance_valid(p) or p.mark_shell == null:
-			continue
-		var show_it: bool = player.track_time > 0.0 and player.track_target == p
-		p.mark_shell.visible = show_it
+	# 旧威胁箭头层保持清空；马德胜被动已改为随从标记追击。
+	hud.set_threats([], cam_yaw)
 
 func _update_hud() -> void:
 	_update_timer_hud()
@@ -1010,10 +1402,7 @@ func _on_lane_settled(by: Player) -> void:
 	by.settled_once = true
 	by.finished = true
 	if tutorial:
-		game_over = true
-		_set_mouse_captured(false)
-		hud.set_tutorial_text("")
-		hud.show_result(["🎓 教学完成!", "", "搜、抢、撤都会了——黑五见真章。", "", "按 回车 返回开始界面"])
+		complete_tutorial()
 		return
 	_finish_player(idx, true)
 
@@ -1061,7 +1450,8 @@ func on_granny_stole(cart: Cart) -> void:
 func on_player_stole(thief: Player, _cart: Cart, item: Item) -> void:
 	Main.float_text(self, thief.global_position + Vector3.UP * 2.2, "顺走了 " + item.display_name, Color(1, 0.75, 0.3))
 	if tutorial_guide != null:
-		tutorial_guide.marks["stole"] = true
+		tutorial_guide.on_player_stole(_cart, item)
+		return
 	# 车主大妈:开骂+追上来夺回
 	if _cart.cart_owner is Granny and is_instance_valid(_cart.cart_owner):
 		_cart.cart_owner.on_robbed(item, thief)
@@ -1071,6 +1461,9 @@ func on_player_stole(thief: Player, _cart: Cart, item: Item) -> void:
 
 ## 有人倒地:官方口吻围观播报(带冷却防刷屏)
 func on_actor_downed(a: Actor) -> void:
+	if tutorial_guide != null:
+		tutorial_guide.on_actor_downed(a)
+		return
 	if game_over or _down_bc_cd > 0.0 or net_client:
 		return
 	_down_bc_cd = 12.0
@@ -1080,7 +1473,23 @@ func on_actor_downed(a: Actor) -> void:
 		hud.broadcast("工作人员请注意:卖场内有大妈倒地。经确认,商品完好无损,人也很乐观~")
 
 func on_player_took_from_shelf(_item: Item) -> void:
-	pass
+	if tutorial_guide != null:
+		tutorial_guide.on_shelf_item(_item)
+
+func complete_tutorial() -> void:
+	if game_over:
+		return
+	game_over = true
+	if not pdata.is_empty():
+		pdata[0]["settled"] = true
+		pdata[0]["done"] = true
+	player.settled_once = true
+	player.finished = true
+	_set_mouse_captured(false)
+	hud.set_tutorial_text("")
+	hud.show_result(["🎓 五房教学完成!", "", "移动、装车、抢夺、道具与角色技能都已通过。",
+			"搜、抢、撤都会了——黑五见真章。", "", "按 回车 返回开始界面"])
+	_log_milestone("教学完成 rooms=5")
 
 # ---------- 联机粘合 ----------
 
@@ -1108,8 +1517,10 @@ func apply_remote_action(seat: int, kind: String, dir: Vector3) -> void:
 			p.do_elbow(dir)
 		"locate":
 			trigger_locate_skill(p)
-		"throw":
-			trigger_throw_bottle(p, dir)
+		"prop":
+			trigger_throw_cart_item(p, dir)
+		_ when kind.begins_with("throw:"):
+			trigger_throw_cart_item(p, dir, kind.trim_prefix("throw:"))
 		"char_skill":
 			trigger_char_skill(p, dir)
 
@@ -1131,6 +1542,33 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		_set_mouse_captured(not mouse_captured)
 		return
+	# 右键按住进入越肩瞄准，松开才投掷；客户端也只在松开时向主机发动作。
+	if game_started and not game_over and player != null and event.is_action_pressed("use_prop"):
+		if not player.downed and not player.finished:
+			player.throw_aiming = true
+		return
+	if player != null and event.is_action_released("use_prop"):
+		var was_aiming := player.throw_aiming
+		player.throw_aiming = false
+		if was_aiming and player.attached and game_started and not game_over \
+				and not player.downed and not player.finished:
+			var selected_id := selected_cart_item_id(player)
+			var throw_dir := player._aim_dir()
+			if net_client:
+				net.send_action("throw:" + selected_id, throw_dir)
+			else:
+				trigger_throw_cart_item(player, throw_dir, selected_id)
+		return
+	if tutorial and tutorial_guide != null and event.is_action_pressed("tutorial_reset"):
+		tutorial_guide.reset_current_room()
+		return
+	if game_started and not game_over and event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			cycle_cart_item(player, -1)
+			return
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			cycle_cart_item(player, 1)
+			return
 	if event.is_action_pressed("restart") and game_over:
 		net.shutdown()
 		get_tree().paused = false
@@ -1148,12 +1586,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			net.send_action("drop")
 		elif event.is_action_pressed("locate"):
 			net.send_action("locate")
-		elif event.is_action_pressed("throw"):
-			net.send_action("throw", cam_rig.forward())
 		elif event.is_action_pressed("char_skill"):
-			net.send_action("char_skill", cam_rig.forward())
+			net.send_action("char_skill", player._aim_dir())
 		elif event.is_action_pressed("elbow"):
-			net.send_action("elbow", cam_rig.forward())
+			net.send_action("elbow", player._aim_dir())
 		return
 	if event.is_action_pressed("dev_mode") and not game_over and not net_mp:
 		var showing := not hud.dev_panel.visible
@@ -1187,10 +1623,10 @@ func random_shelved_item() -> Item:
 	return pool.pick_random()
 
 ## 白盒反馈:世界内飘字(size可调,碰撞类用大号)。联机主机自动转发给客户端。
-static func float_text(_ctx: Node, pos: Vector3, text: String, color: Color, size := 64) -> void:
+static func float_text(ctx: Node, pos: Vector3, text: String, color: Color, size := 64) -> void:
 	if instance == null or not is_instance_valid(instance):
 		return
-	var lb := Label3D.new()
+	var lb := DynamicFloatText.new()
 	lb.text = text
 	lb.font = Catalog.ui_font_bold()
 	lb.font_size = size
@@ -1201,10 +1637,25 @@ static func float_text(_ctx: Node, pos: Vector3, text: String, color: Color, siz
 	lb.outline_size = 12
 	lb.outline_modulate = Color(0, 0, 0, 0.85)
 	instance.add_child(lb)
-	lb.global_position = pos
+	# 第一人称时，角色自身头顶或镜头后方的拟声字会完全离开视野；将这种近身反馈
+	# 推到镜头前下方。正常处于视锥内的命中字幕仍留在实际事件位置。
+	var display_pos := pos
+	var cam := instance.get_viewport().get_camera_3d()
+	var local_delta := pos - instance.player.global_position if is_instance_valid(instance.player) else Vector3.ZERO
+	var own_feedback := ctx == instance.player or (ctx == instance \
+			and Vector2(local_delta.x, local_delta.z).length() < 0.8 and absf(local_delta.y) < 3.0)
+	lb.player_feedback = own_feedback
+	if cam != null and instance.cam_rig != null and instance.cam_rig.is_first_person():
+		var forward := -cam.global_transform.basis.z
+		if own_feedback:
+			display_pos = cam.global_position + forward * 2.1 - cam.global_transform.basis.y * 0.18
+			lb.set_meta("first_person_safe_position", true)
+	lb.global_position = display_pos
+	if cam != null:
+		lb._update_first_person_visibility(cam)
 	var tw := lb.create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(lb, "global_position", pos + Vector3.UP * 1.2, 1.1)
+	tw.tween_property(lb, "global_position", display_pos + Vector3.UP * 1.2, 1.1)
 	tw.tween_property(lb, "modulate:a", 0.0, 1.1).set_delay(0.3)
 	tw.chain().tween_callback(lb.queue_free)
 	if instance.net != null and instance.net.active and instance.net.is_host:
