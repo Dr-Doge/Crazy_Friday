@@ -45,6 +45,7 @@ var checkouts: Array[Checkout] = []
 var grannies: Array[Granny] = []
 var warehouse_buddies: Array = []
 var all_items: Array[Item] = []
+var _mp_interaction_test_items := {}
 
 # 每名玩家一份对局数据:{list, score, counts, orig, saved, settled, done}
 var pdata: Array = []
@@ -223,6 +224,8 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
 	for c in chars:
 		seat_chars.append(CharacterDef.valid_id(str(c)))
 	_build_world(wseed, npc, nplayers)
+	if OS.get_environment("WHITEBOX_MP_INTERACTION_TEST") != "":
+		_setup_mp_interaction_test(nplayers)
 	if net_client:
 		client_view = ClientView.new(self)
 		_make_client_puppets()
@@ -245,8 +248,54 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
 			print("[mp] CLIENT_DRIVE_CAMERA=%s seat=%d attached=%s first_person=%s" % [
 					"PASS" if passed else "FAIL", local_idx, str(player.attached),
 					str(cam_rig.is_first_person())]))
+	if net_client and OS.get_environment("WHITEBOX_MP_INTERACTION_TEST") != "":
+		_run_mp_interaction_test()
 	if host:
 		hud.broadcast("联机对局开始!%d位\"热心顾客\"已入场,黑五愉快,手下无情~" % nplayers)
+
+## 联机交互回归场景：为每个客户端生成一台不会被NPC随机拿走的电视，
+## 各端按相同座位顺序创建，因而商品索引也完全一致。
+func _setup_mp_interaction_test(nplayers: int) -> void:
+	for seat in range(1, nplayers):
+		var test_item := Item.create("tv")
+		add_child(test_item)
+		all_items.append(test_item)
+		# 驾驶回归结束后玩家会在车把处下车，因此以车把为基准布置目标。
+		test_item.set_shelved(players[seat].cart.handle_pos() + Vector3(0, 1.15, -1.2))
+		_mp_interaction_test_items[seat] = test_item
+
+## 自动化走真实客户端路径：先完成上车回归并下车，再让准星对准测试商品，
+## 真实长按E；最终同时核验主机回传的手持归属与第一人称手持渲染。
+func _run_mp_interaction_test() -> void:
+	var target: Item = _mp_interaction_test_items.get(local_idx)
+	if not is_instance_valid(target):
+		print("[mp] CLIENT_SHELF_INTERACTION=FAIL seat=%d reason=no_target" % local_idx)
+		return
+	get_tree().create_timer(2.05).timeout.connect(func() -> void:
+		if is_instance_valid(player) and player.attached:
+			net.send_action("drive"))
+	get_tree().create_timer(2.45).timeout.connect(func() -> void:
+		if not is_instance_valid(player) or not is_instance_valid(target):
+			return
+		var origin := player.global_position + Vector3.UP * THROW_ORIGIN_HEIGHT
+		var aim := (target.global_position - origin).normalized()
+		cam_rig.yaw = atan2(-aim.x, -aim.z)
+		cam_rig.pitch = clampf(atan2(aim.y, Vector2(aim.x, aim.z).length()),
+				CameraRig.PITCH_MIN, CameraRig.PITCH_MAX))
+	get_tree().create_timer(2.7).timeout.connect(func() -> void:
+		if is_instance_valid(player):
+			Input.action_press("interact")
+			net.send_action("interact_press", cam_rig.aim_direction()))
+	get_tree().create_timer(3.9).timeout.connect(func() -> void:
+		Input.action_release("interact")
+		net.send_action("interact_release"))
+	get_tree().create_timer(4.45).timeout.connect(func() -> void:
+		var passed := is_instance_valid(player) and is_instance_valid(target) \
+				and player.held.has(target) and target.state == Item.ItemState.HELD \
+				and target.collision_layer == 0 and cam_rig.first_person_held_item_count() == 1
+		print("[mp] CLIENT_SHELF_INTERACTION=%s seat=%d held=%d item_state=%d fp_items=%d" % [
+				"PASS" if passed else "FAIL", local_idx, player.held.size(), target.state,
+				cam_rig.first_person_held_item_count()]))
 
 ## 主机点"开始对局"
 func net_begin_match() -> void:
@@ -1240,6 +1289,23 @@ func _tick_locate_visual(delta: float) -> void:
 
 # ---------- 相机与HUD ----------
 
+## 主机为远程玩家执行的准星选货射线。射线起点取玩家头部而非房主相机，
+## 同时保留场景遮挡与距离校验，客户端只能表达瞄准意图，不能直接指定商品。
+func aimed_shelf_item_from(p: Player, direction: Vector3, max_distance := 8.0) -> Item:
+	if not is_instance_valid(p) or not direction.is_finite() or direction.length_squared() < 0.001:
+		return null
+	var ray_origin := p.global_position + Vector3.UP * THROW_ORIGIN_HEIGHT
+	var ray_end := ray_origin + direction.normalized() * max_distance
+	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end,
+			Catalog.L_WORLD | Catalog.L_ITEM)
+	query.collide_with_areas = false
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty() and hit.get("collider") is Item:
+		var item := hit["collider"] as Item
+		if item.state == Item.ItemState.SHELVED:
+			return item
+	return null
+
 func _update_camera(delta: float) -> void:
 	if player == null or cam_rig == null:
 		return
@@ -1502,9 +1568,18 @@ func apply_remote_action(seat: int, kind: String, dir: Vector3) -> void:
 		return
 	match kind:
 		"interact_press":
-			p._on_interact_pressed()
+			if OS.get_environment("WHITEBOX_MP_INTERACTION_TEST") != "":
+				p.net_aim_dir = dir.normalized() if dir.length_squared() > 0.001 else p.net_aim_dir
+				var debug_item := p._aimed_shelf_item()
+				var debug_pick := p._best_interaction()
+				print("[mp] HOST_INTERACT_RAY seat=%d hit=%s pick=%s distance=%.2f origin=%s dir=%s" % [seat,
+						debug_item.item_id if is_instance_valid(debug_item) else "none",
+						str(debug_pick.get("kind", "none")),
+						p.global_position.distance_to(debug_item.global_position) if is_instance_valid(debug_item) else -1.0,
+						str(p.global_position + Vector3.UP * THROW_ORIGIN_HEIGHT), str(dir)])
+			p._on_interact_pressed(dir)
 		"interact_release":
-			p._cancel_channel()
+			p._on_interact_released()
 		"drive":
 			if p.attached:
 				p.detach_cart()
@@ -1577,7 +1652,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	# 客户端:动作发给主机执行
 	if net_client and game_started and not game_over:
 		if event.is_action_pressed("interact"):
-			net.send_action("interact_press")
+			net.send_action("interact_press", cam_rig.aim_direction())
 		elif event.is_action_released("interact"):
 			net.send_action("interact_release")
 		elif event.is_action_pressed("drive"):

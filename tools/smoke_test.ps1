@@ -206,14 +206,16 @@ function Invoke-MpCase {
 	# 必须等于客户端总数,否则先到的一凑够就开局,后到的会被
 	# _on_peer_connected 当"迟到连接"踢掉,客户端还会反复重连。
 	$instances += Start-Instance -Name 'mp-host' -FrameCount $FrameCount -EnvVars @{
-		WHITEBOX_HOST = "$ClientCount"
-		WHITEBOX_NPC  = '4'
+		WHITEBOX_HOST                = "$ClientCount"
+		WHITEBOX_NPC                 = '4'
+		WHITEBOX_MP_INTERACTION_TEST = '1'
 	}
 	Start-Sleep -Seconds 2   # 等主机把房建起来再让客户端连
 	for ($n = 1; $n -le $ClientCount; $n++) {
 		$instances += Start-Instance -Name "mp-client$n" -FrameCount $FrameCount -EnvVars @{
-			WHITEBOX_JOIN          = $ip
-			WHITEBOX_MP_DRIVE_TEST = '1'
+			WHITEBOX_JOIN                = $ip
+			WHITEBOX_MP_DRIVE_TEST       = '1'
+			WHITEBOX_MP_INTERACTION_TEST = '1'
 		}
 		Start-Sleep -Milliseconds 700
 	}
@@ -227,7 +229,7 @@ function Invoke-MpCase {
 			$expect += "host=true"
 		}
 		else {
-			$expect += @("host=false", "CLIENT_DRIVE_CAMERA=PASS")
+			$expect += @("host=false", "CLIENT_DRIVE_CAMERA=PASS", "CLIENT_SHELF_INTERACTION=PASS")
 		}
 		$results += Test-Instance -Instance $i -Expect $expect
 	}

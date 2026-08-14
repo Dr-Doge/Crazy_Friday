@@ -6,8 +6,8 @@ class_name Net extends Node
 const PORT := 7788
 const MAX_CLIENTS := 5     # 主机+5客户端=6人
 const SYNC_INTERVAL := 3   # 每3个物理帧同步一次(约20Hz)
-const NET_VERSION := 8     # v8:玩家包同步购物车挂接状态，修复客户端驾驶仍卡第一人称
-                           # v7:新增马德胜双随从世界状态包
+const NET_VERSION := 9     # v9:同步客户端准星与手持归属，修复远程拿货/手持表现
+                           # v8:玩家包同步购物车挂接状态，修复客户端驾驶仍卡第一人称
 
 var main: Main
 var is_host := false
@@ -304,8 +304,8 @@ func _physics_process(_delta: float) -> void:
 		rpc_id(1, "client_input", mv,
 				Input.is_action_pressed("sprint"),
 				Input.is_action_pressed("brace"),
-				Input.is_action_pressed("interact"),
-				main.cam_yaw)
+				main.cam_yaw,
+				main.cam_rig.aim_direction())
 
 func send_action(kind: String, dir := Vector3.ZERO) -> void:
 	if active and not is_host:
@@ -314,7 +314,8 @@ func send_action(kind: String, dir := Vector3.ZERO) -> void:
 # ---------- 主机侧接收 ----------
 
 @rpc("any_peer", "call_remote", "unreliable")
-func client_input(mv: Vector2, sprint: bool, brace: bool, interact_held: bool, cam_yaw: float = 0.0) -> void:
+func client_input(mv: Vector2, sprint: bool, brace: bool,
+		cam_yaw: float = 0.0, aim_dir := Vector3.FORWARD) -> void:
 	if not is_host:
 		return
 	var seat := seat_of_peer(multiplayer.get_remote_sender_id())
@@ -325,11 +326,13 @@ func client_input(mv: Vector2, sprint: bool, brace: bool, interact_held: bool, c
 	# 推车路径的 throttle := -input.y 会直接乘进 apply_central_force(player.gd),
 	# 等于把推力和撞击动能放大数十倍(徒步路径有 normalized() 兜住,推车没有)。
 	# NaN/inf 则会污染物理状态并在各端扩散,必须整帧丢弃。
-	if not mv.is_finite() or not is_finite(cam_yaw):
+	if not mv.is_finite() or not is_finite(cam_yaw) or not aim_dir.is_finite():
 		return
 	if mv.length() > 1.0:
 		mv = mv.normalized()
-	main.players[seat].set_net_input(mv, sprint, brace, interact_held, cam_yaw)
+	if aim_dir.length_squared() > 0.001:
+		aim_dir = aim_dir.normalized()
+	main.players[seat].set_net_input(mv, sprint, brace, cam_yaw, aim_dir)
 
 @rpc("any_peer", "call_remote", "reliable")
 func client_action(kind: String, dir: Vector3) -> void:
@@ -340,6 +343,10 @@ func client_action(kind: String, dir: Vector3) -> void:
 		return
 	# 同上:方向向量只取朝向,长度一律归一(肘击/投掷会用它施力)
 	if not dir.is_finite():
+		return
+	var needs_direction := kind == "interact_press" or kind == "elbow" \
+			or kind == "char_skill" or kind == "prop" or kind.begins_with("throw:")
+	if needs_direction and dir.length_squared() <= 0.001:
 		return
 	if dir.length() > 0.001:
 		dir = dir.normalized()
@@ -380,7 +387,7 @@ func _gather_players() -> Dictionary:
 				p.locate_cd, p.prop_cd, p.brace_cd,
 				p.char_cd, p.stance_time, p.stun_time,
 				p.taser_time, p.taser_immunity_time, p.obscure_time, p.obscure_factor,
-				p.attached])
+				p.attached, _held_item_indices(p)])
 		_sync_text("pp%d" % i, "pp", i, p.prompt_text)
 	return {"p": ps}
 
@@ -405,7 +412,7 @@ func _gather_world() -> Dictionary:
 		var g = grannies_net[i]
 		if is_instance_valid(g):
 			gs.append([g.global_position, g.body_root.rotation.y, g.hand_pose,
-					g.body_root.rotation.x])
+					g.body_root.rotation.x, _held_item_indices(g)])
 			_sync_text("gw%d" % i, "gw", i, g.want_label.text)
 			_sync_text("gb%d" % i, "gb", i, g.bubble.text if g.bubble.visible else "")
 		else:
@@ -433,6 +440,15 @@ func _gather_world() -> Dictionary:
 		else:
 			bs.append(null)
 	return {"g": gs, "i": its, "b": bs}
+
+func _held_item_indices(actor: Actor) -> Array:
+	var out: Array = []
+	for it in actor.held:
+		if is_instance_valid(it):
+			var idx := main.all_items.find(it)
+			if idx >= 0:
+				out.append(idx)
+	return out
 
 @rpc("authority", "call_remote", "unreliable")
 func sync_state(d: Dictionary) -> void:
