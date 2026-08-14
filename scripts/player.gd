@@ -21,6 +21,7 @@ var brace_cd := 0.0
 var locate_cd := 0.0        # 技能CD按人各算(联机双人)
 var prop_cd := 0.0          # 右键场内商品道具冷却
 var throw_selection := 0    # 购物车商品轮盘当前索引（本地UI状态）
+var throw_aiming := false   # 按住右键进入越肩瞄准，松开时才真正投掷
 var buddies: Array = []      # 马德胜常驻的两名物流随从
 
 # ---------- 角色(见 character_def.gd / char_skills.gd) ----------
@@ -229,6 +230,7 @@ func _hold_cart_handle() -> void:
 
 ## 倒地/完赛时清掉技能状态,避免"定身/硬直"跨状态残留
 func _reset_char_states() -> void:
+	throw_aiming = false
 	dash_windup = 0.0
 	dash_time = 0.0
 	stun_time = 0.0
@@ -329,8 +331,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_drop_held()
 	elif event.is_action_pressed("locate"):
 		main.trigger_locate_skill()
-	elif event.is_action_pressed("use_prop"):
-		main.trigger_throw_cart_item(self, _aim_dir(), main.selected_cart_item_id(self))
 	elif event.is_action_pressed("char_skill"):
 		# 空格:角色专属技能(赵冬梅冲撞 / 马德胜扎马步 / 李洋促销圈)
 		main.trigger_char_skill(self, _aim_dir())
@@ -344,7 +344,7 @@ func _aim_dir() -> Vector3:
 		var exclusions: Array[RID] = [get_rid()]
 		if is_instance_valid(cart):
 			exclusions.append(cart.get_rid())
-		return main.cam_rig.aim_direction_from(global_position + Vector3.UP * 1.55, exclusions)
+		return main.cam_rig.aim_direction_from(global_position + Vector3.UP * Main.THROW_ORIGIN_HEIGHT, exclusions)
 	return Vector3.ZERO
 
 ## 肘击统一入口(本地/联机远程共用):结算体力,不够抡不动
@@ -402,6 +402,11 @@ func _update_channel(delta: float, input: Vector2) -> void:
 		_cancel_channel()
 		return
 	if _channel_target is Node3D and global_position.distance_to(_channel_target.global_position) > 2.8:
+		_cancel_channel()
+		return
+	# 搜货期间必须持续用屏幕中心准星锁住开始选择的那件商品。
+	if _channel_kind == "search" and (main == null \
+			or main.cam_rig.aimed_shelf_item() != _channel_target):
 		_cancel_channel()
 		return
 	if not _interact_held:
@@ -471,12 +476,6 @@ func _best_interaction() -> Dictionary:
 			if can_hold(it):
 				best = {"kind": "pickup", "target": it, "label": "E 拾取 " + it.display_name}
 				best_d = d
-		elif it.state == Item.ItemState.SHELVED and d < 1.9 and d < best_d:
-			if can_hold(it):
-				best = {"kind": "search", "target": it, "label": "按住E 搜货:" + it.display_name}
-			else:
-				best = {"kind": "search_full", "target": it, "label": "手上拿不下了(R先装车)"}
-			best_d = d
 	# 别人的车(无人推、有货)
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
@@ -494,6 +493,19 @@ func _best_interaction() -> Dictionary:
 		if d3 < 2.6 and d3 < best_d:
 			best = {"kind": "load", "target": cart, "label": "E 放入购物车"}
 			best_d = d3
+	# 货架货不再按“离谁最近”自动选择，只允许准星射线明确命中的那一件覆盖候选。
+	var aimed_item: Item = main.cam_rig.aimed_shelf_item() if main != null else null
+	var aimed_horizontal_distance := INF
+	if is_instance_valid(aimed_item):
+		aimed_horizontal_distance = Vector2(global_position.x, global_position.z).distance_to(
+				Vector2(aimed_item.global_position.x, aimed_item.global_position.z))
+	if is_instance_valid(aimed_item) and aimed_horizontal_distance < 1.9:
+		if can_hold(aimed_item):
+			best = {"kind": "search", "target": aimed_item,
+					"label": "按住E 拿取准星商品:" + aimed_item.display_name}
+		else:
+			best = {"kind": "search_full", "target": aimed_item,
+					"label": "手上拿不下了(R先装车)"}
 	return best
 
 func _item_in_any_basket(it: Item) -> bool:

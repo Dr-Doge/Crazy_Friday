@@ -204,6 +204,8 @@ static func create(color: Color, title: String) -> Cart:
 	area.add_child(acs)
 	c.add_child(area)
 	c.basket_area = area
+	area.body_entered.connect(c._on_basket_body_entered)
+	area.body_exited.connect(c._on_basket_body_exited)
 
 	# 红色高亮壳:玩家清单商品在这辆车里时点亮(反面剔除→外描边观感)
 	var hl := MeshInstance3D.new()
@@ -252,6 +254,14 @@ func items_in_basket() -> Array[Item]:
 			out.append(b)
 	return out
 
+func _on_basket_body_entered(body: Node3D) -> void:
+	if body is Item and body.state == Item.ItemState.FREE:
+		body.set_cart_label_hidden(self, true)
+
+func _on_basket_body_exited(body: Node3D) -> void:
+	if body is Item:
+		body.set_cart_label_hidden(self, false)
+
 func _physics_process(delta: float) -> void:
 	_mass_timer -= delta
 	if _mass_timer <= 0.0:
@@ -273,6 +283,10 @@ func _physics_process(delta: float) -> void:
 		for it in _grav_items:
 			if is_instance_valid(it) and not current.has(it):
 				it.gravity_scale = 1.0
+				it.set_cart_label_hidden(self, false)
+		for it in current:
+			if is_instance_valid(it):
+				it.set_cart_label_hidden(self, true)
 		_grav_items = current
 	var imb := attached_agent.imbalance if attached_agent != null else 0.0
 	var gscale := lerpf(ITEM_GRAVITY_FULL, ITEM_GRAVITY_LOOSE, clampf(imb / 100.0, 0.0, 1.0))

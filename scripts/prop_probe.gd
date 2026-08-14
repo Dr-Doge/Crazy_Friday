@@ -12,6 +12,8 @@ var _item: Item
 var _zone_before := 0
 var _block_cart: Cart
 var _burst_cart: Cart
+var _shelf_target: Item
+var _track_shelf_target := false
 
 func _init(m: Main) -> void:
 	_m = m
@@ -38,13 +40,17 @@ func setup() -> void:
 
 func tick(delta: float) -> void:
 	_t += delta
+	if _track_shelf_target and is_instance_valid(_shelf_target):
+		_place_shelf_on_crosshair()
 	var schedule := [
 		[0.3, _setup_wheel], [0.7, _check_wheel],
-		[0.9, _throw_detergent], [1.1, _hit_detergent], [1.4, _check_detergent],
-		[1.6, _throw_thermos], [1.8, _hit_thermos], [2.1, _check_thermos],
-		[2.3, _throw_candy], [2.5, _hit_candy], [2.9, _check_candy],
-		[3.0, _throw_drone], [3.2, _hit_drone], [3.45, _check_drone],
-		[3.7, _check_pedestrian_hits], [3.9, _check_cart_recovery], [4.3, _report],
+		[0.78, _setup_shelf_target], [0.88, _check_shelf_target],
+		[0.98, _move_shelf_off_crosshair], [1.08, _check_shelf_miss],
+		[1.2, _throw_detergent], [1.4, _hit_detergent], [1.7, _check_detergent],
+		[1.9, _throw_thermos], [2.1, _hit_thermos], [2.4, _check_thermos],
+		[2.6, _throw_candy], [2.8, _hit_candy], [3.2, _check_candy],
+		[3.3, _throw_drone], [3.5, _hit_drone], [3.75, _check_drone],
+		[4.0, _check_pedestrian_hits], [4.2, _check_cart_recovery], [4.6, _report],
 	]
 	while _step < schedule.size() and _t >= float(schedule[_step][0]):
 		var fn: Callable = schedule[_step][1]
@@ -87,10 +93,94 @@ func _check_wheel() -> void:
 			"镜头：采用右肩偏移，角色不再遮挡屏幕中心准星")
 	_check(_m.cam_rig.spring.position.y >= 0.5 and CameraRig.MIN_WORLD_AIM_DISTANCE >= 8.0,
 			"准星：角色构图下移且近景会聚距离受限，不再贴近角色脚边")
-	_check(CameraRig.DIST < 5.0 and CameraRig.NEAR_LOD_HIDE_DISTANCE > 0.0,
-			"镜头：近距离越肩构图与场景近景LOD参数已启用")
-	_check(not _m.get_tree().get_nodes_in_group("camera_near_lod").is_empty(),
-			"镜头LOD：货架、墙体与场景灯牌视觉已登记近景隐藏")
+	_check(is_equal_approx(CameraRig.DIST, 3.0) and CameraRig.SHOULDER_OFFSET >= 0.9 \
+			and is_equal_approx(CameraRig.THROW_AIM_DIST, 2.0) \
+			and CameraRig.THROW_AIM_SHOULDER > CameraRig.SHOULDER_OFFSET,
+			"镜头：常态3米左下构图与2米右肩瞄准参数已启用")
+	var sign_lod_nodes := _m.get_tree().get_nodes_in_group("third_person_sign_lod")
+	_check(not sign_lod_nodes.is_empty(),
+			"镜头LOD：头顶悬浮分区牌已登记第三人称遮挡规避")
+	var early_sign_lod := false
+	var sign_only_lod := true
+	for node in sign_lod_nodes:
+		sign_only_lod = sign_only_lod and str(node.get_meta("camera_lod_kind", "")) == "overhead_sign"
+		if float(node.get_meta("camera_lod_hide_distance", 0.0)) >= 2.0:
+			early_sign_lod = true
+	_check(early_sign_lod and sign_only_lod,
+			"镜头LOD：仅分区告示牌使用2米隐藏距离，货架与墙体不参与")
+	var cart_labels_hidden := true
+	for it in items:
+		cart_labels_hidden = cart_labels_hidden and not it.label.visible
+	_check(cart_labels_hidden, "车内视野：购物车内商品不显示头顶名称")
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_RIGHT
+	press.pressed = true
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_RIGHT
+	release.pressed = false
+	_p.detach_cart()
+	_m._update_skill_hud()
+	var off_cart_count := _m.cart_throw_items(_p).size()
+	var held_view_test := Item.create("thermos")
+	_m.add_child(held_view_test)
+	_m.all_items.append(held_view_test)
+	_p.take_item(held_view_test)
+	_m._unhandled_input(press)
+	_m._update_camera(0.2)
+	_check(_m.cam_rig.is_first_person() \
+			and is_equal_approx(_m.cam_rig.spring.spring_length, CameraRig.FIRST_PERSON_LENGTH) \
+			and _m.cam_rig.camera.fov < CameraRig.FIRST_PERSON_FOV \
+			and not _p.body_root.visible and _m.cam_rig.first_person_hands_visible(),
+			"脱车视角：进入75度第一人称并以镜头手臂替代隐藏的本机身体")
+	var first_person_signs_visible := true
+	for node in sign_lod_nodes:
+		first_person_signs_visible = first_person_signs_visible and node.visible
+	_check(first_person_signs_visible,
+			"第一人称LOD：恢复全部分区告示牌且不隐藏货架、墙体或教学实体")
+	Main.float_text(_p, _p.global_position + Vector3.UP * 2.2, "第一人称字幕测试", Color.WHITE)
+	var readable_float := false
+	for label in _m.get_tree().get_nodes_in_group("dynamic_float_text"):
+		if label is DynamicFloatText and bool(label.get_meta("first_person_safe_position", false)):
+			readable_float = true
+			break
+	_check(readable_float, "第一人称字幕：过近或镜头后的拟声字移入可读区域并启用距离缩放")
+	var outside_float := DynamicFloatText.new()
+	_m.add_child(outside_float)
+	outside_float.global_position = _m.cam_rig.camera.global_position \
+			+ _m.cam_rig.camera.global_transform.basis.z * 2.0
+	outside_float._update_first_person_visibility(_m.cam_rig.camera)
+	_check(not outside_float.visible and CameraRig.SENS <= 0.0025,
+			"第一人称字幕：视野外反馈不吸入HUD；镜头灵敏度已适度降低")
+	outside_float.queue_free()
+	_check(not held_view_test.visible and bool(held_view_test.get_meta("first_person_view_hidden", false)) \
+			and _m.cam_rig.first_person_held_item_count() == 1,
+			"第一人称手持：隐藏真实世界模型，以绑定双手的低姿态镜头模型稳定展示")
+	_check(CameraRig.FIRST_PERSON_ELBOW_FIST_SCALE >= 2.0 \
+			and _m.cam_rig._fp_arm_l.position.x < -0.25 \
+			and _m.cam_rig._fp_arm_r.position.x > 0.25 \
+			and absf(_m.cam_rig._fp_held_root.position.y - _m.cam_rig._fp_arm_l.position.y) < 0.18,
+			"第一人称动作：双臂下移分列中央UI两侧，商品与圆球拳头同高且出拳放大超过2倍")
+	_check(_p.throw_aiming and not _m.cam_rig.throw_preview_visible() \
+			and not _m.hud.item_wheel.visible,
+			"脱车右键：保留第一人称放大，隐藏轮盘且不显示投掷轨迹")
+	_m._unhandled_input(release)
+	_check(_p.prop_cd <= 0.0 and _m.cart_throw_items(_p).size() == off_cart_count,
+			"脱车右键：松开不投掷、不消耗商品且不进入冷却")
+	_p.drop_all_held(false)
+	_p.attach_cart()
+	_m._update_skill_hud()
+	_m._unhandled_input(press)
+	_m._update_camera(0.2)
+	_check(not _m.cam_rig.is_first_person() and _p.body_root.visible and held_view_test.visible \
+			and _p.throw_aiming and _m.cam_rig.throw_preview_visible(),
+			"右键瞄准：上车恢复世界商品可见性，进入右肩镜头并显示半透明抛物线")
+	_m._unhandled_input(release)
+	_check(not _p.throw_aiming and _p.prop_cd > 0.0,
+			"右键瞄准：松开后才消耗商品并进入投掷冷却")
+	_p.prop_cd = 0.0
+	for it in _m.all_items:
+		if is_instance_valid(it) and bool(it.get_meta("throw_active", false)):
+			it.set_meta("throw_active", false)
 	_check(_m.hud.item_wheel.anchor_left == 1.0 and _m.hud.item_wheel.anchor_top == 1.0 \
 			and _m.hud.item_wheel.offset_right == 0.0 and _m.hud.item_wheel.offset_bottom == 0.0,
 			"轮盘：整圆圆心固定在游戏界面最右下角")
@@ -132,6 +222,43 @@ func _check_wheel() -> void:
 	guard_item.set_meta("throw_active", false)
 	_check(Hud.OBSCURE_SCREEN_ALPHA >= 0.35 and Hud.OBSCURE_BLOB_ALPHA >= 0.65,
 			"散落遮挡：屏幕暗幕与碎屑块达到强遮蔽基线")
+
+func _setup_shelf_target() -> void:
+	if _p.attached:
+		_p.detach_cart()
+	_shelf_target = Item.create("thermos")
+	_m.add_child(_shelf_target)
+	_m.all_items.append(_shelf_target)
+	_track_shelf_target = true
+	_place_shelf_on_crosshair()
+
+func _place_shelf_on_crosshair() -> void:
+	var camera := _m.cam_rig.camera
+	var center := _m.get_viewport().get_visible_rect().size * 0.5
+	var ray_origin := camera.project_ray_origin(center)
+	var ray_dir := camera.project_ray_normal(center).normalized()
+	var flat_dir := Vector2(ray_dir.x, ray_dir.z)
+	var flat_to_player := Vector2(_p.global_position.x - ray_origin.x,
+			_p.global_position.z - ray_origin.z)
+	var t := clampf(flat_to_player.dot(flat_dir) / maxf(flat_dir.length_squared(), 0.001), 0.5, 7.5)
+	_shelf_target.set_shelved(ray_origin + ray_dir * t)
+
+func _check_shelf_target() -> void:
+	var pick := _p._best_interaction()
+	_check(pick.get("kind", "") == "search" and pick.get("target") == _shelf_target,
+			"货架拿取：只有屏幕中心准星命中的具体商品成为搜货目标")
+	_track_shelf_target = false
+
+func _move_shelf_off_crosshair() -> void:
+	_shelf_target.global_position += _m.cam_rig.camera.global_basis.x * 1.0
+
+func _check_shelf_miss() -> void:
+	var pick := _p._best_interaction()
+	_check(pick.get("target") != _shelf_target,
+			"货架拿取：商品离开准星后不再能靠距离自动拿取")
+	_shelf_target.queue_free()
+	_p.cart.global_position = _p.global_position + Vector3(0, 0.2, -1.2)
+	_p.attach_cart()
 
 func _clear_cart() -> void:
 	for it in _m.cart_throw_items(_p):

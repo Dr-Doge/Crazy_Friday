@@ -1,99 +1,504 @@
 class_name TutorialGuide extends RefCounted
-## 九步入行教学:走路→抢车→驾驶→冲刺→扫货→装车→顺同行的货→三技能→出货毕业。
-## 每步只做"读玩家状态 → 满足即推进",不干预对局逻辑。
-## 参数 m 是 Main(不写类型注解以避免 class_name 循环引用)。
+## 五房串联教学导演：真实玩法负责操作结果，本类只布置、监听、开门与复位。
 
-## 练手无主车的摆放点(入口区旁,玩家出生点西侧)
-const DUMMY_CART_POS := Vector3(MapLayout.PLAYER_SPAWN.x - 6.0, 0.2, MapLayout.PLAYER_SPAWN.z - 3.0)
-const MOVE_DIST := 5.0        # ①走够多远
-const DRIVE_DIST := 10.0      # ③推着走够多远
-const SPRINT_TIME := 1.0      # ④冲刺持续多久
+const MOVE_DIST := 5.0
+const DRIVE_DIST := 10.0
+const SPRINT_TIME := 1.0
+const TARGET_IDS := ["tissue", "thermos", "drone"]
 
-var step := 0
-## 无法从玩家状态直接读出的一次性事件标记(如"偷过一件"),由 Main 事件回调写入
 var marks := {}
+var room := 0
+var stage := 0
 
 var _m
+var _data: Dictionary
+var _gates: Array = []
+var _points: Dictionary
+var _waiting_exit := false
 var _origin := Vector3.ZERO
-var _dist := 0.0
 var _last_cart := Vector3.ZERO
-var _sprint := 0.0
+var _drive_dist := 0.0
+var _sprint_time := 0.0
+var _room_time := 0.0
+var _stage_time := 0.0
+var _scan_time := 0.0
+var _selection_start := 0
+var _combat_retaliate_cd := 0.0
+
+var _goods_a: Item
+var _goods_b: Item
+var _steal_cart: Cart
+var _combat_item: Item
+var _combat_dummy: TutorialOpponent
+var _brace_cart: Cart
+var _lab_dummy: TutorialOpponent
+var _lab_cart: Cart
+var _final_cart: Cart
+var _final_dummy: TutorialOpponent
 
 func _init(m) -> void:
 	_m = m
 
-## 布置练手商品:一辆无主车+ 两件货(供第⑦步偷走，再装入自己的车作为弹药)
 func setup() -> void:
-	var c := Cart.create(Color(0.6, 0.6, 0.6), "无主购物车(练手)")
-	_m.add_child(c)
-	c.global_position = DUMMY_CART_POS
-	var tutorial_props := ["candy", "thermos"]
-	for i in tutorial_props.size():
-		var it := Item.create(tutorial_props[i])
-		_m.add_child(it)
-		it.set_free_at(DUMMY_CART_POS + Vector3(0, 1.0 + i * 0.5, 0))
-		_m.all_items.append(it)
-	step = 0
+	_data = _m.tutorial_data
+	_gates = _data.get("gates", [])
+	_points = _data.get("points", {})
+	for gate in _gates:
+		TutorialRoomBuilder.set_gate_open(gate, false)
+	room = 0
+	stage = 0
 	_origin = _m.player.global_position
+	_last_cart = _m.player.cart.global_position
+	_prepare_goods_room()
+	_prepare_combat_room()
+	_prepare_lab_room()
+	_enter_room(0)
+	var preview := OS.get_environment("WHITEBOX_TUTORIAL_PREVIEW")
+	if preview != "":
+		_preview_room(clampi(int(preview), 0, 4))
 
 func tick(delta: float) -> void:
-	var p: Player = _m.player
-	match step:
+	if not is_instance_valid(_m.player):
+		return
+	_room_time += delta
+	_stage_time += delta
+	_combat_retaliate_cd = maxf(0.0, _combat_retaliate_cd - delta)
+	if _waiting_exit:
+		_tick_waiting_for_exit()
+		return
+	match room:
+		0: _tick_drive(delta)
+		1: _tick_goods()
+		2: _tick_combat()
+		3: _tick_lab()
+		4: _tick_final(delta)
+
+func _tick_waiting_for_exit() -> void:
+	var gate_z: float = TutorialRoomBuilder.GATE_ZS[room]
+	_say("房间完成 ✓  推车穿过绿色门，进入下一项训练")
+	if _m.player.global_position.z < gate_z - 1.0:
+		room += 1
+		stage = 0
+		_waiting_exit = false
+		_enter_room(room)
+
+func _enter_room(index: int) -> void:
+	_room_time = 0.0
+	_stage_time = 0.0
+	marks.clear()
+	_m.hud.set_tutorial_room(index)
+	match index:
 		0:
-			_say("① 移动:WASD 走两步,动动鼠标转转视角")
-			if p.global_position.distance_to(_origin) > MOVE_DIST:
-				step = 1
+			_origin = _m.player.global_position
 		1:
-			_say("② 靠近你的购物车,按 F 抓住车把")
-			if p.attached and is_instance_valid(p.cart):
-				step = 2
-				_last_cart = p.cart.global_position
-				_dist = 0.0
+			_reset_goods_items()
 		2:
-			_say("③ 驾驶:W 前进 · A/D 转向 · S 刹车/倒车(推着逛10米)")
-			if p.attached:
-				_dist += p.cart.global_position.distance_to(_last_cart)
-				_last_cart = p.cart.global_position
-				if _dist > DRIVE_DIST:
-					step = 3
+			_reset_combat()
 		3:
-			_say("④ 按住 Shift 冲刺1秒——撞翻对手全靠它")
-			if p.attached and is_instance_valid(p.cart) and p.cart.sprinting:
-				_sprint += delta
-				if _sprint > SPRINT_TIME:
-					step = 4
+			_prepare_lab_inventory()
+			_selection_start = _m.player.throw_selection
 		4:
-			_say("⑤ 按 F 停车,走到货架前,按住 E 扫下代购单上的货(0.8秒)")
-			if not p.held.is_empty():
-				step = 5
+			_prepare_final()
+
+func _preview_room(index: int) -> void:
+	for i in mini(index, _gates.size()):
+		TutorialRoomBuilder.set_gate_open(_gates[i], true)
+	room = index
+	stage = 0
+	_waiting_exit = false
+	var center_z: float = float(TutorialRoomBuilder.ROOM_CENTERS[index]) + 8.0
+	_m.player.global_position = Vector3(0, 0.05, center_z)
+	_m.player.cart.global_position = Vector3(-2.0, 0.2, center_z - 1.0)
+	_enter_room(index)
+
+func reset_current_room() -> void:
+	var p: Player = _m.player
+	if p.attached:
+		p.detach_cart()
+	p.drop_all_held(false)
+	p.imbalance = 0.0
+	p.stamina = 100.0
+	p.char_cd = 0.0
+	p.locate_cd = 0.0
+	p.prop_cd = 0.0
+	p.braced = false
+	var center_z: float = float(TutorialRoomBuilder.ROOM_CENTERS[room]) + 8.0
+	p.global_position = Vector3(0, 0.05, center_z)
+	p.velocity = Vector3.ZERO
+	p.cart.right_up()
+	p.cart.global_position = Vector3(-2.0, 0.2, center_z - 1.0)
+	p.cart.linear_velocity = Vector3.ZERO
+	p.cart.angular_velocity = Vector3.ZERO
+	if room < _gates.size():
+		TutorialRoomBuilder.set_gate_open(_gates[room], false)
+	_waiting_exit = false
+	stage = 0
+	_enter_room(room)
+	Main.float_text(_m, p.global_position + Vector3.UP * 2.4,
+			"当前房间已重置", Color(0.4, 0.8, 1.0), 62)
+
+func _advance() -> void:
+	stage += 1
+	_stage_time = 0.0
+
+func _complete_room() -> void:
+	if room >= _gates.size():
+		return
+	TutorialRoomBuilder.set_gate_open(_gates[room], true)
+	_waiting_exit = true
+	Main.float_text(_m, _m.player.global_position + Vector3.UP * 2.5,
+			"房间 %02d 完成!" % (room + 1), Color(0.35, 1.0, 0.5), 72)
+
+# ---------------------------------------------------------------- 房间01
+
+func _tick_drive(delta: float) -> void:
+	var p: Player = _m.player
+	match stage:
+		0:
+			_say("01-1  徒步自动使用75°第一人称 · WASD移动 · 鼠标观察  %s" % _progress(p.global_position.distance_to(_origin), MOVE_DIST))
+			if p.global_position.distance_to(_origin) >= MOVE_DIST:
+				_advance()
+		1:
+			_say("01-2  靠近自己的购物车，按 F 抓住车把")
+			if p.attached:
+				_last_cart = p.cart.global_position
+				_drive_dist = 0.0
+				_advance()
+		2:
+			_say("01-3  W前进 · A/D转向 · S刹车/倒车  %s" % _progress(_drive_dist, DRIVE_DIST))
+			if p.attached:
+				_drive_dist += p.cart.global_position.distance_to(_last_cart)
+				_last_cart = p.cart.global_position
+				if _drive_dist >= DRIVE_DIST:
+					_advance()
+		3:
+			_say("01-4  按住 Shift 冲刺1秒，再把车开到前方门口  %s" % _progress(_sprint_time, SPRINT_TIME))
+			if p.attached and p.cart.sprinting:
+				_sprint_time += delta
+			if _sprint_time >= SPRINT_TIME:
+				_complete_room()
+
+# ---------------------------------------------------------------- 房间02
+
+func _prepare_goods_room() -> void:
+	_goods_a = _spawn_item("tissue", _points["goods_a"], true)
+	_goods_b = _spawn_item("thermos", _points["goods_b"], true)
+
+func _reset_goods_items() -> void:
+	if not is_instance_valid(_goods_a):
+		_goods_a = _spawn_item("tissue", _points["goods_a"], true)
+	else:
+		_goods_a.set_shelved(_points["goods_a"])
+	if not is_instance_valid(_goods_b):
+		_goods_b = _spawn_item("thermos", _points["goods_b"], true)
+	else:
+		_goods_b.set_shelved(_points["goods_b"])
+
+func _tick_goods() -> void:
+	var p: Player = _m.player
+	match stage:
+		0:
+			_say("02-1  按F放车进入第一人称 · 白点对准卫生纸后长按E（右键可放大观察）")
+			if marks.get("shelf:tissue", false):
+				_advance()
+		1:
+			_say("02-2  商品稳定夹在画面下方双手之间 · 按R把卫生纸放到地上")
+			if is_instance_valid(_goods_a) and _goods_a.state == Item.ItemState.FREE and not p.held.has(_goods_a):
+				_advance()
+		2:
+			_say("02-3  靠近地上的卫生纸，按 E 重新捡起")
+			if p.held.has(_goods_a):
+				_advance()
+		3:
+			_say("02-4  回到自己的车旁按 E，把卫生纸装进真实车斗")
+			if _cart_has(p.cart, "tissue"):
+				_advance()
+		4:
+			_say("02-5  按 Q 使用找货雷达，寻找被遮住的第二件商品")
+			if p.locate_cd > 0.0:
+				_advance()
 		5:
-			_say("⑥ 走回自己车旁,按 E 把货装进车斗(R 可随时放下)")
-			if is_instance_valid(p.cart) and not p.cart.items_in_basket().is_empty():
-				step = 6
-		6:
-			_say("⑦ 那边有辆没人看着的车:按住 E 顺走一件(1.2秒)——同行而已,别客气")
+			_say("02-6  搜取被高亮的保温杯并装入自己的购物车")
+			if _cart_has(p.cart, "thermos"):
+				_complete_room()
+
+# ---------------------------------------------------------------- 房间03
+
+func _prepare_combat_room() -> void:
+	_steal_cart = Cart.create(Color(0.55, 0.55, 0.58), "无人训练车")
+	_m.add_child(_steal_cart)
+	_steal_cart.global_position = _points["steal_cart"]
+	_combat_item = _spawn_item("thermos", _points["steal_cart"] + Vector3.UP * 1.25, false)
+	_combat_dummy = TutorialOpponent.new()
+	_m.add_child(_combat_dummy)
+	_combat_dummy.setup("训练黄牛")
+	_combat_dummy.global_position = _points["combat_dummy"]
+	_brace_cart = Cart.create(Color(0.9, 0.42, 0.15), "撞击训练车")
+	_m.add_child(_brace_cart)
+	_brace_cart.global_position = _points["brace_cart"]
+
+func _reset_combat() -> void:
+	if is_instance_valid(_steal_cart):
+		_steal_cart.right_up()
+		_steal_cart.global_position = _points["steal_cart"]
+		_steal_cart.linear_velocity = Vector3.ZERO
+	if is_instance_valid(_combat_dummy):
+		_combat_dummy.protect_held_until_downed = false
+		_combat_dummy.drop_all_held(false)
+		_combat_dummy.downed = false
+		_combat_dummy.body_root.rotation.x = 0.0
+		_combat_dummy.global_position = _points["combat_dummy"]
+		_combat_dummy.imbalance = 40.0
+		_combat_dummy.protect_held_until_downed = true
+	if is_instance_valid(_brace_cart):
+		_brace_cart.right_up()
+		_brace_cart.global_position = _points["brace_cart"]
+		_brace_cart.linear_velocity = Vector3.ZERO
+	if not is_instance_valid(_combat_item):
+		_combat_item = _spawn_item("thermos", _points["steal_cart"] + Vector3.UP * 1.25, false)
+	else:
+		_combat_item.set_free_at(_points["steal_cart"] + Vector3.UP * 1.25)
+
+func _tick_combat() -> void:
+	var p: Player = _m.player
+	match stage:
+		0:
+			_say("03-1  靠近灰色无人车，长按 E 顺走保温杯")
 			if marks.get("stole", false):
-				step = 7
-		7:
-			_tick_skills(p)
-		8:
-			_say("⑨ 最后:把车开进收银通道,停稳自动扫码——扫完就算出货,你出师了!")
+				_give_combat_item_to_dummy()
+				_advance()
+		1:
+			_say("03-2  白点对准训练黄牛后按左键肘击；拳头会夸张前送，只有视野内字幕显示")
+			if is_instance_valid(_combat_dummy) and _combat_dummy.imbalance > 40.5:
+				_advance()
+		2:
+			_say("03-3  继续肘击，把失衡槽打满；手持任务品只有倒地才会掉落")
+			if is_instance_valid(_combat_dummy) and _combat_dummy.imbalance >= 60.0 \
+					and _combat_retaliate_cd <= 0.0 and not _combat_dummy.downed \
+					and _combat_dummy.global_position.distance_to(p.global_position) < 2.4:
+				_combat_dummy.try_elbow((p.global_position - _combat_dummy.global_position).normalized())
+				_combat_retaliate_cd = 1.1
+			if marks.get("combat_downed", false):
+				_advance()
+		3:
+			_say("03-4  捡起掉落的保温杯，回到自己的车旁按 E 装车")
+			if _cart_has(p.cart, "thermos"):
+				_advance()
+		4:
+			_say("03-5  按住 Ctrl 稳住，抵挡一次训练车撞击")
+			if p.braced:
+				var before := p.imbalance
+				_brace_cart.global_position = p.global_position + Vector3.RIGHT * 2.0
+				_brace_cart.linear_velocity = Vector3.LEFT * 5.0
+				p.hit_by_cart(_brace_cart)
+				if p.imbalance <= before + 0.01:
+					_complete_room()
 
-## ⑧三技能各用一次:用CD 是否被触发来判定"用过了"
-func _tick_skills(p: Player) -> void:
-	if p.locate_cd > 0.0:
-		marks["q"] = true
-	if p.prop_cd > 0.0:
-		marks["rmb"] = true
-	if p.braced:
-		marks["ctrl"] = true
-	_say("⑧ 试用能力:先把货装回自己的车，滚轮选商品、右键朝白点投掷%s · Q雷达%s · Ctrl稳住%s" % [
-			_mark("rmb"), _mark("q"), _mark("ctrl")])
-	if marks.get("q", false) and marks.get("rmb", false) and marks.get("ctrl", false):
-		step = 8
+func _give_combat_item_to_dummy() -> void:
+	if not is_instance_valid(_combat_item) or not is_instance_valid(_combat_dummy):
+		return
+	_m.player.held.erase(_combat_item)
+	_combat_item.set_held()
+	_combat_dummy.take_item(_combat_item)
+	_combat_dummy.imbalance = 40.0
 
-func _mark(key: String) -> String:
-	return "✓" if marks.get(key, false) else "…"
+# ---------------------------------------------------------------- 房间04
+
+func _prepare_lab_room() -> void:
+	_lab_dummy = TutorialOpponent.new()
+	_m.add_child(_lab_dummy)
+	_lab_dummy.setup("效果测试员")
+	_lab_dummy.protect_held_until_downed = false
+	_lab_dummy.global_position = _points["lab_dummy"]
+	_lab_cart = Cart.create(Color(0.25, 0.72, 0.9), "有人训练车")
+	_m.add_child(_lab_cart)
+	_lab_cart.global_position = _points["lab_cart"]
+	_lab_cart.attached_agent = _lab_dummy
+
+func _prepare_lab_inventory() -> void:
+	for id in ["thermos", "detergent", "tissue", "drone"]:
+		_add_to_player_cart(id)
+	# 李洋技能需要目标车内有一件自己仍缺的商品。
+	_add_item_to_cart(_lab_cart, "drone")
+	_selection_start = _m.player.throw_selection
+
+func _tick_lab() -> void:
+	var p: Player = _m.player
+	match stage:
+		0:
+			_say("04-1  按F驾驶自己的购物车，再滚动滚轮选择车内商品")
+			if p.attached and (p.throw_selection != _selection_start or marks.get("wheel", false)):
+				_advance()
+		1:
+			_say("04-2  选择任意商品，按住右键用白点和抛物线瞄准测试员，松开直击角色（×1.5）")
+			if marks.get("throw_actor", false):
+				_advance()
+		2:
+			_say("04-3  再投一件商品砸中蓝色购物车车体（×1.0）")
+			if marks.get("throw_cart", false):
+				_advance()
+		3:
+			_say("04-4  选择洗衣液或卫生纸，投向地面观察首次落点范围效果")
+			if marks.get("ground_effect", false):
+				_advance()
+		4:
+			_say("04-5  选择无人机直击测试员，触发电击定身")
+			if marks.get("taser", false):
+				_prepare_role_skill()
+				_advance()
+		5:
+			_say(_role_skill_prompt(p))
+			if marks.get("role_skill", false):
+				_complete_room()
+
+func _prepare_role_skill() -> void:
+	var p: Player = _m.player
+	p.char_cd = 0.0
+	if p.char_id != CharacterDef.LI:
+		return
+	# 李洋只能截自己尚缺的货：清掉本人车内教学无人机，保留蓝色目标车内那件。
+	for it in p.cart.items_in_basket():
+		if is_instance_valid(it) and it.item_id == "drone":
+			it.set_free_at(Vector3(10.0, 1.0, -84.0))
+	for i in range(p.held.size() - 1, -1, -1):
+		if p.held[i].item_id == "drone":
+			var held_drone: Item = p.held.pop_at(i)
+			held_drone.set_free_at(Vector3(10.0, 1.0, -84.0))
+
+func _role_skill_prompt(p: Player) -> String:
+	match p.char_id:
+		CharacterDef.ZHAO:
+			return "04-6  用白点对准测试员，按空格施放贴地冲撞"
+		CharacterDef.MA:
+			return "04-6  靠近测试员，按空格派出大壮/二壮"
+		CharacterDef.LI:
+			return "04-6  面向3.5米内蓝色训练车，按空格成功上链接"
+	return "04-6  按空格使用角色技能"
+
+func on_char_skill_used(p: Player) -> void:
+	if room == 3 and stage == 5 and p.char_cd >= CharacterDef.skill_cd(p.char_id) - 0.1:
+		marks["role_skill"] = true
+
+func on_throw_hit(it: Item, body: Node, _pos: Vector3) -> void:
+	if room != 3:
+		return
+	var kind := Catalog.prop_kind(it.item_id)
+	if body is Actor and body != _m.player:
+		marks["throw_actor"] = true
+		if kind == Catalog.PROP_TASER:
+			marks["taser"] = true
+	elif body is Cart and body != _m.player.cart:
+		marks["throw_cart"] = true
+	else:
+		if kind == Catalog.PROP_WET or kind == Catalog.PROP_SCATTER:
+			marks["ground_effect"] = true
+	# 训练物资无限补充，失手不会锁死流程。
+	if stage < 4:
+		_m.get_tree().create_timer(0.7).timeout.connect(func() -> void:
+			if is_instance_valid(_m.player) and room == 3:
+				_add_to_player_cart(it.item_id))
+
+# ---------------------------------------------------------------- 房间05
+
+func _prepare_final() -> void:
+	_remove_target_items()
+	_spawn_item("tissue", _points["final_shelf"], true)
+	_final_cart = Cart.create(Color(0.55, 0.55, 0.58), "结业无人车")
+	_m.add_child(_final_cart)
+	_final_cart.global_position = _points["final_cart"]
+	_add_item_to_cart(_final_cart, "thermos")
+	_final_dummy = TutorialOpponent.new()
+	_m.add_child(_final_dummy)
+	_final_dummy.setup("结业竞争者")
+	_final_dummy.global_position = _points["final_dummy"]
+	_final_dummy.imbalance = 40.0
+	var drone := _spawn_item("drone", _points["final_dummy"] + Vector3.UP, false)
+	drone.set_held()
+	_final_dummy.take_item(drone)
+	_scan_time = 0.0
+
+func _tick_final(delta: float) -> void:
+	var p: Player = _m.player
+	var count := 0
+	for id in TARGET_IDS:
+		if _cart_has(p.cart, id):
+			count += 1
+	if count < TARGET_IDS.size():
+		_say("05  自由完成：搜货架卫生纸 · 偷无人车保温杯 · 肘倒竞争者夺无人机  [%d/3]" % count)
+		_scan_time = 0.0
+		return
+	var checkout: Vector3 = _points["checkout"]
+	_say("05  三件齐了!抓住自己的车，驶入绿色结业收银区  %s" % _progress(_scan_time, 2.0))
+	if p.attached and p.cart.global_position.distance_to(checkout) < 3.2:
+		_scan_time += delta
+		if _scan_time >= 2.0:
+			_m.complete_tutorial()
+	else:
+		_scan_time = 0.0
+
+# ---------------------------------------------------------------- 事件与工具
+
+func on_shelf_item(it: Item) -> void:
+	marks["shelf:%s" % it.item_id] = true
+
+func on_player_stole(_cart: Cart, item: Item) -> void:
+	if room == 2 and item == _combat_item:
+		marks["stole"] = true
+
+func on_actor_downed(actor: Actor) -> void:
+	if actor == _combat_dummy:
+		marks["combat_downed"] = true
+
+func on_wheel_cycled() -> void:
+	if room == 3:
+		marks["wheel"] = true
+
+func _spawn_item(id: String, pos: Vector3, shelved: bool) -> Item:
+	var it := Item.create(id)
+	_m.add_child(it)
+	if shelved:
+		it.set_shelved(pos)
+	else:
+		it.set_free_at(pos)
+	_m.all_items.append(it)
+	return it
+
+func _add_to_player_cart(id: String) -> Item:
+	return _add_item_to_cart(_m.player.cart, id)
+
+func _add_item_to_cart(cart: Cart, id: String) -> Item:
+	# 教学车内的固定陈列位既方便辨认，也避免多件商品的名称完全叠在一起。
+	var display_slots := {
+		"thermos": Vector2(-0.22, -0.18),
+		"detergent": Vector2(0.22, -0.18),
+		"tissue": Vector2(-0.22, 0.18),
+		"drone": Vector2(0.22, 0.18),
+	}
+	var slot: Vector2 = display_slots.get(id, Vector2.ZERO)
+	var pos := cart.to_global(Vector3(slot.x, 1.35, slot.y))
+	var it := _spawn_item(id, pos, false)
+	return it
+
+func _cart_has(cart: Cart, id: String) -> bool:
+	if not is_instance_valid(cart):
+		return false
+	for it in cart.items_in_basket():
+		if is_instance_valid(it) and it.item_id == id:
+			return true
+	return false
+
+func _remove_target_items() -> void:
+	for actor in [_m.player, _combat_dummy, _lab_dummy]:
+		if is_instance_valid(actor):
+			for i in range(actor.held.size() - 1, -1, -1):
+				if actor.held[i].item_id in TARGET_IDS:
+					actor.held.remove_at(i)
+	for it in _m.all_items:
+		if is_instance_valid(it) and it.item_id in TARGET_IDS:
+			it.queue_free()
+
+func _progress(value: float, total: float) -> String:
+	return "[%d/%d]" % [mini(int(value), int(total)), int(total)]
 
 func _say(text: String) -> void:
-	_m.hud.set_tutorial_text(text)
+	_m.hud.set_tutorial_text(text + "  ·  F2重置")

@@ -22,6 +22,7 @@ const KEYS := {
 	"char_skill": [KEY_SPACE],
 	"debug_time": [KEY_T],
 	"dev_mode": [KEY_F1],
+	"tutorial_reset": [KEY_F2],
 	"debug_sale": [KEY_F3],
 	"debug_down": [KEY_F4],
 	"restart": [KEY_ENTER],

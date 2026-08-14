@@ -14,7 +14,7 @@
 
 .PARAMETER Mode
 	single    单机对局(默认)
-	tutorial  教学关九步
+	tutorial  串联式五房间教学关
 	mp        局域网联机:1 主机 + -Clients 个客户端
 	all       依次跑上面三种
 
@@ -281,8 +281,10 @@ if ($Mode -in @('single', 'all')) {
 		-FrameCount $singleFrames -Expect $expect -TimeoutSec $timeout -Note $note
 }
 if ($Mode -in @('tutorial', 'all')) {
-	$all += Invoke-SingleCase -Name 'tutorial' -EnvVars @{ WHITEBOX_TUTORIAL = '1' } `
-		-FrameCount $QUICK_FRAMES -Expect @('白盒Demo') -Note "(教学关 $QUICK_FRAMES 帧)"
+	$all += Invoke-SingleCase -Name 'tutorial' -EnvVars @{
+		WHITEBOX_TUTORIAL = '1'; WHITEBOX_TUTORIALTEST = '1'
+	} -FrameCount $QUICK_FRAMES -Expect @('白盒Demo', '教学完成 rooms=5', 'RESULT=PASS') `
+		-Note "(五房教学门禁/检查点/结业回归)"
 }
 if ($Mode -in @('phys', 'all')) {
 	# 车斗物理回归:守住"薄商品被挤出车外/穿模掉出地图"。

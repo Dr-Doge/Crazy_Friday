@@ -30,6 +30,7 @@ var _cd_fade := 0.0           # ready后渐隐计时
 var marquee: Label            # 大喇叭滚动横幅
 var menu: StartMenu           # 开始界面 + 联机大厅
 var tutorial_label: Label     # 教学指引大字
+var controls_hint: Label      # 常规局右上完整键位表；教学中由逐步指引替代
 var prompt_label: Label
 var broadcast_panel: PanelContainer
 var broadcast_label: Label
@@ -47,6 +48,7 @@ var obscure_overlay: Control       # 散落遮挡类商品的本机视野效果
 var _wheel_items: Array = []
 var _wheel_selected := 0
 var _wheel_available := false
+var _tutorial_room := -1
 var _obscured := false
 ## 局内 HUD 元素:开始界面阶段一律隐藏(开局前显示计时与体力条毫无意义)
 var _ingame_nodes: Array[Control] = []
@@ -178,17 +180,17 @@ func _ready() -> void:
 	channel_bg.add_child(channel_fill)
 
 	# 右下:操作说明(精简三行)
-	var hint := Label.new()
-	hint.text = "F 推/放车 · E 交互(长按搜/偷) · R 装车 · Shift 冲刺\n滚轮 选择车内商品 · 右键 朝准星投掷 · 左键 肘击 · Q 雷达\n空格 角色技能 · Ctrl 稳住 · Esc鼠标 · F1 开发者"
-	hint.add_theme_font_override("font", Catalog.ui_font_bold())
-	hint.add_theme_font_size_override("font_size", 30)
-	hint.add_theme_color_override("font_color", Color(1, 0.25, 0.18))
-	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
-	hint.add_theme_constant_override("outline_size", 6)
-	root.add_child(hint)
-	hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
-	hint.offset_top += 145
-	hint.offset_bottom += 145
+	controls_hint = Label.new()
+	controls_hint.text = "F 推/放车 · E 交互(准星锁货/长按搜偷) · R 装车 · Shift 冲刺\n驾驶时滚轮选商品 · 按住右键近距观察/驾驶时松开投掷 · 左键 肘击 · Q 雷达\n空格 角色技能 · Ctrl 稳住 · Esc鼠标 · F1 开发者"
+	controls_hint.add_theme_font_override("font", Catalog.ui_font_bold())
+	controls_hint.add_theme_font_size_override("font_size", 30)
+	controls_hint.add_theme_color_override("font_color", Color(1, 0.25, 0.18))
+	controls_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	controls_hint.add_theme_constant_override("outline_size", 6)
+	root.add_child(controls_hint)
+	controls_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+	controls_hint.offset_top += 145
+	controls_hint.offset_bottom += 145
 
 	# 完整圆环的圆心贴住屏幕右下角，视口只露出左上四分之一。
 	# 商品按整圆循环排列，固定金框内的商品就是右键投掷目标。
@@ -321,7 +323,7 @@ func _ready() -> void:
 	root.add_child(menu)
 
 	# 菜单阶段隐藏所有局内 HUD(逐个 append:数组字面量无法直接赋给 Array[Control])
-	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, hint, item_wheel, obscure_overlay, crosshair, threat_layer]:
+	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, controls_hint, item_wheel, obscure_overlay, crosshair, threat_layer]:
 		_ingame_nodes.append(n)
 	_set_ingame_visible(false)
 
@@ -387,6 +389,14 @@ func set_tutorial_text(t: String) -> void:
 	tutorial_label.visible = t != ""
 	tutorial_label.text = t
 
+func set_tutorial_room(index: int) -> void:
+	_tutorial_room = index
+	controls_hint.visible = false
+	item_wheel.visible = index >= 3 and _wheel_available
+	marquee.visible = false
+	_bc_queue.clear()
+	_mq_active = false
+
 ## 技能冷却:ratio = char_cd / skill_cd (0=就绪,1=满冷却)
 func set_skill_cd(ratio: float) -> void:
 	_cd_ratio = ratio
@@ -431,6 +441,8 @@ func set_item_wheel(items: Array[Item], selected: int, available: bool) -> void:
 	_wheel_items = items
 	_wheel_selected = posmod(selected, items.size()) if not items.is_empty() else 0
 	_wheel_available = available
+	var tutorial_allows := Main.instance == null or not Main.instance.tutorial or _tutorial_room >= 3
+	item_wheel.visible = available and tutorial_allows
 	item_wheel.queue_redraw()
 
 func _draw_crosshair() -> void:
@@ -619,6 +631,8 @@ func _process(delta: float) -> void:
 
 ## 超市大喇叭广播(排队滚动播放;联机主机自动转发给客户端)
 func broadcast(text: String) -> void:
+	if Main.instance != null and Main.instance.tutorial:
+		return
 	_bc_queue.append(text)
 	var m := Main.instance
 	if m != null and m.net != null and m.net.active and m.net.is_host:
