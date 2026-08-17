@@ -267,6 +267,7 @@ func get_pushed_cart() -> Cart:
 
 ## 联机客户端傀儡:不模拟,仅驱动手部动画等表现
 func puppet_update(delta: float) -> void:
+	_update_held_positions()
 	_update_hands(delta)
 
 ## 子类通用移动:wish为水平方向单位向量

@@ -198,22 +198,27 @@ function Invoke-SingleCase {
 function Invoke-MpCase {
 	param([int]$ClientCount, [int]$FrameCount)
 	$ip = Get-LocalIp
+	$testPort = '17788' # 与玩家实际游戏默认7788隔离，避免开着Demo时自动化无法建房。
 	$total = $ClientCount + 1
-	Write-Host "[mp] 1 主机 + $ClientCount 客户端 (共 $total 人),主机IP $ip" -ForegroundColor Cyan
+	Write-Host "[mp] 1 主机 + $ClientCount 客户端 (共 $total 人),主机IP $ip,测试端口 $testPort" -ForegroundColor Cyan
 
 	$instances = @()
 	# WHITEBOX_HOST=N 是 net.gd 既有的测试钩子:凑够N 名客户端立即开局。
 	# 必须等于客户端总数,否则先到的一凑够就开局,后到的会被
 	# _on_peer_connected 当"迟到连接"踢掉,客户端还会反复重连。
 	$instances += Start-Instance -Name 'mp-host' -FrameCount $FrameCount -EnvVars @{
-		WHITEBOX_HOST = "$ClientCount"
-		WHITEBOX_NPC  = '4'
+		WHITEBOX_HOST                = "$ClientCount"
+		WHITEBOX_NPC                 = '4'
+		WHITEBOX_PORT                = $testPort
+		WHITEBOX_MP_INTERACTION_TEST = '1'
 	}
 	Start-Sleep -Seconds 2   # 等主机把房建起来再让客户端连
 	for ($n = 1; $n -le $ClientCount; $n++) {
 		$instances += Start-Instance -Name "mp-client$n" -FrameCount $FrameCount -EnvVars @{
-			WHITEBOX_JOIN          = $ip
-			WHITEBOX_MP_DRIVE_TEST = '1'
+			WHITEBOX_JOIN                = $ip
+			WHITEBOX_PORT                = $testPort
+			WHITEBOX_MP_DRIVE_TEST       = '1'
+			WHITEBOX_MP_INTERACTION_TEST = '1'
 		}
 		Start-Sleep -Milliseconds 700
 	}
@@ -227,7 +232,7 @@ function Invoke-MpCase {
 			$expect += "host=true"
 		}
 		else {
-			$expect += @("host=false", "CLIENT_DRIVE_CAMERA=PASS")
+			$expect += @("host=false", "CLIENT_DRIVE_CAMERA=PASS", "CLIENT_SHELF_INTERACTION=PASS")
 		}
 		$results += Test-Instance -Instance $i -Expect $expect
 	}
@@ -289,7 +294,7 @@ if ($Mode -in @('single', 'all')) {
 if ($Mode -in @('tutorial', 'all')) {
 	$all += Invoke-SingleCase -Name 'tutorial' -EnvVars @{
 		WHITEBOX_TUTORIAL = '1'; WHITEBOX_TUTORIALTEST = '1'
-	} -FrameCount $QUICK_FRAMES -Expect @('白盒Demo', '教学完成 rooms=5', 'RESULT=PASS') `
+	} -FrameCount 4000 -Expect @('白盒Demo', '教学完成 rooms=5', 'RESULT=PASS') `
 		-Note "(五房教学门禁/检查点/结业回归)"
 }
 if ($Mode -in @('phys', 'all')) {

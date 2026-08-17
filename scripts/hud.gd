@@ -181,7 +181,7 @@ func _ready() -> void:
 
 	# 右下:操作说明(精简三行)
 	controls_hint = Label.new()
-	controls_hint.text = "F 推/放车 · E 交互(准星锁货/长按搜偷) · R 装车 · Shift 冲刺\n驾驶时滚轮选商品 · 按住右键近距观察/驾驶时松开投掷 · 左键 肘击 · Q 雷达\n空格 角色技能 · Ctrl 稳住 · Esc鼠标 · F1 开发者"
+	controls_hint.text = "F 推/放车 · E 交互(准星锁货/长按搜偷) · R 装车 · Shift 冲刺\n手持/驾驶时滚轮选商品 · 按住右键放大瞄准/松开投掷 · 左键 肘击 · Q 雷达\n空格 角色技能 · Ctrl 稳住 · Esc鼠标 · F1 开发者"
 	controls_hint.add_theme_font_override("font", Catalog.ui_font_bold())
 	controls_hint.add_theme_font_size_override("font_size", 30)
 	controls_hint.add_theme_color_override("font_color", Color(1, 0.25, 0.18))

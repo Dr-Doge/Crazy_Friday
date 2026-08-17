@@ -84,6 +84,8 @@ func _players(k: float, delta: float) -> void:
 			p.obscure_factor = a[18]
 		if a.size() > 19:
 			_apply_cart_attachment(p, bool(a[19]))
+		if a.size() > 20:
+			_sync_held(p, a[20])
 		p.puppet_update(delta)
 
 ## 主机权威的上/下车状态必须在客户端显式落地。位置插值只能让角色看起来跟着车走，
@@ -131,6 +133,8 @@ func _grannies(k: float, delta: float) -> void:
 		g.body_root.rotation.y = lerp_angle(g.body_root.rotation.y, gs[i][1], k)
 		g.hand_pose = gs[i][2]
 		g.body_root.rotation.x = lerpf(g.body_root.rotation.x, gs[i][3], k)
+		if gs[i].size() > 4:
+			_sync_held(g, gs[i][4])
 		g.puppet_update(delta)
 
 func _buddies(k: float, delta: float) -> void:
@@ -158,11 +162,36 @@ func _items(k: float) -> void:
 		var it = _m.all_items[idx]
 		if not is_instance_valid(it):
 			continue
-		it.state = e[1]
+		_apply_item_state(it, e[1])
 		it.global_position = it.global_position.lerp(e[2], k)
 		it.global_rotation.y = lerp_angle(it.global_rotation.y, e[3], k)
 		if it.state == Item.ItemState.SCANNED and it.label != null:
 			it.label.modulate = Color(0.1, 0.55, 0.2)
+
+## 玩家包20Hz直接携带手持商品索引，避免等待轮转的世界商品分片。
+## 这既是第一人称手持显示的数据源，也让客户端容量/装车提示与主机一致。
+func _sync_held(actor: Actor, indices: Array) -> void:
+	var rebuilt: Array[Item] = []
+	for raw_idx in indices:
+		var idx := int(raw_idx)
+		if idx < 0 or idx >= _m.all_items.size():
+			continue
+		var it: Item = _m.all_items[idx]
+		if is_instance_valid(it):
+			rebuilt.append(it)
+			_apply_item_state(it, Item.ItemState.HELD)
+	actor.held = rebuilt
+
+## 客户端永不模拟商品刚体，但仍维护碰撞层供车斗 Area 查询轮盘库存。
+func _apply_item_state(it: Item, new_state: int) -> void:
+	it.state = new_state
+	it.freeze = true
+	if it.state == Item.ItemState.SHELVED or it.state == Item.ItemState.FREE:
+		it.collision_layer = Catalog.L_ITEM
+		it.collision_mask = Catalog.L_WORLD | Catalog.L_CART | Catalog.L_ITEM
+	else:
+		it.collision_layer = 0
+		it.collision_mask = 0
 
 ## 闸机升降杆高度
 func _gates() -> void:

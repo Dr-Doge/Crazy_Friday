@@ -20,8 +20,8 @@ var brace_time := 0.0       # Ctrl:冲击准备剩余时长
 var brace_cd := 0.0
 var locate_cd := 0.0        # 技能CD按人各算(联机双人)
 var prop_cd := 0.0          # 右键场内商品道具冷却
-var throw_selection := 0    # 购物车商品轮盘当前索引（本地UI状态）
-var throw_aiming := false   # 按住右键进入越肩瞄准，松开时才真正投掷
+var throw_selection := 0    # 手持/购物车商品轮盘当前索引（本地UI状态）
+var throw_aiming := false   # 按住右键放大瞄准，松开时才真正投掷
 var buddies: Array = []      # 马德胜常驻的两名物流随从
 
 # ---------- 角色(见 character_def.gd / char_skills.gd) ----------
@@ -45,14 +45,17 @@ var net_sprint := false
 var net_brace := false
 var net_interact := false
 var net_cam_yaw := 0.0
+var net_aim_dir := Vector3.FORWARD
 var _interact_held := false
 
-func set_net_input(mv: Vector2, sp: bool, br: bool, ih: bool, cam_yaw: float) -> void:
+func set_net_input(mv: Vector2, sp: bool, br: bool, cam_yaw: float,
+		aim_dir := Vector3.FORWARD) -> void:
 	net_move = mv
 	net_sprint = sp
 	net_brace = br
-	net_interact = ih
 	net_cam_yaw = cam_yaw
+	if aim_dir.length_squared() > 0.001:
+		net_aim_dir = aim_dir.normalized()
 var main: Main
 
 # 交互引导(由HUD显示)
@@ -366,9 +369,16 @@ func do_elbow(dir: Vector3) -> void:
 	if try_elbow(dir):
 		stamina = maxf(0.0, stamina - ELBOW_STAMINA)
 
-func _on_interact_pressed() -> void:
+func _on_interact_pressed(aim_dir := Vector3.ZERO) -> void:
 	if attached:
 		return
+	# 可靠动作包携带按键瞬间的准星方向，避免它比持续输入包先到主机时
+	# 错用房主镜头或上一帧方向选择商品。
+	if remote and aim_dir.length_squared() > 0.001:
+		net_aim_dir = aim_dir.normalized()
+	if remote:
+		# 长按状态只由可靠的按下/松开边沿维护，不能让旧的unreliable帧覆盖。
+		net_interact = true
 	var pick := _best_interaction()
 	match pick.get("kind", ""):
 		"pickup":
@@ -394,6 +404,11 @@ func _cancel_channel() -> void:
 	_channel_kind = ""
 	_channel_target = null
 
+func _on_interact_released() -> void:
+	if remote:
+		net_interact = false
+	_cancel_channel()
+
 func _update_channel(delta: float, input: Vector2) -> void:
 	if _channel_kind == "":
 		return
@@ -405,8 +420,7 @@ func _update_channel(delta: float, input: Vector2) -> void:
 		_cancel_channel()
 		return
 	# 搜货期间必须持续用屏幕中心准星锁住开始选择的那件商品。
-	if _channel_kind == "search" and (main == null \
-			or main.cam_rig.aimed_shelf_item() != _channel_target):
+	if _channel_kind == "search" and _aimed_shelf_item() != _channel_target:
 		_cancel_channel()
 		return
 	if not _interact_held:
@@ -459,6 +473,8 @@ func _drop_held() -> void:
 	while not held.is_empty():
 		var it: Item = held.pop_back()
 		it.set_free_at(global_position + fwd * 0.7 + Vector3.UP * 0.9)
+		if main != null:
+			main.on_player_dropped_item(it)
 	Main.float_text(self, global_position + Vector3.UP * 2.0, "放下了物品", Color(0.8, 0.8, 0.8))
 
 # ---------- 交互扫描 ----------
@@ -494,7 +510,7 @@ func _best_interaction() -> Dictionary:
 			best = {"kind": "load", "target": cart, "label": "E 放入购物车"}
 			best_d = d3
 	# 货架货不再按“离谁最近”自动选择，只允许准星射线明确命中的那一件覆盖候选。
-	var aimed_item: Item = main.cam_rig.aimed_shelf_item() if main != null else null
+	var aimed_item: Item = _aimed_shelf_item()
 	var aimed_horizontal_distance := INF
 	if is_instance_valid(aimed_item):
 		aimed_horizontal_distance = Vector2(global_position.x, global_position.z).distance_to(
@@ -507,6 +523,15 @@ func _best_interaction() -> Dictionary:
 			best = {"kind": "search_full", "target": aimed_item,
 					"label": "手上拿不下了(R先装车)"}
 	return best
+
+## 本机直接读取本机相机；主机模拟远程玩家时，用该客户端持续上报的准星方向
+## 从玩家头部做权威射线。远程交互绝不能读取房主的 CameraRig。
+func _aimed_shelf_item() -> Item:
+	if main == null:
+		return null
+	if remote:
+		return main.aimed_shelf_item_from(self, net_aim_dir)
+	return main.cam_rig.aimed_shelf_item()
 
 func _item_in_any_basket(it: Item) -> bool:
 	for node in get_tree().get_nodes_in_group("carts"):
