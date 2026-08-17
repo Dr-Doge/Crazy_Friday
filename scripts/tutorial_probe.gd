@@ -17,6 +17,16 @@ func setup() -> void:
 	_check(_m.get_node_or_null("Market") == null, "教学不生成正式卖场 Market")
 	_check(_guide._gates.size() == 4, "五房之间存在四道实体门禁")
 	_check(_m.grannies.is_empty() and _m.checkouts.is_empty(), "教学不生成普通NPC、随机事件与正式收银通道")
+	var rooms: Node3D = _m.get_node("TutorialRooms") as Node3D
+	var shelves_face_entry: bool = rooms.get_node("GoodsShelf_A_Ledge").position.z \
+			> rooms.get_node("GoodsShelf_A").position.z \
+			and rooms.get_node("GoodsShelf_B_Ledge").position.z \
+			> rooms.get_node("GoodsShelf_B").position.z \
+			and rooms.get_node("FinalShelf_Ledge").position.z \
+			> rooms.get_node("FinalShelf").position.z
+	_check(shelves_face_entry, "全部教学货架陈列面朝向玩家进入方向")
+	_check(_guide._goods_decoy.category == Catalog.CAT_LARGE,
+			"R键教学使用占满双手的非目标大件形成自然丢弃需求")
 	print("[tutorial] 五房串联教学自检开始 角色=%s" % _m.player.char_id)
 	_started = true
 
@@ -62,31 +72,51 @@ func _goods(p: Player) -> void:
 			_guide.on_shelf_item(_guide._goods_a)
 		1:
 			p.held.erase(_guide._goods_a)
-			_guide._goods_a.set_free_at(p.global_position + Vector3.UP)
+			_guide._place_item_in_cart(_guide._goods_a, p.cart, Vector2.ZERO)
 		2:
-			_guide._goods_a.set_held()
-			p.take_item(_guide._goods_a)
+			_guide._goods_decoy.set_held()
+			p.take_item(_guide._goods_decoy)
 		3:
-			p.held.erase(_guide._goods_a)
-			_guide._add_item_to_cart(p.cart, "tissue")
+			p.held.erase(_guide._goods_decoy)
+			_guide._place_item_in_cart(_guide._goods_decoy, p.cart, Vector2.ZERO)
+			_m.get_tree().create_timer(0.7).timeout.connect(func() -> void:
+				_check(_guide.marks.get("decoy_cart_redirect", false) \
+						and p.held.has(_guide._goods_decoy),
+						"错误大件按习惯装车时会退回手中并重新引导R键")
+				p._drop_held())
 		4: p.locate_cd = 10.0
 		5: _guide._add_item_to_cart(p.cart, "thermos")
 
 func _combat(p: Player) -> void:
 	match _guide.stage:
 		0: _guide.on_player_stole(_guide._steal_cart, _guide._combat_item)
-		1: _guide._combat_dummy.imbalance = 56.0
-		2: _guide._combat_dummy.knockdown()
-		3: _guide._add_item_to_cart(p.cart, "thermos")
-		4: p.braced = true
+		1:
+			p.take_item(_guide._combat_item)
+			p.held.erase(_guide._combat_item)
+			_guide._place_item_in_cart(_guide._combat_item, p.cart, Vector2.ZERO)
+		2: pass # 让训练黄牛真实走到购物车、拿货并返回原位。
+		3:
+			_check(_guide._combat_dummy.theft_completed \
+					and _guide._combat_dummy.held.has(_guide._combat_item) \
+					and _guide._combat_dummy.global_position.distance_to(
+							_guide._points["combat_dummy"]) < 0.5,
+					"第三房训练黄牛真实往返玩家购物车并偷走商品")
+			_guide._combat_dummy.imbalance = 56.0
+		4: _guide._combat_dummy.knockdown()
+		5: _guide._add_item_to_cart(p.cart, "thermos")
+		6: p.braced = true
 
 func _lab(p: Player) -> void:
 	match _guide.stage:
 		0:
-			if not p.attached:
-				p.cart.global_position = p.global_position + Vector3(0, 0.2, -1.2)
-				p.attach_cart()
-			_guide.on_wheel_cycled()
+			# 留出物理静置时间，真实验证无人机仍在车斗而非只检查生成瞬间。
+			_m.get_tree().create_timer(0.8).timeout.connect(func() -> void:
+				_check(_guide._cart_has(p.cart, "drone"),
+						"第四房无人机静置后仍在玩家车斗并可进入轮盘")
+				if not p.attached:
+					p.global_position = p.cart.handle_pos()
+					p.attach_cart()
+				_guide.on_wheel_cycled())
 		1: _guide.marks["throw_actor"] = true
 		2: _guide.marks["throw_cart"] = true
 		3: _guide.marks["ground_effect"] = true
@@ -121,5 +151,5 @@ func _report() -> void:
 				and visual != null and str(visual.get_meta("gate_color", "")) == "green" \
 				and visual.visible,
 				"门禁%d按顺序变绿、升起并关闭碰撞" % (i + 1))
-	print("[tutorial] RESULT=%s assertions=%d" % [("PASS" if _fails.is_empty() else "FAIL"), 9])
+	print("[tutorial] RESULT=%s assertions=%d" % [("PASS" if _fails.is_empty() else "FAIL"), 14])
 	_m.get_tree().quit(0 if _fails.is_empty() else 1)

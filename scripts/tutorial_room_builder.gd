@@ -53,14 +53,15 @@ static func build(root: Node3D) -> Dictionary:
 		"gates": gates,
 		"room_centers": ROOM_CENTERS,
 		"points": {
-			"goods_a": Vector3(-5.0, 1.28, -22.72),
-			"goods_b": Vector3(5.0, 1.28, -27.72),
+			"goods_a": Vector3(-5.0, 1.28, -21.28),
+			"goods_b": Vector3(5.0, 1.28, -26.28),
+			"goods_decoy": Vector3(0.0, 0.78, -24.5),
 			"steal_cart": Vector3(-5.0, 0.2, -48.0),
 			"combat_dummy": Vector3(4.0, 0.05, -51.0),
 			"brace_cart": Vector3(-7.5, 0.2, -57.0),
 			"lab_dummy": Vector3(4.0, 0.05, -78.0),
 			"lab_cart": Vector3(-4.5, 0.2, -78.0),
-			"final_shelf": Vector3(-5.0, 1.28, -108.72),
+			"final_shelf": Vector3(-5.0, 1.28, -107.28),
 			"final_cart": Vector3(5.0, 0.2, -108.0),
 			"final_dummy": Vector3(0.0, 0.05, -116.0),
 			"checkout": Vector3(0.0, 0.0, -124.0),
@@ -115,6 +116,8 @@ static func _build_room_one(root: Node3D) -> void:
 static func _build_room_two(root: Node3D) -> void:
 	_shelf(root, "GoodsShelf_A", Vector3(-5.0, 0, -22.0), Color(0.25, 0.6, 0.95))
 	_shelf(root, "GoodsShelf_B", Vector3(5.0, 0, -27.0), Color(0.25, 0.6, 0.95))
+	_decal(root, "WrongGoodsPad", Vector3(0.0, 0.035, -24.5), Vector3(3.0, 0.04, 2.0), Color(1.0, 0.2, 0.15, 0.4))
+	_sign(root, "WrongGoodsSign", Vector3(0.0, 2.2, -25.2), "故意拿错一次", Color(1.0, 0.28, 0.2), 48)
 	_decal(root, "GoodsParking", Vector3(0, 0.035, -30.0), Vector3(5.5, 0.04, 3.5), Color(0.25, 0.62, 1.0, 0.38))
 
 static func _build_room_three(root: Node3D) -> void:
@@ -138,7 +141,8 @@ static func _build_room_five(root: Node3D) -> void:
 
 static func _shelf(root: Node3D, node_name: String, pos: Vector3, color: Color) -> void:
 	_wall(root, node_name, Vector3(pos.x, 0.65, pos.z), Vector3(5.0, 1.3, 1.2), color.darkened(0.25))
-	_box(root, node_name + "_Ledge", Vector3(pos.x, 1.18, pos.z - 0.72), Vector3(5.0, 0.12, 0.45), color)
+	# 教学路线始终由北向南推进，陈列沿统一放在货架北侧，正对进入房间的玩家。
+	_box(root, node_name + "_Ledge", Vector3(pos.x, 1.18, pos.z + 0.72), Vector3(5.0, 0.12, 0.45), color)
 
 static func _pylon(root: Node3D, node_name: String, pos: Vector3) -> void:
 	var mesh := MeshInstance3D.new()

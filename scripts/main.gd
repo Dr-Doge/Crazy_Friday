@@ -935,8 +935,25 @@ func cart_throw_items(p: Player) -> Array[Item]:
 		return a.item_id < b.item_id)
 	return out
 
+## 当前可投掷商品：驾驶时读取车斗，徒步时读取双手。
+## 两种状态共用同一轮盘索引与联机商品ID，切换时不会产生第二套操作规则。
+func player_throw_items(p: Player) -> Array[Item]:
+	if p == null:
+		return []
+	if p.attached:
+		return cart_throw_items(p)
+	var out: Array[Item] = []
+	for it in p.held:
+		if is_instance_valid(it) and it.state == Item.ItemState.HELD:
+			out.append(it)
+	out.sort_custom(func(a: Item, b: Item) -> bool:
+		if a.item_id == b.item_id:
+			return a.get_instance_id() < b.get_instance_id()
+		return a.item_id < b.item_id)
+	return out
+
 func cycle_cart_item(p: Player, step: int) -> void:
-	var items := cart_throw_items(p)
+	var items := player_throw_items(p)
 	if items.is_empty():
 		p.throw_selection = 0
 		return
@@ -945,13 +962,13 @@ func cycle_cart_item(p: Player, step: int) -> void:
 		tutorial_guide.on_wheel_cycled()
 
 func selected_cart_item_id(p: Player) -> String:
-	var items := cart_throw_items(p)
+	var items := player_throw_items(p)
 	if items.is_empty():
 		return ""
 	p.throw_selection = posmod(p.throw_selection, items.size())
 	return items[p.throw_selection].item_id
 
-## 右键:从自己的购物车取出轮盘选中商品，沿屏幕中心准星投掷。
+## 右键：驾驶时从购物车、徒步时从双手取出轮盘选中商品，沿准星投掷。
 func trigger_throw_cart_item(p: Player = null, dir := Vector3.ZERO, wanted_id := "") -> void:
 	if p == null:
 		p = player
@@ -962,10 +979,7 @@ func trigger_throw_cart_item(p: Player = null, dir := Vector3.ZERO, wanted_id :=
 			Main.float_text(self, p.global_position + Vector3.UP * 2.4,
 					"道具冷却中(%d秒)" % int(ceil(p.prop_cd)), Color(0.8, 0.8, 0.8))
 		return
-	# 投掷是驾驶购物车时的专属动作；脱车右键只负责拉近观察镜头，静默不投掷。
-	if not p.attached or not is_instance_valid(p.cart):
-		return
-	var items := cart_throw_items(p)
+	var items := player_throw_items(p)
 	var prop: Item = null
 	for it in items:
 		if wanted_id == "" or it.item_id == wanted_id:
@@ -974,8 +988,11 @@ func trigger_throw_cart_item(p: Player = null, dir := Vector3.ZERO, wanted_id :=
 	if prop == null:
 		if p == player:
 			Main.float_text(self, p.global_position + Vector3.UP * 2.4,
-					"购物车里没有可投掷商品", Color(1.0, 0.75, 0.35), 52)
+					"没有可投掷商品", Color(1.0, 0.75, 0.35), 52)
 		return
+	# 手持物必须先从持有数组移除，否则 Actor 每帧的手持摆位会把飞行中的商品拉回手上。
+	if not p.attached:
+		p.held.erase(prop)
 	p.prop_cd = Catalog.prop_cd(prop.item_id)
 	var fwd := dir
 	if fwd.length() < 0.1:
@@ -1328,10 +1345,13 @@ func _update_camera(delta: float) -> void:
 		cam_rig.global_position = target
 	cam_rig.follow(target, delta)
 	cam_rig.update_first_person_hands(player, delta)
-	if aiming and player.attached and selected_cart_item_id(player) != "" and player.prop_cd <= 0.0 \
-			and is_instance_valid(player.cart):
+	# 抛物线仅服务越肩第三人称的车斗投掷；第一人称直接依靠中央白点瞄准。
+	if aiming and player.attached and selected_cart_item_id(player) != "" \
+			and player.prop_cd <= 0.0:
 		var launch := throw_launch_data(player, player._aim_dir())
-		var exclusions: Array[RID] = [player.get_rid(), player.cart.get_rid()]
+		var exclusions: Array[RID] = [player.get_rid()]
+		if is_instance_valid(player.cart):
+			exclusions.append(player.cart.get_rid())
 		cam_rig.update_throw_preview(launch["spawn"], launch["velocity"], exclusions)
 	else:
 		cam_rig.hide_throw_preview()
@@ -1368,14 +1388,14 @@ func _update_timer_hud() -> void:
 
 func _update_skill_hud() -> void:
 	var s1 := "Q雷达:就绪" if player.locate_cd <= 0.0 else "Q 雷达:%d秒" % int(ceil(player.locate_cd))
-	var wheel_items := cart_throw_items(player)
+	var wheel_items := player_throw_items(player)
 	var selected_id := selected_cart_item_id(player)
-	var prop_text := "车内无商品" if selected_id == "" else "%s·%d失衡" % [Catalog.ITEMS[selected_id]["name"], int(Catalog.throw_imbalance(selected_id))]
+	var prop_text := "无可投掷商品" if selected_id == "" else "%s·%d失衡" % [Catalog.ITEMS[selected_id]["name"], int(Catalog.throw_imbalance(selected_id))]
 	var s2 := "按住右键:近距观察"
-	if player.attached:
+	if selected_id != "":
 		s2 = "按住右键瞄准/松开投掷:%s" % prop_text if player.prop_cd <= 0.0 \
 				else "右键 投掷:%.1f秒" % player.prop_cd
-	hud.set_item_wheel(wheel_items, player.throw_selection, player.attached)
+	hud.set_item_wheel(wheel_items, player.throw_selection, not wheel_items.is_empty())
 	hud.set_obscured(player.obscure_time > 0.0)
 	var s3 := "Ctrl稳住:就绪" if player.brace_cd <= 0.0 else ("Ctrl 稳住:格挡中!" if player.braced else "Ctrl 稳住:%d秒" % int(ceil(player.brace_cd)))
 	var sk := CharacterDef.skill_name(player.char_id)
@@ -1542,6 +1562,10 @@ func on_player_took_from_shelf(_item: Item) -> void:
 	if tutorial_guide != null:
 		tutorial_guide.on_shelf_item(_item)
 
+func on_player_dropped_item(item: Item) -> void:
+	if tutorial_guide != null:
+		tutorial_guide.on_player_dropped_item(item)
+
 func complete_tutorial() -> void:
 	if game_over:
 		return
@@ -1617,7 +1641,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		_set_mouse_captured(not mouse_captured)
 		return
-	# 右键按住进入越肩瞄准，松开才投掷；客户端也只在松开时向主机发动作。
+	# 右键按住进入瞄准，松开才投掷；徒步保持第一人称，客户端仍由主机结算。
 	if game_started and not game_over and player != null and event.is_action_pressed("use_prop"):
 		if not player.downed and not player.finished:
 			player.throw_aiming = true
@@ -1625,14 +1649,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if player != null and event.is_action_released("use_prop"):
 		var was_aiming := player.throw_aiming
 		player.throw_aiming = false
-		if was_aiming and player.attached and game_started and not game_over \
+		if was_aiming and game_started and not game_over \
 				and not player.downed and not player.finished:
 			var selected_id := selected_cart_item_id(player)
-			var throw_dir := player._aim_dir()
-			if net_client:
-				net.send_action("throw:" + selected_id, throw_dir)
-			else:
-				trigger_throw_cart_item(player, throw_dir, selected_id)
+			if selected_id != "":
+				var throw_dir := player._aim_dir()
+				if net_client:
+					net.send_action("throw:" + selected_id, throw_dir)
+				else:
+					trigger_throw_cart_item(player, throw_dir, selected_id)
 		return
 	if tutorial and tutorial_guide != null and event.is_action_pressed("tutorial_reset"):
 		tutorial_guide.reset_current_room()

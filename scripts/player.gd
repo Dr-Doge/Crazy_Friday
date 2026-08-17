@@ -20,8 +20,8 @@ var brace_time := 0.0       # Ctrl:冲击准备剩余时长
 var brace_cd := 0.0
 var locate_cd := 0.0        # 技能CD按人各算(联机双人)
 var prop_cd := 0.0          # 右键场内商品道具冷却
-var throw_selection := 0    # 购物车商品轮盘当前索引（本地UI状态）
-var throw_aiming := false   # 按住右键进入越肩瞄准，松开时才真正投掷
+var throw_selection := 0    # 手持/购物车商品轮盘当前索引（本地UI状态）
+var throw_aiming := false   # 按住右键放大瞄准，松开时才真正投掷
 var buddies: Array = []      # 马德胜常驻的两名物流随从
 
 # ---------- 角色(见 character_def.gd / char_skills.gd) ----------
@@ -473,6 +473,8 @@ func _drop_held() -> void:
 	while not held.is_empty():
 		var it: Item = held.pop_back()
 		it.set_free_at(global_position + fwd * 0.7 + Vector3.UP * 0.9)
+		if main != null:
+			main.on_player_dropped_item(it)
 	Main.float_text(self, global_position + Vector3.UP * 2.0, "放下了物品", Color(0.8, 0.8, 0.8))
 
 # ---------- 交互扫描 ----------

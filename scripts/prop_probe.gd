@@ -1,5 +1,5 @@
 class_name PropProbe extends RefCounted
-## 全商品投掷专项回归：车斗轮盘、实际物权、差异伤害、落点效果与准星方向。
+## 全商品投掷专项回归：车斗/手持轮盘、实际物权、差异伤害、落点效果与准星方向。
 
 var _m: Main
 var _p: Player
@@ -120,11 +120,17 @@ func _check_wheel() -> void:
 	release.pressed = false
 	_p.detach_cart()
 	_m._update_skill_hud()
-	var off_cart_count := _m.cart_throw_items(_p).size()
 	var held_view_test := Item.create("thermos")
 	_m.add_child(held_view_test)
 	_m.all_items.append(held_view_test)
 	_p.take_item(held_view_test)
+	var held_view_test_2 := Item.create("tissue")
+	_m.add_child(held_view_test_2)
+	_m.all_items.append(held_view_test_2)
+	_p.take_item(held_view_test_2)
+	_m._update_skill_hud()
+	_check(_m.player_throw_items(_p).size() == 2 and _m.hud.item_wheel.visible,
+			"徒步轮盘：双手满载时读取全部手持商品并显示轮盘")
 	_m._unhandled_input(press)
 	_m._update_camera(0.2)
 	_check(_m.cam_rig.is_first_person() \
@@ -153,7 +159,7 @@ func _check_wheel() -> void:
 			"第一人称字幕：视野外反馈不吸入HUD；镜头灵敏度已适度降低")
 	outside_float.queue_free()
 	_check(not held_view_test.visible and bool(held_view_test.get_meta("first_person_view_hidden", false)) \
-			and _m.cam_rig.first_person_held_item_count() == 1,
+			and _m.cam_rig.first_person_held_item_count() == 2,
 			"第一人称手持：隐藏真实世界模型，以绑定双手的低姿态镜头模型稳定展示")
 	_check(CameraRig.FIRST_PERSON_ELBOW_FIST_SCALE >= 2.0 \
 			and _m.cam_rig._fp_arm_l.position.x < -0.25 \
@@ -161,11 +167,19 @@ func _check_wheel() -> void:
 			and absf(_m.cam_rig._fp_held_root.position.y - _m.cam_rig._fp_arm_l.position.y) < 0.18,
 			"第一人称动作：双臂下移分列中央UI两侧，商品与圆球拳头同高且出拳放大超过2倍")
 	_check(_p.throw_aiming and not _m.cam_rig.throw_preview_visible() \
-			and not _m.hud.item_wheel.visible,
-			"脱车右键：保留第一人称放大，隐藏轮盘且不显示投掷轨迹")
+			and _m.hud.item_wheel.visible and _m.cam_rig.is_first_person(),
+			"徒步右键：保持第一人称放大和手持轮盘，不显示第三人称抛物线")
 	_m._unhandled_input(release)
-	_check(_p.prop_cd <= 0.0 and _m.cart_throw_items(_p).size() == off_cart_count,
-			"脱车右键：松开不投掷、不消耗商品且不进入冷却")
+	_m._update_camera(0.1)
+	_check(_m.cam_rig.is_first_person() and not _p.throw_aiming and _p.prop_cd > 0.0 \
+			and _p.held.size() == 1,
+			"徒步投掷：松开右键投出轮盘选中手持商品，消耗一件且不切换视角")
+	var pedestrian_throw_active := false
+	for it in [held_view_test, held_view_test_2]:
+		pedestrian_throw_active = pedestrian_throw_active \
+				or is_instance_valid(it) and bool(it.get_meta("throw_active", false))
+	_check(pedestrian_throw_active, "徒步投掷：真实手持商品离手并进入投掷态")
+	_p.prop_cd = 0.0
 	_p.drop_all_held(false)
 	_p.attach_cart()
 	_m._update_skill_hud()

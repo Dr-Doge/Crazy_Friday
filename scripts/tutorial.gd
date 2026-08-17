@@ -27,6 +27,7 @@ var _combat_retaliate_cd := 0.0
 
 var _goods_a: Item
 var _goods_b: Item
+var _goods_decoy: Item
 var _steal_cart: Cart
 var _combat_item: Item
 var _combat_dummy: TutorialOpponent
@@ -183,6 +184,7 @@ func _tick_drive(delta: float) -> void:
 func _prepare_goods_room() -> void:
 	_goods_a = _spawn_item("tissue", _points["goods_a"], true)
 	_goods_b = _spawn_item("thermos", _points["goods_b"], true)
+	_goods_decoy = _spawn_item("tv", _points["goods_decoy"], true)
 
 func _reset_goods_items() -> void:
 	if not is_instance_valid(_goods_a):
@@ -193,6 +195,10 @@ func _reset_goods_items() -> void:
 		_goods_b = _spawn_item("thermos", _points["goods_b"], true)
 	else:
 		_goods_b.set_shelved(_points["goods_b"])
+	if not is_instance_valid(_goods_decoy):
+		_goods_decoy = _spawn_item("tv", _points["goods_decoy"], true)
+	else:
+		_goods_decoy.set_shelved(_points["goods_decoy"])
 
 func _tick_goods() -> void:
 	var p: Player = _m.player
@@ -202,17 +208,24 @@ func _tick_goods() -> void:
 			if marks.get("shelf:tissue", false):
 				_advance()
 		1:
-			_say("02-2  商品稳定夹在画面下方双手之间 · 按R把卫生纸放到地上")
-			if is_instance_valid(_goods_a) and _goods_a.state == Item.ItemState.FREE and not p.held.has(_goods_a):
-				_advance()
-		2:
-			_say("02-3  靠近地上的卫生纸，按 E 重新捡起")
-			if p.held.has(_goods_a):
-				_advance()
-		3:
-			_say("02-4  回到自己的车旁按 E，把卫生纸装进真实车斗")
+			_say("02-2  按常规做法：回到自己的车旁按 E，把卫生纸装进真实车斗")
 			if _cart_has(p.cart, "tissue"):
 				_advance()
+		2:
+			_say("02-3  故意拿起红色区域里的非目标电视，体验大件占满双手")
+			if p.held.has(_goods_decoy):
+				_advance()
+		3:
+			_say("02-4  拿错大件时不必折返购物车：按 R 原地放下电视，立刻腾出双手")
+			# 玩家若仍按习惯把红叉练习品装车，立即退回手中并给出明确反馈，
+			# 避免教程无响应；只有R丢下才算学会快速腾手。
+			if marks.get("dropped_decoy", false):
+				_advance()
+			elif _item_inside_cart(p.cart, _goods_decoy):
+				p.take_item(_goods_decoy)
+				marks["decoy_cart_redirect"] = true
+				Main.float_text(_m, p.global_position + Vector3.UP * 2.2,
+						"这是故意拿错的练习品，请按 R 丢下", Color(1.0, 0.45, 0.2), 62)
 		4:
 			_say("02-5  按 Q 使用找货雷达，寻找被遮住的第二件商品")
 			if p.locate_cd > 0.0:
@@ -228,7 +241,7 @@ func _prepare_combat_room() -> void:
 	_steal_cart = Cart.create(Color(0.55, 0.55, 0.58), "无人训练车")
 	_m.add_child(_steal_cart)
 	_steal_cart.global_position = _points["steal_cart"]
-	_combat_item = _spawn_item("thermos", _points["steal_cart"] + Vector3.UP * 1.25, false)
+	_combat_item = _add_item_to_cart(_steal_cart, "thermos")
 	_combat_dummy = TutorialOpponent.new()
 	_m.add_child(_combat_dummy)
 	_combat_dummy.setup("训练黄牛")
@@ -243,6 +256,7 @@ func _reset_combat() -> void:
 		_steal_cart.global_position = _points["steal_cart"]
 		_steal_cart.linear_velocity = Vector3.ZERO
 	if is_instance_valid(_combat_dummy):
+		_combat_dummy.cancel_cart_theft()
 		_combat_dummy.protect_held_until_downed = false
 		_combat_dummy.drop_all_held(false)
 		_combat_dummy.downed = false
@@ -255,9 +269,9 @@ func _reset_combat() -> void:
 		_brace_cart.global_position = _points["brace_cart"]
 		_brace_cart.linear_velocity = Vector3.ZERO
 	if not is_instance_valid(_combat_item):
-		_combat_item = _spawn_item("thermos", _points["steal_cart"] + Vector3.UP * 1.25, false)
+		_combat_item = _add_item_to_cart(_steal_cart, "thermos")
 	else:
-		_combat_item.set_free_at(_points["steal_cart"] + Vector3.UP * 1.25)
+		_place_item_in_cart(_combat_item, _steal_cart, Vector2.ZERO)
 
 func _tick_combat() -> void:
 	var p: Player = _m.player
@@ -265,14 +279,24 @@ func _tick_combat() -> void:
 		0:
 			_say("03-1  靠近灰色无人车，长按 E 顺走保温杯")
 			if marks.get("stole", false):
-				_give_combat_item_to_dummy()
 				_advance()
 		1:
-			_say("03-2  白点对准训练黄牛后按左键肘击；拳头会夸张前送，只有视野内字幕显示")
-			if is_instance_valid(_combat_dummy) and _combat_dummy.imbalance > 40.5:
+			_say("03-2  把刚偷到的保温杯放进自己的车。注意：其他人也能偷取你车里的商品")
+			if _cart_has_item(p.cart, _combat_item):
+				_combat_dummy.start_cart_theft(p.cart, _combat_item)
 				_advance()
 		2:
-			_say("03-3  继续肘击，把失衡槽打满；手持任务品只有倒地才会掉落")
+			_say("03-3  观察训练黄牛走到你的购物车偷货，再带回原位；离车搜货时要留意车斗")
+			if is_instance_valid(_combat_dummy) and _combat_dummy.theft_completed:
+				if is_instance_valid(_combat_dummy.stolen_item):
+					_combat_item = _combat_dummy.stolen_item
+				_advance()
+		3:
+			_say("03-4  黄牛偷走了你的商品：白点对准他，按左键肘击以累计失衡")
+			if is_instance_valid(_combat_dummy) and _combat_dummy.imbalance > 40.5:
+				_advance()
+		4:
+			_say("03-5  继续肘击，把失衡槽打满；被偷商品只有对方倒地后才能夺回")
 			if is_instance_valid(_combat_dummy) and _combat_dummy.imbalance >= 60.0 \
 					and _combat_retaliate_cd <= 0.0 and not _combat_dummy.downed \
 					and _combat_dummy.global_position.distance_to(p.global_position) < 2.4:
@@ -280,12 +304,12 @@ func _tick_combat() -> void:
 				_combat_retaliate_cd = 1.1
 			if marks.get("combat_downed", false):
 				_advance()
-		3:
-			_say("03-4  捡起掉落的保温杯，回到自己的车旁按 E 装车")
+		5:
+			_say("03-6  捡起掉落的保温杯，回到自己的车旁按 E 装车")
 			if _cart_has(p.cart, "thermos"):
 				_advance()
-		4:
-			_say("03-5  按住 Ctrl 稳住，抵挡一次训练车撞击")
+		6:
+			_say("03-7  按住 Ctrl 稳住，抵挡一次训练车撞击")
 			if p.braced:
 				var before := p.imbalance
 				_brace_cart.global_position = p.global_position + Vector3.RIGHT * 2.0
@@ -293,14 +317,6 @@ func _tick_combat() -> void:
 				p.hit_by_cart(_brace_cart)
 				if p.imbalance <= before + 0.01:
 					_complete_room()
-
-func _give_combat_item_to_dummy() -> void:
-	if not is_instance_valid(_combat_item) or not is_instance_valid(_combat_dummy):
-		return
-	_m.player.held.erase(_combat_item)
-	_combat_item.set_held()
-	_combat_dummy.take_item(_combat_item)
-	_combat_dummy.imbalance = 40.0
 
 # ---------------------------------------------------------------- 房间04
 
@@ -441,6 +457,10 @@ func _tick_final(delta: float) -> void:
 func on_shelf_item(it: Item) -> void:
 	marks["shelf:%s" % it.item_id] = true
 
+func on_player_dropped_item(it: Item) -> void:
+	if room == 1 and stage == 3 and it == _goods_decoy:
+		marks["dropped_decoy"] = true
+
 func on_player_stole(_cart: Cart, item: Item) -> void:
 	if room == 2 and item == _combat_item:
 		marks["stole"] = true
@@ -475,9 +495,21 @@ func _add_item_to_cart(cart: Cart, id: String) -> Item:
 		"drone": Vector2(0.22, 0.18),
 	}
 	var slot: Vector2 = display_slots.get(id, Vector2.ZERO)
-	var pos := cart.to_global(Vector3(slot.x, 1.35, slot.y))
-	var it := _spawn_item(id, pos, false)
+	var it := _spawn_item(id, cart.global_position + Vector3.UP, false)
+	_place_item_in_cart(it, cart, slot)
 	return it
+
+## 从车斗内底面按商品真实半高摆放，避免旧版统一从1.35米高处落下时
+## 小型无人机撞上其他商品后弹出车外。初速度继承购物车，减少移动中补货的相对冲击。
+func _place_item_in_cart(it: Item, cart: Cart, slot: Vector2) -> void:
+	if not is_instance_valid(it) or not is_instance_valid(cart):
+		return
+	var local_y := Cart.FLOOR_TOP + it.collider_half_height() + 0.035
+	it.set_free_at(cart.to_global(Vector3(slot.x, local_y, slot.y)))
+	it.linear_velocity = cart.linear_velocity
+	it.angular_velocity = Vector3.ZERO
+	it.continuous_cd = true
+	it.reset_physics_interpolation()
 
 func _cart_has(cart: Cart, id: String) -> bool:
 	if not is_instance_valid(cart):
@@ -486,6 +518,23 @@ func _cart_has(cart: Cart, id: String) -> bool:
 		if is_instance_valid(it) and it.item_id == id:
 			return true
 	return false
+
+func _cart_has_item(cart: Cart, target: Item) -> bool:
+	return is_instance_valid(cart) and is_instance_valid(target) \
+			and cart.items_in_basket().has(target)
+
+## Area3D 的重叠列表会晚一个物理步刷新；教学纠错同时检查车斗局部空间，
+## 避免商品刚装车的那一帧被误判成R键落地。
+func _item_inside_cart(cart: Cart, target: Item) -> bool:
+	if not is_instance_valid(cart) or not is_instance_valid(target) \
+			or target.state != Item.ItemState.FREE:
+		return false
+	if cart.items_in_basket().has(target):
+		return true
+	var local := cart.to_local(target.global_position)
+	return absf(local.x) <= Cart.INNER_HALF_X + 0.12 \
+			and absf(local.z) <= Cart.INNER_HALF_Z + 0.12 \
+			and local.y >= Cart.FLOOR_TOP - 0.2 and local.y <= 1.9
 
 func _remove_target_items() -> void:
 	for actor in [_m.player, _combat_dummy, _lab_dummy]:
