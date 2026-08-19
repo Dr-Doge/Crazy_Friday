@@ -30,7 +30,7 @@
 #>
 [CmdletBinding()]
 param(
-	[ValidateSet('single', 'tutorial', 'mp', 'phys', 'char', 'npc', 'prop', 'all')]
+	[ValidateSet('single', 'tutorial', 'mp', 'phys', 'char', 'npc', 'prop', 'order', 'level', 'all')]
 	[string]$Mode = 'single',
 
 	[ValidateRange(1, 5)]
@@ -323,6 +323,16 @@ if ($Mode -in @('prop', 'all')) {
 	$all += Invoke-SingleCase -Name 'prop' -EnvVars @{ WHITEBOX_PROPTEST = '1'; WHITEBOX_NPC = '0' } `
 		-FrameCount 20000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
 		-Note '(购物车轮盘/全商品投掷/准星/徒步受撞)'
+}
+if ($Mode -in @('order', 'all')) {
+	$all += Invoke-SingleCase -Name 'order' -EnvVars @{ WHITEBOX_ORDERTEST = '1'; WHITEBOX_NPC = '0' } `
+		-FrameCount 4000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
+		-Note '(混合订单结构/类别匹配/Q雷达/HUD/特价替代)'
+}
+if ($Mode -in @('level', 'all')) {
+	$all += Invoke-SingleCase -Name 'level' -EnvVars @{ WHITEBOX_LEVELTEST = '1'; WHITEBOX_NPC = '0' } `
+		-FrameCount 4000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
+		-Note '(New_Level实体CSG/碰撞/双车净宽)'
 }
 if ($Mode -in @('mp', 'all')) {
 	$all += Invoke-MpCase -ClientCount $Clients -FrameCount $mpFrames

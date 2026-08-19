@@ -12,6 +12,7 @@ var _g2: Granny
 var _player_item: Item
 var _unrelated_item: Item
 var _stopped_after_loss := false
+var _approached_for_attack := false
 
 func _init(m: Main) -> void:
 	_m = m
@@ -23,13 +24,17 @@ func setup() -> void:
 		return
 	_g1 = _m.grannies[0]
 	_g2 = _m.grannies[1]
+	# 四队模式下grannies[0]可能恰好是玩家同队AI；专项需要明确使用对手，
+	# 否则友伤保护会把“有需求品才攻击”的验证误判成AI失效。
+	_g1.team_id = (_m.player.team_id + 1) % 4
 	# 第二名NPC作为稳定靶子，避免自己的AI决策把她带离测试区域。
 	_g2.set_physics_process(false)
 	_prepare_actor(_m.player)
 	_prepare_actor(_g1)
 	_prepare_actor(_g2)
-	_place_cart_actor(_m.player, Vector3(0, 0.2, 12))
-	_g1.global_position = Vector3(1.3, 0.2, 13.28)
+	# 新旧正式地图共同的收银前开阔侧翼，远离货架与爆款展台。
+	_place_cart_actor(_m.player, Vector3(-8.0, 0.2, 12.0))
+	_g1.global_position = Vector3(-6.7, 0.2, 13.28)
 	_g1.shopping_list = ["thermos"]
 	_g1.acquired.clear()
 	_unrelated_item = _put_in_cart(_m.player.cart, "chips")
@@ -133,10 +138,19 @@ func _start_player_attack() -> void:
 	var target := _g1._find_brawl_target()
 	_check(target == _m.player, "NPC仇恨：需求品重新入车后可再次建立仇恨")
 	if target != null:
+		# 关闭自主决策，直接推进真实BRAWL状态：先验证靠近，再验证贴身肘击。
+		_g1.set_physics_process(false)
 		_g1._start_brawl(target)
+		_g1.global_position = _m.player.global_position + Vector3(2.4, 0.0, 0.0)
+		var before := _g1.global_position.distance_to(_m.player.global_position)
+		_g1._brawl_state(0.1)
+		_approached_for_attack = _g1.global_position.distance_to(_m.player.global_position) < before
+		_g1.global_position = _m.player.global_position + Vector3(1.2, 0.0, 0.0)
+		_g1._elbow_cd = 0.0
+		_g1._brawl_state(0.05)
 
 func _check_player_attack() -> void:
-	_check(_m.player.imbalance > 0.0 or _m.player.downed,
+	_check(_approached_for_attack and (_m.player.imbalance > 0.0 or _m.player.downed),
 			"NPC：锁定需求车后会主动靠近并攻击玩家")
 
 func _check_elbow_reclaim_only() -> void:

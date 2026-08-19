@@ -53,7 +53,9 @@ func _tick_approach_cart(delta: float) -> void:
 		return
 	var to_cart := _theft_cart.global_position - global_position
 	to_cart.y = 0.0
-	if to_cart.length() > 1.65:
+	# 购物车外壳和把手会在约1.7米处挡住徒步角色；交互距离放到2.05米，
+	# 让黄牛在车边伸手拿货，不再试图挤进车斗后原地卡死。
+	if to_cart.length() > 2.05:
 		apply_motion(delta, to_cart.normalized(), THEFT_SPEED)
 		return
 	var candidate: Item = null

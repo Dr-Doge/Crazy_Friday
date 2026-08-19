@@ -345,7 +345,8 @@ func _physics_process(delta: float) -> void:
 		linear_velocity.z = hv.z
 	# 兜底:跌出世界拉回入口
 	if global_position.y < -5.0:
-		global_position = MapLayout.respawn_pos(0.5)
+		global_position = Main.instance.layout_respawn_pos(0.5) \
+				if Main.instance != null else MapLayout.respawn_pos(0.5)
 		global_rotation = Vector3.ZERO
 		linear_velocity = Vector3.ZERO
 		angular_velocity = Vector3.ZERO

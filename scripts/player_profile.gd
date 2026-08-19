@@ -29,6 +29,8 @@ const DEFAULT_NAMES: Array[String] = [
 
 static var display_name := ""
 static var color_index := 0
+## 四队模式下由玩家主动选择的队伍；角色颜色始终由队伍决定。
+static var team_index := 0
 ## 所选角色 id(见 character_def.gd)。只影响外貌与技能,不影响基础数值。
 static var char_id := CharacterDef.ORDER[0]
 static var _loaded := false
@@ -42,6 +44,7 @@ static func ensure_loaded() -> void:
 	if cfg.load(PATH) == OK:
 		display_name = sanitize(str(cfg.get_value("profile", "name", "")))
 		color_index = clampi(int(cfg.get_value("profile", "color", 0)), 0, COLORS.size() - 1)
+		team_index = clampi(int(cfg.get_value("profile", "team", color_index)), 0, 3)
 		char_id = CharacterDef.valid_id(str(cfg.get_value("profile", "char", "")))
 	if display_name == "":
 		display_name = DEFAULT_NAMES.pick_random()
@@ -51,6 +54,7 @@ static func save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("profile", "name", display_name)
 	cfg.set_value("profile", "color", color_index)
+	cfg.set_value("profile", "team", team_index)
 	cfg.set_value("profile", "char", char_id)
 	cfg.save(PATH)
 
@@ -63,6 +67,12 @@ static func set_name_and_save(raw: String) -> String:
 
 static func set_color_and_save(idx: int) -> void:
 	color_index = clampi(idx, 0, COLORS.size() - 1)
+	save()
+
+static func set_team_and_save(idx: int) -> void:
+	team_index = clampi(idx, 0, 3)
+	# 保留旧档案字段兼容性，但不再允许独立于队伍选色。
+	color_index = team_index
 	save()
 
 static func set_char_and_save(id: String) -> void:
@@ -105,6 +115,23 @@ static func resolve_colors(indices: Array) -> Array[int]:
 					break
 		used[idx] = true
 		out.append(idx)
+	return out
+
+## 大厅队伍偏好解析：每队最多两人。超额选择会被放入当前人数最少的队，
+## 从而始终给固定4队×2席留下可由AI补齐的合法编制。
+static func resolve_teams(indices: Array) -> Array[int]:
+	var counts := [0, 0, 0, 0]
+	var out: Array[int] = []
+	for raw in indices:
+		var wanted := clampi(int(raw), 0, 3)
+		if counts[wanted] >= 2:
+			var best := 0
+			for i in range(1, 4):
+				if counts[i] < counts[best]:
+					best = i
+			wanted = best
+		counts[wanted] += 1
+		out.append(wanted)
 	return out
 
 ## 重名处理:同名也难分辨,给重复者加序号后缀

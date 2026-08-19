@@ -30,7 +30,6 @@ const RAM_CD_FAIL := 3.5    # 冲撞失败/放弃的冷却
 const AGGRO_RANGE := 10.0    # 徒步争抢搜索半径
 const AGGRO_TIME := 6.0      # 单次追打最长时间，避免全场只顾打架
 const ELBOW_CD := 0.9        # NPC肘击间隔
-const EXIT_X := MapLayout.EXIT_X   # 收银后离场出口的x位置
 
 # 大妈语录(带方言味,对玩家操作做反应)
 const SAY_HURT := ["哎哟我的老腰!!", "造孽哦——!", "哪个挨千刀的撞我!", "哎呀妈呀!!", "撞人啦!没王法啦!"]
@@ -44,6 +43,7 @@ const SAY_SHOP := ["便宜!快囤!", "又抢到一个,美滋滋~", "这个俺屋
 var main: Main
 var body_color := Color(0, 0, 0, 0)   # 由main指定,与自己的车同色
 var shopping_list: Array = []          # 购物清单(商品id)。大妈是真顾客,玩家才是投机者
+var is_team_bot := false               # 四队空席AI；仍复用成熟购物/战斗/结算状态机
 var acquired := {}                     # 已到手的清单项
 var want_label: Label3D
 var bubble: Label3D                    # 对话气泡
@@ -154,7 +154,7 @@ func _physics_process(delta: float) -> void:
 	if downed or main == null or main.game_over:
 		apply_motion(delta, Vector3.ZERO, 0.0)
 		return
-	if taser_time > 0.0:
+	if taser_time > 0.0 or frozen_time > 0.0:
 		hand_pose = "stunned"
 		if attached and is_instance_valid(cart):
 			cart.linear_velocity *= 0.55
@@ -330,9 +330,11 @@ func _decide() -> void:
 				return
 	# 溜达
 	_after_drive = ""
+	var wander_x := main.layout_wander_x()
+	var wander_z := main.layout_wander_z()
 	_drive_path_to(Vector3(
-			randf_range(MapLayout.wander_x().x, MapLayout.wander_x().y), 0,
-			randf_range(MapLayout.wander_z().x, MapLayout.wander_z().y)))
+			randf_range(wander_x.x, wander_x.y), 0,
+			randf_range(wander_z.x, wander_z.y)))
 	state = GState.DRIVE
 
 func _go_shop(it: Item) -> void:
@@ -362,7 +364,7 @@ func _start_checkout() -> void:
 	for co in main.checkouts:
 		if not co.lane_open:
 			continue
-		var d: float = absf(cart.global_position.x - co.lane_x) + absf(cart.global_position.z - 12.0)
+		var d := cart.global_position.distance_to(co.queue_wait_pos())
 		if d < best_d:
 			best = co
 			best_d = d
@@ -370,13 +372,13 @@ func _start_checkout() -> void:
 		# 没有开放的通道:直接离场
 		_leave_world = true
 		_after_drive = "leave"
-		_drive_path_to(Vector3(EXIT_X, 0, MapLayout.exit_inner_z()))
+		_drive_path_to(Vector3(main.layout_exit_x(), 0, main.layout_exit_inner_z()))
 		state = GState.DRIVE
 		return
 	target_checkout = best
 	_after_drive = "queue"
 	# 网格寻路开到闸机口正前(避开货架行),之后再直线进通道
-	_drive_path_to(Vector3(best.lane_x, 0, MapLayout.queue_wait_z()))
+	_drive_path_to(best.queue_wait_pos())
 	state = GState.DRIVE
 
 # ---------- 状态实现 ----------
@@ -397,7 +399,7 @@ func _drive_state(delta: float) -> void:
 	if _follow_path_drive(delta):
 		match _after_drive:
 			"queue":
-				_lane_pts = [Vector3(target_checkout.lane_x, 0, MapLayout.scan_stop_z())]
+				_lane_pts = [target_checkout.scan_stop_pos()]
 				_lane_idx = 0
 				action_timer = 30.0
 				state = GState.Q_DRIVE
@@ -412,7 +414,7 @@ func _drive_state(delta: float) -> void:
 				else:
 					state = GState.IDLE
 			"leave":
-				_lane_pts = [Vector3(EXIT_X, 0, MapLayout.exit_outer_z())]
+				_lane_pts = [Vector3(main.layout_exit_x(), 0, main.layout_exit_outer_z())]
 				_lane_idx = 0
 				state = GState.EXIT_DRIVE
 			_:
@@ -637,9 +639,9 @@ func _queue_state(delta: float) -> void:
 	action_timer -= delta
 	if not attached or target_checkout == null or not target_checkout.lane_open or action_timer <= 0.0:
 		if attached and target_checkout != null and not target_checkout.lane_open \
-				and cart.global_position.z > MapLayout.GATE_IN_Z + 0.5:
-			# 已过闸机却赶上通道关闭:从南口离场,别困死在里面
-			_lane_pts = [Vector3(target_checkout.lane_x, 0, MapLayout.lane_out_z())]
+				and target_checkout.has_passed_entry(cart.global_position, 0.5):
+			# 已过入口隔离门却赶上通道关闭：沿当前出口离场，别困死在里面。
+			_lane_pts = [target_checkout.lane_out_pos()]
 			_lane_idx = 0
 			state = GState.EXIT_DRIVE
 		else:
@@ -660,29 +662,26 @@ func _scanning_state(delta: float) -> void:
 	var give_up := action_timer <= 0.0 or target_checkout == null or not target_checkout.lane_open
 	var finished := cart.items_in_basket().is_empty() and held.is_empty()
 	if give_up or finished:
-		var lx: float = target_checkout.lane_x if target_checkout != null else cart.global_position.x
 		_leave_world = finished
 		if finished:
 			# 结算完毕:开去出口离场,不再挡道
 			want_label.text = "买完收工~"
 			want_label.modulate = Color(0.55, 0.95, 0.6)
-			_lane_pts = [
-				Vector3(lx, 0, MapLayout.lane_out_z()),
-				Vector3(EXIT_X, 0, MapLayout.exit_inner_z()),
-				Vector3(EXIT_X, 0, MapLayout.exit_outer_z()),
-			]
+			_lane_pts = [target_checkout.lane_out_pos(), target_checkout.exit_outer_pos()] \
+					if target_checkout != null else [
+						Vector3(main.layout_exit_x(), 0, main.layout_exit_inner_z()),
+						Vector3(main.layout_exit_x(), 0, main.layout_exit_outer_z()),
+					]
 		else:
-			_lane_pts = [Vector3(lx, 0, MapLayout.lane_out_z())]
+			_lane_pts = [target_checkout.lane_out_pos()] if target_checkout != null \
+					else [Vector3(main.layout_exit_x(), 0, main.layout_exit_inner_z())]
 		_lane_idx = 0
 		state = GState.EXIT_DRIVE
 		return
-	_drive_toward(delta, Vector3(target_checkout.lane_x, 0, MapLayout.scan_stop_z()), false)
+	_drive_toward(delta, target_checkout.scan_stop_pos(), false)
 
 func _exit_state(delta: float) -> void:
 	# 已驶出出口豁口:从场上移除
-	if _leave_world and cart.global_position.z > 23.0:
-		_despawn_and_leave()
-		return
 	if _lane_idx >= _lane_pts.size():
 		if _leave_world:
 			_despawn_and_leave()
@@ -705,8 +704,11 @@ func despawn() -> void:
 	queue_free()
 
 func _despawn_and_leave() -> void:
+	if is_instance_valid(target_checkout) and is_instance_valid(cart):
+		target_checkout.release_cart(cart)
 	main.net_granny_left_notify(self)
 	main.grannies.erase(self)
+	main.team_bots.erase(self)
 	despawn()
 
 ## 限时特价:开车奔向掉落点(特价箱对所有人都算"想要",到附近后决策自然去捡)
@@ -800,7 +802,8 @@ func _find_ram_target() -> Cart:
 	var best_d := RAM_RANGE * perception_factor()
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
-		if not is_instance_valid(c) or c == cart or c.attached_agent == null or c.attached_agent == self:
+		if not is_instance_valid(c) or c == cart or c.attached_agent == null \
+				or c.attached_agent == self or is_friendly_source(c):
 			continue
 		if c.attached_agent.immune or not _cart_has_wanted(c):
 			continue
@@ -817,6 +820,8 @@ func _find_brawl_target() -> Actor:
 		if node == self or not (node is Actor):
 			continue
 		var rival: Actor = node
+		if is_friendly_source(rival):
+			continue
 		if rival.downed or rival.immune or (rival is Player and rival.finished):
 			continue
 		if rival is Granny and rival._in_checkout_chain():
@@ -846,7 +851,7 @@ func _find_steal_cart(wanted_only: bool, rng: float) -> Cart:
 	var best_d := rng * perception_factor()
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
-		if not is_instance_valid(c) or c == cart or c.attached_agent != null:
+		if not is_instance_valid(c) or c == cart or c.attached_agent != null or is_friendly_source(c):
 			continue
 		if c.items_in_basket().is_empty():
 			continue
@@ -878,7 +883,8 @@ func _find_wanted_shelved() -> Item:
 	var best_d := 999.0
 	for node in get_tree().get_nodes_in_group("items"):
 		var it: Item = node
-		if not is_instance_valid(it) or it.state != Item.ItemState.SHELVED or not _wanted(it.item_id):
+		if not is_instance_valid(it) or it.state != Item.ItemState.SHELVED \
+				or it.event_locked or not _wanted(it.item_id):
 			continue
 		if _claimed_by_other(it):
 			continue
@@ -919,13 +925,29 @@ func _drive_toward(delta: float, dest: Vector3, sprint: bool) -> void:
 	var to := dest - cart.global_position
 	to.y = 0.0
 	if to.length() > 0.15:
-		var dir := to.normalized()
+		var dir := (to.normalized() + _cart_separation() * 0.72).normalized()
 		var movement_mult := movement_factor()
 		cart.apply_central_force(dir * DRIVE_FORCE * (1.6 if sprint else 1.0) * movement_mult)
 		var target_yaw := atan2(-dir.x, -dir.z)
 		var diff := wrapf(target_yaw - cart.rotation.y, -PI, PI)
 		cart.apply_torque(Vector3(0, diff * DRIVE_STEER * cart.mass * 0.1 * movement_mult, 0))
 	_stick_to_handle()
+
+## 队伍AI在同一热点附近会主动错开车头。认领机制负责分散目标，
+## 这里负责解决共享过道上的局部拥堵，不使用瞬移也不改变寻路终点。
+func _cart_separation() -> Vector3:
+	if main == null or not is_instance_valid(cart):
+		return Vector3.ZERO
+	var push := Vector3.ZERO
+	for other in main.team_bots:
+		if other == self or not is_instance_valid(other) or not is_instance_valid(other.cart):
+			continue
+		var away := cart.global_position - other.cart.global_position
+		away.y = 0.0
+		var distance := away.length()
+		if distance > 0.05 and distance < 3.4:
+			push += away.normalized() * (1.0 - distance / 3.4)
+	return push.limit_length(1.0)
 
 func _stick_to_handle() -> void:
 	global_position = cart.handle_pos()

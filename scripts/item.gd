@@ -5,7 +5,7 @@ enum ItemState { SHELVED, HELD, FREE, SCANNED }
 
 ## 碰撞体的最小厚度(米)。**视觉网格仍用真实尺寸,只加厚物理代理**。
 ##
-## 为什么必须这样:三文鱼刺身盒(0.12)、冻披萨(0.12)、大米(0.15)这类扁平商品,
+## 为什么必须这样:哈兰德三文鱼(0.12)、冻披萨(0.12)、大米(0.15)这类扁平商品,
 ## 若碰撞体与外形等厚,在车斗里被重物挤压时接触求解极不稳定,会被弹射到
 ## 20+ m/s;而 60Hz 下21 m/s 的单帧位移是 0.36 米,足以直接穿过车斗底板
 ## 飞出地图。加厚物理代理是解决扁平刚体穿模的标准做法,代价只是堆叠时
@@ -20,15 +20,17 @@ const MIN_MASS := 1.2
 ## 被甩出/肘飞后的物理豁免期(秒)。
 ## 期间不受购物车"车内大重力 + 限速"托管,否则刚甩出去就被重新吸住。
 const FLING_GRACE := 0.6
-
 var item_id := ""
 var display_name := ""
 var category := ""
 var state: ItemState = ItemState.FREE
 var box_size := Vector3.ONE
 var label: Label3D
+var surface_labels: Array[Label3D] = []
 var ping_shell: MeshInstance3D   # 找货雷达的绿色高亮壳
 var _cart_label_sources := {}    # 正处于哪些车斗感应区；非空时隐藏商品头顶名称
+## 中央黑五区开门前使用。锁定商品保持SHELVED，但不可见、不可射线选取、不可被AI锁定。
+var event_locked := false
 ## >0 时表示刚被甩出,购物车不要接管它的重力与速度
 var fling_grace := 0.0
 
@@ -70,20 +72,9 @@ static func create(id: String) -> Item:
 	col.shape = shape
 	it.add_child(col)
 
-	var lb := Label3D.new()
-	lb.text = str(data["name"])
-	lb.font = Catalog.ui_font()
-	lb.font_size = 54
-	lb.pixel_size = 0.004
-	lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lb.no_depth_test = true
-	# 名称用商品本体色,一眼分辨
-	lb.modulate = Color(data["color"]).darkened(0.45)
-	lb.outline_size = 12
-	lb.outline_modulate = Color(1, 1, 1, 0.9)
-	lb.position = Vector3(0, it.box_size.y * 0.5 + 0.22, 0)
-	it.add_child(lb)
-	it.label = lb
+	# 商品名是包装的一部分：固定贴在最大包装面的正反两侧，不再悬浮、
+	# 不朝向镜头，也不穿墙显示。正反两面保证从货架任一过道侧都能读到。
+	it._build_surface_labels(str(data["name"]), Color(data["color"]).darkened(0.5))
 
 	# 找货雷达高亮壳:绿色描边,穿墙可见,平时隐藏
 	var ping := MeshInstance3D.new()
@@ -115,6 +106,47 @@ func collider_size() -> Vector3:
 func collider_half_height() -> float:
 	return maxf(box_size.y, MIN_COLLIDER_THICKNESS) * 0.5
 
+## 货架白盒阶段用2倍展示尺寸填满层板；离架后立即恢复真实物理尺寸。
+func shelf_display_half_height() -> float:
+	# 扁平包装上架时绕X轴立起，陈列高度因此取Y/Z中的较大值。
+	return maxf(box_size.y, box_size.z) * 0.5 * Catalog.SHELF_DISPLAY_SCALE
+
+func _build_surface_labels(text: String, color: Color) -> void:
+	var axis := 0
+	if box_size.y <= box_size.x and box_size.y <= box_size.z:
+		axis = 1
+	elif box_size.z <= box_size.x and box_size.z <= box_size.y:
+		axis = 2
+	for sign_value in [-1.0, 1.0]:
+		var lb := Label3D.new()
+		lb.text = text
+		lb.font = Catalog.ui_font_bold()
+		lb.font_size = 54
+		var face_width := box_size.x if axis != 0 else box_size.z
+		lb.pixel_size = minf(0.0032, face_width / maxf(120.0, text.length() * 33.0))
+		lb.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		lb.no_depth_test = false
+		lb.modulate = color
+		lb.outline_size = 10
+		lb.outline_modulate = Color(1, 1, 1, 0.92)
+		match axis:
+			0:
+				lb.position.x = sign_value * (box_size.x * 0.5 + 0.006)
+				lb.rotation.y = sign_value * PI * 0.5
+			1:
+				lb.position.y = sign_value * (box_size.y * 0.5 + 0.006)
+				lb.rotation.x = -sign_value * PI * 0.5
+			2:
+				lb.position.z = sign_value * (box_size.z * 0.5 + 0.006)
+				lb.rotation.y = 0.0 if sign_value > 0.0 else PI
+		add_child(lb)
+		surface_labels.append(lb)
+	label = surface_labels[0]
+
+func apply_state_scale() -> void:
+	scale = Vector3.ONE * (Catalog.SHELF_DISPLAY_SCALE \
+			if state == ItemState.SHELVED else 1.0)
+
 ## 标记"刚被甩出",在豁免期内不被购物车接管重力与限速
 func mark_flung() -> void:
 	fling_grace = FLING_GRACE
@@ -123,6 +155,7 @@ func mark_flung() -> void:
 func _physics_process(delta: float) -> void:
 	if fling_grace > 0.0:
 		fling_grace -= delta
+	_refresh_label_visibility()
 
 ## 车内商品只保留实体外观和轮盘提示，不再用一叠穿透文字遮挡驾驶视野。
 ## 用来源集合处理两辆购物车感应区短暂重叠的情况，任意车斗仍包含它就继续隐藏。
@@ -141,26 +174,42 @@ func clear_cart_label_hides() -> void:
 	_refresh_label_visibility()
 
 func _refresh_label_visibility() -> void:
-	if label != null:
-		label.visible = _cart_label_sources.is_empty()
+	for lb in surface_labels:
+		if is_instance_valid(lb):
+			lb.visible = not event_locked
 
 ## 冻结摆上货架
-func set_shelved(pos: Vector3) -> void:
+func set_shelved(pos: Vector3, shelf_yaw := 0.0) -> void:
 	clear_cart_label_hides()
 	state = ItemState.SHELVED
+	apply_state_scale()
 	freeze = true
 	gravity_scale = 1.0
-	collision_layer = Catalog.L_ITEM
-	collision_mask = Catalog.L_WORLD | Catalog.L_CART | Catalog.L_ITEM
+	# 陈列商品只保留视觉与准星交互，不参与刚体碰撞，避免包装突出货架卡住过道。
+	collision_layer = 0
+	collision_mask = 0
 	global_position = pos
-	global_rotation = Vector3.ZERO
+	var stand_pitch := -PI * 0.5 if box_size.z > box_size.y * 1.15 else 0.0
+	global_rotation = Vector3(stand_pitch, shelf_yaw, 0.0)
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
+
+## 压轴区商品的显隐/交互锁。它不是新的商品状态，开门后仍可沿用普通货架拿取流程。
+func set_event_locked(locked: bool) -> void:
+	event_locked = locked
+	visible = not locked
+	if locked:
+		collision_layer = 0
+		collision_mask = 0
+	elif state == ItemState.SHELVED:
+		collision_layer = 0
+		collision_mask = 0
 
 ## 被拿到手上:冻结、关碰撞,由持有者每帧摆位
 func set_held() -> void:
 	clear_cart_label_hides()
 	state = ItemState.HELD
+	apply_state_scale()
 	freeze = true
 	gravity_scale = 1.0
 	collision_layer = 0
@@ -170,6 +219,7 @@ func set_held() -> void:
 func set_free_at(pos: Vector3, impulse := Vector3.ZERO) -> void:
 	clear_cart_label_hides()
 	state = ItemState.FREE
+	apply_state_scale()
 	global_position = pos
 	gravity_scale = 1.0
 	collision_layer = Catalog.L_ITEM
@@ -185,11 +235,13 @@ func set_free_at(pos: Vector3, impulse := Vector3.ZERO) -> void:
 func set_scanned_at(pos: Vector3) -> void:
 	clear_cart_label_hides()
 	state = ItemState.SCANNED
+	apply_state_scale()
 	freeze = true
 	collision_layer = 0
 	collision_mask = 0
 	global_position = pos
 	global_rotation = Vector3.ZERO
 	if label:
-		label.modulate = Color(0.1, 0.55, 0.2)
-		label.text = display_name + " ✓"
+		for lb in surface_labels:
+			lb.modulate = Color(0.1, 0.55, 0.2)
+			lb.text = display_name + " ✓"

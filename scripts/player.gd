@@ -108,7 +108,8 @@ func _physics_process(delta: float) -> void:
 	_tick_char_skill(delta)
 
 	# 突进/硬直/扎马步/电击期间接管移动，均不接受方向输入。
-	if dash_time > 0.0 or dash_windup > 0.0 or stun_time > 0.0 or stance_time > 0.0 or taser_time > 0.0:
+	if dash_time > 0.0 or dash_windup > 0.0 or stun_time > 0.0 or stance_time > 0.0 \
+			or taser_time > 0.0 or frozen_time > 0.0:
 		_drive_char_state(delta)
 		_update_interactions()
 		return
@@ -190,6 +191,16 @@ func _tick_char_skill(delta: float) -> void:
 
 ## 技能占用期间的移动:三种状态都不接受方向输入
 func _drive_char_state(delta: float) -> void:
+	if frozen_time > 0.0:
+		hand_pose = "stunned"
+		_cancel_channel()
+		if attached and is_instance_valid(cart):
+			cart.linear_velocity *= 0.72
+			cart.angular_velocity *= 0.55
+			_hold_cart_handle()
+		else:
+			apply_motion(delta, Vector3.ZERO, 0.0)
+		return
 	if taser_time > 0.0:
 		hand_pose = "stunned"
 		_cancel_channel()

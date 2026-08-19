@@ -194,7 +194,7 @@ func _build_solo(page: VBoxContainer) -> void:
 
 func _build_mp(page: VBoxContainer) -> void:
 	_build_title(page, false)
-	_section(page, "多 人 联 机 (2-6人局域网)", Color(0.5, 0.82, 1.0))
+	_section(page, "多 人 联 机 (1-8名真人 · 四队竞赛)", Color(0.5, 0.82, 1.0))
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 14)
@@ -328,10 +328,11 @@ func show_lobby(members: Array, is_host: bool) -> void:
 		row.add_theme_constant_override("separation", 8)
 		var dot := ColorRect.new()
 		dot.custom_minimum_size = Vector2(24, 24)
-		dot.color = PlayerProfile.color_of(int(m.get("color", 0)))
+		var team := clampi(int(m.get("team", 0)), 0, 3)
+		dot.color = Catalog.team_color(team)
 		row.add_child(dot)
 		var lb := Label.new()
-		lb.text = "%d. %s" % [i + 1, str(m.get("name", "?"))]
+		lb.text = "%d. [%s] %s" % [i + 1, Catalog.team_name(team, true), str(m.get("name", "?"))]
 		lb.add_theme_font_size_override("font_size", 24)
 		row.add_child(lb)
 		# 角色公开:技能是战术信息,应当让对手看见(《14·九》)
@@ -352,10 +353,10 @@ func show_lobby(members: Array, is_host: bool) -> void:
 		_btn_begin.visible = true
 		_btn_begin.disabled = members.size() < 2
 		_btn_begin.text = "开 始 对 局(%d人)" % members.size() if members.size() >= 2 else "等 待 加入"
-		_room_hint.text = "人齐了就点\"开始对局\"。所有人的角色与配色都会同步给全场"
+		_room_hint.text = "人齐了就点\"开始对局\"。每队最多2名真人，空席由同队AI补齐"
 	else:
 		_btn_begin.visible = false
-		_room_hint.text = "等待房主开始对局...(此时仍可改名、换色、换角色)"
+		_room_hint.text = "等待房主开始对局...(此时仍可改名、换队、换角色)"
 
 # ================================================================ 角色选择组件
 
@@ -420,7 +421,7 @@ func _char_detail_text(cid: String, compact: bool) -> String:
 			out += "  · %s\n" % line
 	return out
 
-# ================================================================ 档案编辑(昵称+配色)
+# ================================================================ 档案编辑(昵称+队伍)
 
 func _build_profile_editor(box: VBoxContainer) -> void:
 	_section(box, "我 的 名号", Color(0.55, 0.95, 0.6))
@@ -444,7 +445,7 @@ func _build_profile_editor(box: VBoxContainer) -> void:
 	_name_edits.append(edit)
 
 	var color_tag := Label.new()
-	color_tag.text = "配色(撞色会自动错开)"
+	color_tag.text = "选择队伍（队伍颜色固定）"
 	color_tag.add_theme_font_size_override("font_size", 20)
 	color_tag.add_theme_color_override("font_color", Color(1, 1, 1, 0.6))
 	box.add_child(color_tag)
@@ -453,10 +454,11 @@ func _build_profile_editor(box: VBoxContainer) -> void:
 	swatches.add_theme_constant_override("separation", 6)
 	box.add_child(swatches)
 	var btns: Array[Button] = []
-	for i in PlayerProfile.COLORS.size():
+	for i in 4:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(56, 44)
-		b.tooltip_text = PlayerProfile.color_name_of(i)
+		b.text = Catalog.team_name(i, true)
+		b.tooltip_text = Catalog.team_name(i)
 		var idx := i
 		b.pressed.connect(func() -> void: _on_color_picked(idx))
 		swatches.add_child(b)
@@ -464,22 +466,22 @@ func _build_profile_editor(box: VBoxContainer) -> void:
 	_color_btn_sets.append(btns)
 
 func _build_dev_options(box: VBoxContainer) -> void:
-	_section(box, "🔧 开发者选项", Color(1, 0.8, 0.3))
+	_section(box, "🏁 对局编制", Color(1, 0.8, 0.3))
 	_npc_label = Label.new()
-	_npc_label.text = "同场大妈数量: 8"
+	_npc_label.text = "参赛队伍数量: 4队 × 2人"
 	_npc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_npc_label.add_theme_font_size_override("font_size", 22)
 	box.add_child(_npc_label)
 	_npc_slider = HSlider.new()
-	_npc_slider.min_value = 0
-	_npc_slider.max_value = 10
+	_npc_slider.min_value = 4
+	_npc_slider.max_value = 4
 	_npc_slider.step = 1
-	_npc_slider.value = 8
+	_npc_slider.value = 4
+	_npc_slider.editable = false
 	_npc_slider.custom_minimum_size = Vector2(PANEL_W - 60.0, 34)
-	_npc_slider.value_changed.connect(func(v: float) -> void: npc_changed.emit(int(v)))
 	box.add_child(_npc_slider)
 	var tip := Label.new()
-	tip.text = "0 人 = 纯净跑图 · 10 人 = 收银口地狱"
+	tip.text = "每局固定4队8名参赛者；真人空席由对应队伍AI从等待室补齐"
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tip.add_theme_font_size_override("font_size", 18)
 	tip.add_theme_color_override("font_color", Color(1, 1, 1, 0.45))
@@ -501,7 +503,7 @@ func _commit_all() -> void:
 	_refresh_profile_ui()
 
 func _on_color_picked(idx: int) -> void:
-	PlayerProfile.set_color_and_save(idx)
+	PlayerProfile.set_team_and_save(idx)
 	_refresh_profile_ui()
 	_broadcast_profile()
 
@@ -538,9 +540,9 @@ func _refresh_profile_ui() -> void:
 
 func _swatch_style(idx: int, hover: bool) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = PlayerProfile.color_of(idx)
+	sb.bg_color = Catalog.team_color(idx)
 	sb.set_corner_radius_all(6)
-	var selected := idx == PlayerProfile.color_index
+	var selected := idx == PlayerProfile.team_index
 	if selected or hover:
 		sb.set_border_width_all(4 if selected else 2)
 		sb.border_color = Color(1, 1, 1) if selected else Color(1, 1, 1, 0.6)
@@ -609,9 +611,9 @@ func reset_network() -> void:
 
 func set_npc_display(n: int) -> void:
 	if _npc_slider != null:
-		_npc_slider.set_value_no_signal(n)
+		_npc_slider.set_value_no_signal(4)
 	if _npc_label != null:
-		_npc_label.text = "同场大妈数量: %d" % n
+		_npc_label.text = "参赛队伍数量: 4队 × 2人"
 
 # ================================================================ 小工具
 

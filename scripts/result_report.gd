@@ -16,27 +16,34 @@ const CAT_NAMES := {
 ## names:各座位昵称(联机排名用),空则回落到"玩家N"
 static func build(pdata: Array, idx: int, settled: bool, net_mp: bool, names: Array = []) -> Array:
 	var pd: Dictionary = pdata[idx]
-	var done := 0
-	for entry in pd["list"]:
-		if entry["scanned"]:
-			done += 1
+	var done := OrderSystem.delivered_total(pd["list"])
+	var required := OrderSystem.required_total(pd["list"])
 	var lines: Array = []
 	lines.append("💰 出货结算!" if settled else "💰 打烊清算")
 	lines.append("")
 	lines.append("到手货值:%d" % pd["score"])
 	if net_mp and pdata.size() > 1:
 		lines.append_array(_ranking(pdata, idx, names))
-	lines.append("代购单交付:%d / %d" % [done, pd["list"].size()])
+	lines.append("代购单交付:%d / %d" % [done, required])
 	for entry in pd["list"]:
-		var mark: String = "✓" if entry["scanned"] else "✗"
-		lines.append("  %s %s%s" % [mark, entry["name"], "(特价顶单)" if entry["via_sale"] else ""])
+		var delivered := OrderSystem.delivered(entry)
+		var mark := "✓" if OrderSystem.is_complete(entry) else ("△" if delivered > 0 else "✗")
+		if OrderSystem.is_category(entry):
+			var goods: Array[String] = []
+			for id in entry.get("fulfilled_ids", []):
+				goods.append("特价箱" if id == "sale_box" else str(Catalog.ITEMS[id]["name"]))
+			var detail := "（%s）" % "、".join(goods) if not goods.is_empty() else ""
+			lines.append("  %s %s %d/%d%s" % [mark, entry["name"], delivered,
+					OrderSystem.required(entry), detail])
+		else:
+			lines.append("  %s %s%s" % [mark, entry["name"], "(特价顶单)" if entry.get("via_sale", false) else ""])
 	for cat in pd["counts"]:
 		lines.append("%s ×%d" % [CAT_NAMES.get(cat, cat), pd["counts"][cat]])
 	lines.append("")
 	lines.append("客户报价合计:¥%d · 你的黑五进货价:¥%d" % [pd["orig"], pd["orig"] - pd["saved"]])
 	lines.append("低价扫进,加价倒出——本趟净赚差价 ¥%d !" % pd["saved"])
 	lines.append("")
-	lines.append(_verdict(pd, done, settled))
+	lines.append(_verdict(pd, done, required, settled))
 	lines.append("")
 	lines.append("按 回车 " + ("断开并返回开始界面" if net_mp else "再跑一趟"))
 	return lines
@@ -57,8 +64,8 @@ static func _ranking(pdata: Array, idx: int, names: Array) -> Array:
 	return lines
 
 ## 结语:四象限(是否过闸机 × 代购单是否全清)
-static func _verdict(pd: Dictionary, done: int, settled: bool) -> String:
-	var all_done: bool = done == pd["list"].size()
+static func _verdict(pd: Dictionary, done: int, required: int, settled: bool) -> String:
+	var all_done: bool = done == required
 	if settled and all_done:
 		return "整单交付,赶在打烊前扬长而去——这一行你算是入门了。"
 	if settled:

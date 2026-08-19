@@ -83,6 +83,8 @@ func _goods(p: Player) -> void:
 				_check(_guide.marks.get("decoy_cart_redirect", false) \
 						and p.held.has(_guide._goods_decoy),
 						"错误大件按习惯装车时会退回手中并重新引导R键")
+				if p.attached:
+					p.detach_cart()
 				p._drop_held())
 		4: p.locate_cd = 10.0
 		5: _guide._add_item_to_cart(p.cart, "thermos")
@@ -91,11 +93,20 @@ func _combat(p: Player) -> void:
 	match _guide.stage:
 		0: _guide.on_player_stole(_guide._steal_cart, _guide._combat_item)
 		1:
+			# 探针会瞬移玩家购物车跨越房间；先清掉这次测试专用的惯性，
+			# 否则训练黄牛会一直追逐一辆仍在滑行的车。
+			p.cart.linear_velocity = Vector3.ZERO
+			p.cart.angular_velocity = Vector3.ZERO
+			p.cart.freeze = true
 			p.take_item(_guide._combat_item)
 			p.held.erase(_guide._combat_item)
 			_guide._place_item_in_cart(_guide._combat_item, p.cart, Vector2.ZERO)
+			# 探针靠瞬移跨门，车斗会在同一物理帧产生很大速度；固定任务品，
+			# 避免测试专用瞬移把商品甩出车外，实际玩家流程仍保持真实物理。
+			_guide._combat_item.freeze = true
 		2: pass # 让训练黄牛真实走到购物车、拿货并返回原位。
 		3:
+			p.cart.freeze = false
 			_check(_guide._combat_dummy.theft_completed \
 					and _guide._combat_dummy.held.has(_guide._combat_item) \
 					and _guide._combat_dummy.global_position.distance_to(

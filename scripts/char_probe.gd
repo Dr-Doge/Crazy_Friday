@@ -33,6 +33,17 @@ func _init(m) -> void:
 func setup() -> void:
 	var p: Player = _m.player
 	print("[char] 自检开始,本机角色初值= ", p.char_id)
+	# 技能夹具不能复用正式出生区：New_Level 的入口包含购物车围栏，
+	# 把目标车放在角色正前方时会与围栏相交，导致“上链接”测到地图而非技能。
+	# 固定移到南侧中央空场；只移动测试实体，不改变正式对局出生点。
+	if p.attached:
+		p.detach_cart()
+	p.global_position = Vector3(8.0, 0.1, 14.0)
+	p.body_root.rotation = Vector3.ZERO
+	if is_instance_valid(p.cart):
+		p.cart.global_position = p.global_position + Vector3(-1.6, 0.2, -0.5)
+		p.cart.linear_velocity = Vector3.ZERO
+		p.cart.angular_velocity = Vector3.ZERO
 	_dummy = _make_dummy("靶子", p.global_position + _fwd(p) * 1.6)
 	_atk_dummy = _make_dummy("攻方", p.global_position + Vector3(3.0, 0, 3.0))
 	_atk_cart = Cart.create(Color(0.7, 0.7, 0.7), "攻方的车")
@@ -198,6 +209,11 @@ func _s_link_setup() -> void:
 		p.detach_cart()
 	for buddy in _test_buddies:
 		buddy.active = false
+	# 玩家车必须与链接目标车完全分离，否则两个BasketArea重叠时，
+	# missing_list_ids会正确地把目标商品视为“玩家已经拥有”，测试反而无法施放技能。
+	if is_instance_valid(p.cart):
+		p.cart.freeze = true
+		p.cart.global_position = p.global_position - _fwd(p) * 6.0 + Vector3.UP * 0.2
 	_atk_cart.linear_velocity = Vector3.ZERO
 	_atk_cart.freeze = true
 	_dummy.global_position = p.global_position + Vector3(20.0, 0, 20.0)
@@ -218,7 +234,8 @@ func _s_link_fire() -> void:
 	_check(_far_cart.items_in_basket().has(_grab_item), "上链接:测试商品已进入目标车斗")
 	_check(not p.downed and p.char_id == CharacterDef.LI and p.char_cd <= 0.0,
 			"上链接:施放者状态允许使用技能")
-	_m.trigger_char_skill(p, _fwd(p))
+	var fwd := _fwd(p)
+	_m.trigger_char_skill(p, fwd)
 
 func _s_link_check() -> void:
 	var p: Player = _m.player

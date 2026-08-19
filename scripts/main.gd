@@ -9,8 +9,17 @@ const THROW_SPEED := 16.0
 const THROW_UPWARD_SPEED := 1.2
 const THROW_ORIGIN_HEIGHT := 1.62
 const THROW_FORWARD_OFFSET := 1.15
+const CENTRAL_EVENT_EARLIEST := 165.0 # 过半后15秒
+const CENTRAL_EVENT_LATEST := 195.0   # 过半后45秒
+const CENTRAL_EVENT_WARNING := 10.0
+const TEAM_PREP_DURATION := 12.0 # 四队在等待室内整备，倒计时结束后入口同步开门
+const GATE_SLIDE_DURATION := 0.9
 
 static var instance: Main
+
+## New_Level 等手工场景设为true：正式对局直接读取场景中的功能节点，
+## 不再调用 MarketBuilder 叠加旧卖场。教学关会暂时禁用手工场景。
+@export var embedded_level := false
 
 ## 开发者模式:所有技能无冷却(F1 面板开关)。
 ## 做成 static 是为了让 player.gd 在不持有 Main 引用时也能读到;
@@ -58,14 +67,28 @@ var game_over := false
 var closing_announced := false
 var sale_times: Array = []
 var sale_points: Array = []
+var central_open_at := -1.0
+var central_warned := false
+var central_opened := false
+var central_locked_items: Array[Item] = []
+var central_feature_id := ""
+var team_prep_active := false
+var team_prep_left := 0.0
+var team_prep_last_second := -1
+var team_entrance_opened := false
 
 var game_started := false
 var tutorial := false
 var net_mp := false              # 联机对局
 var net_client := false          # 本机是客户端
-var pending_npc := 8             # 开始界面滑块选定的NPC数量
+var pending_npc := 4             # 固定4支参赛队；旧参数名保留以兼容联机协议入口
 ## 无头运行(自动化测试);为true时把关键里程碑打到 stdout 供 tools/smoke_test.ps1 断言
 var headless := false
+var active_layout: Dictionary = {}
+var team_data: Array = []       # 四份权威共享订单/分数
+var team_bots: Array[Granny] = []
+var region_director: RegionDirector
+var active_checkout_indices: Array[int] = []
 
 ## 里程碑日志:只在无头测试下输出,不干扰正常游玩
 func _log_milestone(msg: String) -> void:
@@ -77,6 +100,7 @@ func _log_milestone(msg: String) -> void:
 func _ready() -> void:
 	instance = self
 	headless = DisplayServer.get_name() == "headless"
+	_set_runtime_only_visible(false)
 	print("疯抢星期五 白盒Demo ", Catalog.GAME_VERSION)
 	InputActions.setup()
 	_setup_environment()
@@ -98,12 +122,13 @@ func _ready() -> void:
 	hud.begin_pressed.connect(net_begin_match)
 	hud.leave_room_pressed.connect(_menu_leave_room)
 	hud.quit_pressed.connect(func() -> void: get_tree().quit())
-	if OS.get_environment("WHITEBOX_NPC") != "":
-		pending_npc = clampi(int(OS.get_environment("WHITEBOX_NPC")), 0, 10)
+	# 固定四队模式：旧 WHITEBOX_NPC 参数不再改变参赛者编制。
+	pending_npc = 4
 	hud.set_npc_count_display(pending_npc)
 
-	# 调试:设置环境变量 WHITEBOX_SHOT=<png路径> 时,运行约2秒自动截图退出(hud常驻层执行)
-	_shot_path = OS.get_environment("WHITEBOX_SHOT")
+	# 调试：普通截图沿用WHITEBOX_SHOT；施工图比对使用独立的正交俯视钩子。
+	var topdown_shot := OS.get_environment("WHITEBOX_TOPDOWN_SHOT")
+	_shot_path = topdown_shot if topdown_shot != "" else OS.get_environment("WHITEBOX_SHOT")
 
 	# 开始界面阶段不暂停场景树:世界尚未构建,无可模拟之物,
 	# 且暂停态下ENet大厅长时间挂机会出现轮询不稳(踩过坑)
@@ -126,18 +151,24 @@ func _ready() -> void:
 		_start_match(OS.get_environment("WHITEBOX_TUTORIAL") != "")
 	else:
 		_set_mouse_captured(false)
+	if topdown_shot != "":
+		call_deferred("_activate_topdown_audit")
 
 func _start_match(tut: bool) -> void:
 	if game_started:
 		return
 	game_started = true
 	tutorial = tut
+	# 天花板等运行时白盒在编辑器与开始菜单中保持隐藏，正式对局开始后才显示。
+	# 教学关使用独立房间，不能让 New_Level 天花板盖在教学地图上。
+	_set_runtime_only_visible(embedded_level and not tut)
 	# 单人/教学:用本机档案里选定的角色
 	PlayerProfile.ensure_loaded()
 	var env_char := OS.get_environment("WHITEBOX_CHAR")
 	if env_char != "":
 		PlayerProfile.char_id = CharacterDef.valid_id(env_char)
 	seat_chars = [PlayerProfile.char_id]
+	seat_team_ids = [PlayerProfile.team_index]
 	_build_world(randi(), 0 if tut else pending_npc, 1)
 	hud.hide_menu()
 	_set_mouse_captured(true)
@@ -163,14 +194,20 @@ func _start_match(tut: bool) -> void:
 	if OS.get_environment("WHITEBOX_PROPTEST") != "":
 		prop_probe = PropProbe.new(self)
 		prop_probe.setup()
+	if OS.get_environment("WHITEBOX_ORDERTEST") != "":
+		order_probe = OrderProbe.new(self)
+		order_probe.setup()
+	if OS.get_environment("WHITEBOX_LEVELTEST") != "":
+		new_level_probe = NewLevelProbe.new(self)
+		new_level_probe.setup()
 	# GUI视觉回归：自动展示当前角色主技能，配合 WHITEBOX_SHOT 截图。
 	if OS.get_environment("WHITEBOX_SHOW_CHAR_SKILL") != "":
 		get_tree().create_timer(0.7).timeout.connect(func() -> void:
 			if is_instance_valid(player):
 				trigger_char_skill(player, cam_rig.forward()))
 	if OS.get_environment("WHITEBOX_WHEEL_DEMO") != "":
-		for i in ["detergent", "thermos", "cola", "tv", "candy"].size():
-			var id: String = ["detergent", "thermos", "cola", "tv", "candy"][i]
+		for i in ["detergent", "thermos", "cola", "treadmill", "candy"].size():
+			var id: String = ["detergent", "thermos", "cola", "treadmill", "candy"][i]
 			var demo_item := Item.create(id)
 			add_child(demo_item)
 			all_items.append(demo_item)
@@ -209,7 +246,7 @@ func _start_match(tut: bool) -> void:
 
 ## 联机开局(各端各自调用,种子一致→世界一致)。my_seat:本机座位(主机0)。
 func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
-		names: Array = [], colors: Array = [], chars: Array = []) -> void:
+		names: Array = [], colors: Array = [], chars: Array = [], teams: Array = []) -> void:
 	if game_started:
 		return
 	game_started = true
@@ -223,6 +260,7 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
 	seat_chars = []
 	for c in chars:
 		seat_chars.append(CharacterDef.valid_id(str(c)))
+	seat_team_ids = PlayerProfile.resolve_teams(teams) if not teams.is_empty() else []
 	_build_world(wseed, npc, nplayers)
 	if OS.get_environment("WHITEBOX_MP_INTERACTION_TEST") != "":
 		_setup_mp_interaction_test(nplayers)
@@ -257,7 +295,7 @@ func start_mp(host: bool, wseed: int, npc: int, my_seat: int, nplayers: int,
 ## 各端按相同座位顺序创建，因而商品索引也完全一致。
 func _setup_mp_interaction_test(nplayers: int) -> void:
 	for seat in range(1, nplayers):
-		var test_item := Item.create("tv")
+		var test_item := Item.create("treadmill")
 		add_child(test_item)
 		all_items.append(test_item)
 		# 驾驶回归结束后玩家会在车把处下车，因此以车把为基准布置目标。
@@ -324,7 +362,7 @@ func _menu_host() -> void:
 		hud.lock_menu_for_host()
 		# 房主自己也要出现在成员列表里
 		net.push_profile()
-		hud.set_menu_status("房间已创建!本机IP: %s (端口%d)\n把IP告诉大家,最多可容纳6人,人齐后点\"开始对局\"\n(也可改填别人的IP点\"加入房间\",本机自动改当客户端)\n若别人连不上:在本机Windows防火墙里\"允许\"本程序(UDP %d)" % [ips, Net.PORT, Net.PORT])
+		hud.set_menu_status("房间已创建!本机IP: %s (端口%d)\n把IP告诉大家,最多可容纳8人,空席由AI补齐;准备后点\"开始对局\"\n(也可改填别人的IP点\"加入房间\",本机自动改当客户端)\n若别人连不上:在本机Windows防火墙里\"允许\"本程序(UDP %d)" % [ips, Net.PORT, Net.PORT])
 
 func _menu_join(ip: String) -> void:
 	if game_started:
@@ -354,9 +392,77 @@ func _menu_leave_room() -> void:
 
 # ---------- 世界构建(所有随机都在seed之后,两端一致) ----------
 
+func _set_embedded_level_active(on: bool) -> void:
+	for node_name in ["Architecture", "PerimeterCases", "ShelfIslands",
+			"FeatureIslands", "RegionalArchitecture", "CheckoutZone", "WaitingRooms",
+			"ServicePoints", "ZoneFloors", "ExitAprons", "LevelSignage",
+			"GameplayMarkers", "AisleClearanceMarkers", "RuntimeOnly"]:
+		var branch := find_child(node_name, true, false)
+		if branch is Node3D:
+			branch.visible = on
+			_set_embedded_collision(branch, on)
+
+func _set_runtime_only_visible(on: bool) -> void:
+	_set_runtime_only_visible_recursive(self, on)
+
+func _set_runtime_only_visible_recursive(node: Node, on: bool) -> void:
+	if node != self and node.is_in_group("runtime_only") and node is Node3D:
+		(node as Node3D).visible = on
+	for child in node.get_children():
+		_set_runtime_only_visible_recursive(child, on)
+
+## v6施工图核对专用：隐藏天花板、HUD和运行时角色，仅由场景内正交相机出图。
+## 这不会改变正常对局的相机或显示状态。
+func _activate_topdown_audit() -> void:
+	var audit_camera := find_child("TopDownAuditCamera", true, false) as Camera3D
+	if audit_camera == null:
+		push_error("New_Level缺少TopDownAuditCamera，无法生成施工俯视图")
+		return
+	_set_runtime_only_visible(false)
+	if hud != null:
+		hud.visible = false
+	for child in get_children():
+		if child is Actor or child is Cart or child is Item or child is Checkout:
+			(child as Node3D).visible = false
+	audit_camera.current = true
+
+func _set_embedded_collision(node: Node, on: bool) -> void:
+	if node is CSGShape3D:
+		(node as CSGShape3D).use_collision = on and bool(node.get_meta("gameplay_collision", true))
+	for child in node.get_children():
+		_set_embedded_collision(child, on)
+
+func layout_respawn_pos(height: float) -> Vector3:
+	var p: Vector3 = active_layout.get("respawn_pos", MapLayout.respawn_pos(height))
+	p.y = height
+	return p
+
+func layout_wander_x() -> Vector2:
+	return active_layout.get("wander_x", MapLayout.wander_x())
+
+func layout_wander_z() -> Vector2:
+	return active_layout.get("wander_z", MapLayout.wander_z())
+
+func layout_slippery_x() -> Vector2:
+	return active_layout.get("slippery_x", MapLayout.slippery_x())
+
+func layout_slippery_z() -> Vector2:
+	return active_layout.get("slippery_z", MapLayout.slippery_z())
+
+func layout_exit_x() -> float:
+	return float(active_layout.get("exit_x", MapLayout.EXIT_X))
+
+func layout_exit_inner_z() -> float:
+	return float(active_layout.get("exit_inner_z", MapLayout.exit_inner_z()))
+
+func layout_exit_outer_z() -> float:
+	return float(active_layout.get("exit_outer_z", MapLayout.exit_outer_z()))
+
 func _build_world(wseed: int, npc: int, nplayers: int) -> void:
 	seed(wseed)
 	if tutorial:
+		if embedded_level:
+			_set_embedded_level_active(false)
 		tutorial_data = TutorialRoomBuilder.build(self)
 		grid = tutorial_data["grid"]
 		sale_points = []
@@ -364,43 +470,144 @@ func _build_world(wseed: int, npc: int, nplayers: int) -> void:
 		_spawn_players(tutorial_data, 1)
 		hud.set_npc_count_display(0)
 		return
-	var data := MarketBuilder.build(self)
+	var data: Dictionary = NewLevelLayout.build(self) if embedded_level else MarketBuilder.build(self)
+	active_layout = data.get("layout", {})
 	grid = data["grid"]
 	sale_points = data["sale_points"]
 	var lane_i := 0
-	for x in data["lane_x"]:
-		lane_i += 1
-		var co := Checkout.new()
-		add_child(co)
-		var rects: Array = co.setup(x, lane_i)
-		for r in rects:
-			MarketBuilder._mark_solid(grid, r)
-		co.item_scanned.connect(_on_item_scanned)
-		co.lane_settled.connect(_on_lane_settled)
-		checkouts.append(co)
+	if data.has("checkout_specs") and not (data["checkout_specs"] as Array).is_empty():
+		for spec in data["checkout_specs"]:
+			lane_i += 1
+			var co := Checkout.new()
+			add_child(co)
+			var rects := co.setup_oriented(spec, lane_i)
+			for r in rects:
+				MarketBuilder._mark_solid(grid, r)
+			co.item_scanned.connect(_on_item_scanned)
+			co.lane_settled.connect(_on_lane_settled)
+			checkouts.append(co)
+	else:
+		for x in data["lane_x"]:
+			lane_i += 1
+			var co := Checkout.new()
+			add_child(co)
+			var rects: Array
+			if data.has("checkout_config"):
+				rects = co.setup_custom(x, lane_i, data["checkout_config"])
+			else:
+				rects = co.setup(x, lane_i)
+			for r in rects:
+				MarketBuilder._mark_solid(grid, r)
+			co.item_scanned.connect(_on_item_scanned)
+			co.lane_settled.connect(_on_lane_settled)
+			checkouts.append(co)
+	_setup_active_checkouts()
 	_spawn_stock(data)
+	_setup_central_black_friday_event()
 	_make_lists(nplayers)
 	_spawn_players(data, nplayers)
+	_spawn_team_fillers(data, nplayers)
 	_granny_spawns = data["granny_spawns"]
-	for i in npc:
-		_spawn_one_granny()
+	region_director = RegionDirector.new(self)
+	region_director.setup(data.get("zone_bounds", {}))
+	_setup_team_entrance_countdown()
 	sale_times = [randf_range(55.0, 110.0), randf_range(150.0, 220.0)]
 	_spawn_random_slippery(3, 0.0)
-	hud.set_npc_count_display(grannies.size())
+	hud.set_npc_count_display(4)
 	hud.broadcast("亲爱的顾客,欢迎光临疯抢超市。今天是疯抢星期五,每人限购,理性消费,祝您购物愉快～")
 	hud.broadcast("温馨提示:货架商品先到先得,请文明抢购～")
+
+## 八条收银道每局只开放四条。每个出口的两条车道随机开一条，
+## 因而探索结果会变化，但不会出现某支队伍所在方向整组关闭的不公平局面。
+func _setup_active_checkouts() -> void:
+	active_checkout_indices = []
+	if checkouts.is_empty():
+		return
+	if tutorial or not embedded_level:
+		for i in checkouts.size():
+			checkouts[i].set_round_open(true)
+			active_checkout_indices.append(i)
+		return
+	var by_side := {}
+	for i in checkouts.size():
+		var side := str(checkouts[i].name).trim_prefix("Checkout_").get_slice("_", 0)
+		if not by_side.has(side):
+			by_side[side] = []
+		by_side[side].append(i)
+	for side in by_side:
+		var candidates: Array = by_side[side]
+		var chosen: int = candidates.pick_random()
+		active_checkout_indices.append(chosen)
+	for i in checkouts.size():
+		checkouts[i].set_round_open(active_checkout_indices.has(i))
+
+## 四队入口门：每端从同一关闭姿态开始；只有单机/主机推进倒计时，
+## 联机客户端最终以主机可靠事件为准开门，避免帧率与入场时差造成碰撞分歧。
+func _setup_team_entrance_countdown() -> void:
+	team_prep_active = embedded_level and not tutorial \
+			and not get_tree().get_nodes_in_group("team_start_gate").is_empty()
+	team_prep_left = TEAM_PREP_DURATION if team_prep_active else 0.0
+	team_prep_last_second = int(ceil(team_prep_left))
+	team_entrance_opened = not team_prep_active
+	for node in get_tree().get_nodes_in_group("team_start_gate"):
+		if node is CSGBox3D:
+			var gate := node as CSGBox3D
+			gate.position.y = 1.65
+			gate.use_collision = true
+	if not team_prep_active:
+		return
+	# 准备阶段只封住入口；玩家仍可在等待室内活动，卖场NPC则等待开门再开抢。
+	if not net_client:
+		for g in grannies:
+			if is_instance_valid(g):
+				g.set_physics_process(false)
+	_apply_team_prep_hud(team_prep_last_second)
+
+func _tick_team_entrance_countdown(delta: float) -> void:
+	if not team_prep_active:
+		return
+	team_prep_left = maxf(0.0, team_prep_left - delta)
+	var seconds := int(ceil(team_prep_left))
+	if seconds != team_prep_last_second:
+		team_prep_last_second = seconds
+		_apply_team_prep_hud(seconds)
+		if not net_client and seconds <= 5 and seconds > 0:
+			var callout := "入口将在 %d 秒后开放——准备冲刺!" % seconds
+			hud.broadcast(callout)
+	if not net_client and team_prep_left <= 0.0:
+		open_team_entrances()
+
+func _apply_team_prep_hud(seconds: int) -> void:
+	if hud == null or not team_prep_active:
+		return
+	hud.set_timer_text("准备 %02d" % maxi(seconds, 0), Color(1.0, 0.82, 0.25))
+	hud.set_phase("队伍等待室 · 倒计时后大门开启")
+
+func open_team_entrances(from_network := false) -> void:
+	if team_entrance_opened:
+		return
+	team_entrance_opened = true
+	team_prep_active = false
+	team_prep_left = 0.0
+	for node in get_tree().get_nodes_in_group("team_start_gate"):
+		if not (node is CSGBox3D):
+			continue
+		var gate := node as CSGBox3D
+		_slide_csg_gate_up(gate, 0.75, GATE_SLIDE_DURATION)
+	if not net_client:
+		for g in grannies:
+			if is_instance_valid(g):
+				g.set_physics_process(true)
+	var announcement := "开门!四队入口同步开放——开始扫货!"
+	hud.broadcast(announcement)
+	if net_mp and not net_client and not from_network:
+		net.rpc("ev_team_entrances_open")
 
 ## 教学关固定三件结业清单，避免随机清单与房间内训练物资错位。
 func _make_tutorial_list() -> void:
 	var list: Array = []
 	for id in ["tissue", "thermos", "drone"]:
-		list.append({
-			"id": id,
-			"name": Catalog.ITEMS[id]["name"],
-			"cat": Catalog.ITEMS[id]["cat"],
-			"scanned": false,
-			"via_sale": false,
-		})
+		list.append(OrderSystem.exact(id))
 	pdata = [{"list": list, "score": 0, "counts": {}, "orig": 0, "saved": 0,
 			"settled": false, "done": false}]
 
@@ -413,13 +620,12 @@ func _spawn_stock(data: Dictionary) -> void:
 	for s in data["slots"]:
 		if not zone_slots.has(s["zone"]):
 			zone_slots[s["zone"]] = []
-		zone_slots[s["zone"]].append(s["pos"])
+		zone_slots[s["zone"]].append(s)
 	for zone in zone_slots:
 		zone_slots[zone].shuffle()
+	# 大件仍使用家电区专用地面展示位，不与双层货架商品争槽位。
 	for id in Catalog.ITEMS:
 		var info: Dictionary = Catalog.ITEMS[id]
-		if info["cat"] == Catalog.CAT_SALE:
-			continue
 		if info["cat"] == Catalog.CAT_LARGE:
 			for i in int(info["stock"]):
 				if _large_slots.is_empty():
@@ -427,46 +633,182 @@ func _spawn_stock(data: Dictionary) -> void:
 				var tp: Vector3 = _large_slots.pop_front()
 				var tv := Item.create(id)
 				add_child(tv)
-				tv.set_shelved(Vector3(tp.x, 0.4 + tv.collider_half_height() + 0.05, tp.z))
+				tv.set_shelved(Vector3(tp.x, 0.4 + tv.shelf_display_half_height() + 0.05, tp.z))
 				all_items.append(tv)
-			continue
-		var slots: Array = zone_slots[info["zone"]]
-		for i in int(info["stock"]):
+	# 每区依次执行6低档、3中档、1高档的十件循环；每档内部轮换SKU，
+	# 既让层板更满，也避免单一低价包装铺满整条货架。
+	for zone in zone_slots:
+		var slots: Array = zone_slots[zone]
+		var stock_ids := _tiered_shelf_stock(str(zone), slots.size())
+		for id in stock_ids:
 			if slots.is_empty():
 				break
-			var pos: Vector3 = slots.pop_back()
+			var info: Dictionary = Catalog.ITEMS[id]
+			var slot: Dictionary = slots.pop_back()
+			var pos: Vector3 = slot["pos"]
 			var it := Item.create(id)
 			add_child(it)
-			# 用物理半高而非视觉半高:扁平商品的碰撞体被加厚过(见 Item.MIN_COLLIDER_THICKNESS),
-			# 若按视觉半高摆放,碰撞体下半会陷进货架板里,解算时被弹出去
-			it.set_shelved(pos + Vector3(0, it.collider_half_height(), 0))
+			# 货架展示尺寸为车内真实尺寸2倍，摆位也使用放大后的物理半高。
+			it.set_shelved(pos + Vector3(0, it.shelf_display_half_height(), 0),
+					float(slot.get("yaw", 0.0)))
+			if embedded_level and str(zone) == Catalog.ZONE_PREMIUM:
+				it.set_event_locked(true)
+				central_locked_items.append(it)
 			all_items.append(it)
 
-## 每名玩家一张代购清单:2硬需求+4常规+1大件。这是客户下的单,不是自己要用的东西
-func _make_lists(nplayers: int) -> void:
-	pdata = []
-	for pi in nplayers:
-		var needs := Catalog.ids_of_cat(Catalog.CAT_NEED)
-		needs.shuffle()
-		var normals := Catalog.ids_of_cat(Catalog.CAT_NORMAL)
-		normals.shuffle()
-		var larges := Catalog.ids_of_cat(Catalog.CAT_LARGE)
-		larges.shuffle()
-		var list: Array = []
-		for id in [needs[0], needs[1], normals[0], normals[1], normals[2], normals[3], larges[0]]:
-			list.append({
-				"id": id,
-				"name": Catalog.ITEMS[id]["name"],
-				"cat": Catalog.ITEMS[id]["cat"],
-				"scanned": false,
-				"via_sale": false,
-			})
-		pdata.append({"list": list, "score": 0, "counts": {}, "orig": 0, "saved": 0, "settled": false, "done": false})
+func _tiered_shelf_stock(zone: String, slot_count: int) -> Array[String]:
+	var count := Catalog.shelf_stock_target(zone, slot_count)
+	var pools := {}
+	var cursors := {}
+	for tier in [Catalog.TIER_LOW, Catalog.TIER_MID, Catalog.TIER_HIGH]:
+		var pool := Catalog.ids_of_zone_tier(zone, tier)
+		pool.shuffle()
+		pools[tier] = pool
+		cursors[tier] = 0
+	var out: Array[String] = []
+	for i in count:
+		var tier: int = Catalog.TIER_PATTERN[i % Catalog.TIER_PATTERN.size()]
+		var pool: Array = pools[tier]
+		if pool.is_empty():
+			# 数据漏档时才回退到本区任意SKU，防止整区因为策划表错误而空架。
+			for fallback_tier in [Catalog.TIER_LOW, Catalog.TIER_MID, Catalog.TIER_HIGH]:
+				pool.append_array(pools[fallback_tier])
+		if pool.is_empty():
+			continue
+		var cursor := int(cursors[tier])
+		out.append(str(pool[cursor % pool.size()]))
+		cursors[tier] = cursor + 1
+	return out
 
-## 玩家出生:最多6人,6种配色,沿入口区一字排开
-## 各座位的昵称与配色。联机时由主机下发(已消歧),单机时只有本机一人。
+## 中央黑五区：默认封闭并隐藏压轴货，比赛过半后15–45秒随机开启。
+## 门是场景内手工CSG节点；这里只负责状态，不生成任何关卡几何。
+func _setup_central_black_friday_event() -> void:
+	central_warned = false
+	central_opened = false
+	central_open_at = -1.0
+	central_feature_id = ""
+	if not embedded_level:
+		return
+	var gates := get_tree().get_nodes_in_group("central_black_friday_gate")
+	if gates.is_empty():
+		for it in central_locked_items:
+			if is_instance_valid(it):
+				it.set_event_locked(false)
+		return
+	central_open_at = randf_range(CENTRAL_EVENT_EARLIEST, CENTRAL_EVENT_LATEST)
+	var candidates := Catalog.ids_of_cat(Catalog.CAT_NEED)
+	if not candidates.is_empty():
+		central_feature_id = candidates.pick_random()
+	for node in gates:
+		if node is CSGBox3D:
+			var gate := node as CSGBox3D
+			gate.position.y = 1.5
+			gate.use_collision = true
+
+func _tick_central_black_friday_event() -> void:
+	if central_opened or central_open_at < 0.0:
+		return
+	if not central_warned and elapsed >= central_open_at - CENTRAL_EVENT_WARNING:
+		central_warned = true
+		var warning := "黑五压轴区即将开放!四个方向大门准备升起——"
+		hud.broadcast(warning)
+		if net_mp and not net_client:
+			net.rpc("ev_broadcast", warning)
+	if elapsed >= central_open_at:
+		open_central_black_friday()
+
+func open_central_black_friday(from_network := false) -> void:
+	if central_opened:
+		return
+	central_opened = true
+	for node in get_tree().get_nodes_in_group("central_black_friday_gate"):
+		if not (node is CSGBox3D):
+			continue
+		var gate := node as CSGBox3D
+		_slide_csg_gate_up(gate, 0.9, GATE_SLIDE_DURATION)
+	for it in central_locked_items:
+		if not is_instance_valid(it):
+			continue
+		if central_feature_id != "" and it.item_id != central_feature_id:
+			net_item_gone_notify(it)
+			it.queue_free()
+		else:
+			it.set_event_locked(false)
+	if central_feature_id != "":
+		var feature_stock := 0
+		for it in central_locked_items:
+			if is_instance_valid(it) and it.item_id == central_feature_id:
+				feature_stock += 1
+		var feature_required := clampi(feature_stock, 1, 2)
+		for team in team_data:
+			var has_reveal := false
+			for entry in team["list"]:
+				has_reveal = has_reveal or str(entry.get("id", "")) == central_feature_id
+			if not has_reveal:
+				team["list"].append(OrderSystem.exact_count(central_feature_id, feature_required))
+		for bot in team_bots:
+			if is_instance_valid(bot):
+				bot.shopping_list = _team_bot_targets(bot.team_id, bot.team_slot)
+	var reveal_name: String = str(Catalog.ITEMS[central_feature_id]["name"]) \
+			if Catalog.ITEMS.has(central_feature_id) else "神秘高价爆款"
+	var reveal_stock := 0
+	for it in central_locked_items:
+		if is_instance_valid(it) and it.item_id == central_feature_id:
+			reveal_stock += 1
+	var reveal_required := clampi(reveal_stock, 1, 2)
+	var announcement := "黑五压轴区现已开放!本局爆款揭晓:%s（每队需求%d件）!" \
+			% [reveal_name, reveal_required]
+	hud.broadcast(announcement)
+	if net_mp and not net_client and not from_network:
+		net.rpc("ev_central_black_friday_open")
+
+## 所有整扇CSG门共用向上滑入门楣的开启动画。碰撞保留到动画结束，
+## 防止视觉门板还在半空时角色或购物车提前穿过去。
+func _slide_csg_gate_up(gate: CSGBox3D, top_clearance: float, duration: float) -> void:
+	if not is_instance_valid(gate):
+		return
+	var start_y := gate.position.y
+	var target_y := start_y + gate.size.y + top_clearance
+	gate.use_collision = true
+	gate.set_meta("slide_open_start_y", start_y)
+	gate.set_meta("slide_open_target_y", target_y)
+	gate.set_meta("slide_open_animating", true)
+	var tween := create_tween().set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_property(gate, "position:y", target_y, maxf(duration, 0.05))
+	tween.finished.connect(func() -> void:
+		if is_instance_valid(gate):
+			gate.use_collision = false
+			gate.set_meta("slide_open_animating", false))
+
+## 正式对局混合订单：3件点名爆款 + 四个常规分区任选单(2+2+2+1)，总需求10件。
+## 点名项目制造明确争夺热点；四区类别项目扩大跑图与商品选择，避免清单过早完成。
+func _make_lists(nplayers: int) -> void:
+	team_data = []
+	var named := Catalog.ids_of_cat(Catalog.CAT_NORMAL)
+	named.shuffle()
+	for team_id in 4:
+		var list: Array = []
+		# 交叉矩阵：相邻两队共享一个点名目标，另一项按奇偶队交叉。
+		list.append(OrderSystem.exact(named[0 if team_id < 2 else 1]))
+		list.append(OrderSystem.exact(named[2 if team_id % 2 == 0 else 3]))
+		var zones: Array = Catalog.SHOPPING_ZONES
+		var counts := [3, 3, 2, 2]
+		for i in 4:
+			var zone_index := posmod(team_id * 2 + i, zones.size())
+			list.append(OrderSystem.category(zones[zone_index], counts[i]))
+		team_data.append({"team_id": team_id, "list": list, "score": 0,
+				"counts": {}, "orig": 0, "saved": 0})
+	pdata = []
+	for seat in nplayers:
+		var tid := team_id_for_seat(seat)
+		pdata.append({"team_id": tid, "list": team_data[tid]["list"], "score": 0,
+				"counts": {}, "orig": 0, "saved": 0, "settled": false, "done": false})
+
+## 玩家出生:最多8人，固定四队各两席；空席由AI队友补齐。
+## 各座位的昵称与旧协议色索引。正式比赛外观以seat_team_ids的队伍色为准。
 var seat_names: Array[String] = []
 var seat_colors: Array[int] = []
+var seat_team_ids: Array[int] = []
 ## 各座位所选角色 id(见 character_def.gd)。联机由主机下发,保证各端一致。
 var seat_chars: Array[String] = []
 
@@ -481,9 +823,46 @@ func seat_name_2nd(i: int) -> String:
 	return "你" if i == local_idx else seat_name(i)
 
 func seat_color(i: int) -> Color:
+	if not tutorial:
+		return Catalog.team_color(team_id_for_seat(i))
 	if i >= 0 and i < seat_colors.size():
 		return PlayerProfile.color_of(seat_colors[i])
 	return PlayerProfile.color_of(i)
+
+func team_id_for_seat(i: int) -> int:
+	if i >= 0 and i < seat_team_ids.size():
+		return clampi(seat_team_ids[i], 0, 3)
+	return posmod(i, 4)
+
+func team_slot_for_seat(i: int) -> int:
+	var tid := team_id_for_seat(i)
+	var slot := 0
+	for previous in i:
+		if team_id_for_seat(previous) == tid:
+			slot += 1
+	return clampi(slot, 0, 1)
+
+func _competition_spawn(seat: int) -> Vector3:
+	var centers := [Vector3(-22, 0.1, 27), Vector3(22, 0.1, 27),
+			Vector3(-22, 0.1, -27), Vector3(22, 0.1, -27)]
+	var tid := team_id_for_seat(seat)
+	var slot := team_slot_for_seat(seat)
+	return centers[tid] + Vector3(-1.35 if slot == 0 else 1.35, 0.0, 0.0)
+
+func _competition_spawn_for_team(tid: int, slot: int) -> Vector3:
+	var centers := [Vector3(-22, 0.1, 27), Vector3(22, 0.1, 27),
+			Vector3(-22, 0.1, -27), Vector3(22, 0.1, -27)]
+	return centers[clampi(tid, 0, 3)] + Vector3(-1.35 if slot == 0 else 1.35, 0.0, 0.0)
+
+func team_inventory_actors(team_id: int) -> Array[Actor]:
+	var out: Array[Actor] = []
+	for p in players:
+		if is_instance_valid(p) and p.team_id == team_id:
+			out.append(p)
+	for bot in team_bots:
+		if is_instance_valid(bot) and bot.team_id == team_id:
+			out.append(bot)
+	return out
 
 ## 座位 i 的角色 id。缺档时回落到首个角色
 func seat_char(i: int) -> String:
@@ -492,7 +871,7 @@ func seat_char(i: int) -> String:
 	return CharacterDef.ORDER[0]
 
 func _spawn_players(data: Dictionary, nplayers: int) -> void:
-	# 单机:直接用本机档案,让玩家在单人局也能看到自己起的名字与配色
+	# 单机:直接使用本机昵称、角色与队伍偏好。
 	if seat_names.is_empty():
 		PlayerProfile.ensure_loaded()
 		seat_names = [PlayerProfile.display_name]
@@ -504,11 +883,19 @@ func _spawn_players(data: Dictionary, nplayers: int) -> void:
 		var p := Player.new()
 		p.main = self
 		p.remote = (i != local_idx)
+		p.team_id = team_id_for_seat(i)
+		p.team_slot = team_slot_for_seat(i)
 		p.avatar_color = seat_color(i)
-		p.seat_label = seat_name(i)
+		p.seat_label = "%s%d · %s" % [Catalog.team_name(p.team_id, true), p.team_slot + 1, seat_name(i)]
 		p.char_id = seat_char(i)
 		add_child(p)
-		p.global_position = data["player_spawn"] + Vector3(-2.2 * i, 0, 0.9 * (i % 2))
+		if embedded_level and not tutorial:
+			p.global_position = _competition_spawn(i)
+		elif data.has("player_spawns") and not data["player_spawns"].is_empty():
+			var spawn_list: Array = data["player_spawns"]
+			p.global_position = spawn_list[i % spawn_list.size()]
+		else:
+			p.global_position = data["player_spawn"] + Vector3(-2.2 * i, 0, 0.9 * (i % 2))
 		var cart := Cart.create(p.avatar_color, "%s的车" % seat_name(i))
 		cart.cart_owner = p
 		add_child(cart)
@@ -528,6 +915,51 @@ func _spawn_players(data: Dictionary, nplayers: int) -> void:
 			buddy.ignore_player_cart(p.cart)
 	player = players[local_idx]
 
+func _spawn_team_fillers(_data: Dictionary, human_count: int) -> void:
+	team_bots = []
+	if tutorial or not embedded_level:
+		return
+	var occupied := {}
+	for seat in human_count:
+		occupied[Vector2i(team_id_for_seat(seat), team_slot_for_seat(seat))] = true
+	for tid in 4:
+		for slot in 2:
+			if occupied.has(Vector2i(tid, slot)):
+				continue
+			var bot := Granny.new()
+			bot.main = self
+			bot.is_team_bot = true
+			bot.team_id = tid
+			bot.team_slot = slot
+			bot.body_color = Catalog.team_color(tid)
+			bot.shopping_list = _team_bot_targets(tid, slot)
+			add_child(bot)
+			bot.global_position = _competition_spawn_for_team(tid, slot)
+			bot.name_label.text = "%s%d · AI队友" % [Catalog.team_name(tid, true), slot + 1]
+			bot.name_label.modulate = Catalog.team_color(tid).lightened(0.35)
+			var cart := Cart.create(bot.body_color,
+					"%s%d AI车" % [Catalog.team_name(tid, true), slot + 1])
+			cart.cart_owner = bot
+			add_child(cart)
+			cart.global_position = bot.global_position + Vector3(0.0, 0.2, -1.25 if tid < 2 else 1.25)
+			bot.cart = cart
+			bot.attach_cart()
+			team_bots.append(bot)
+			grannies.append(bot)
+
+func _team_bot_targets(team_id: int, slot: int) -> Array:
+	var out: Array = []
+	if team_id < 0 or team_id >= team_data.size():
+		return out
+	for entry in team_data[team_id]["list"]:
+		var candidates: Array = OrderSystem.candidate_ids(entry)
+		if candidates.is_empty():
+			continue
+		var pick: String = str(candidates[posmod(slot + out.size(), candidates.size())])
+		if not out.has(pick):
+			out.append(pick)
+	return out
+
 var _granny_spawns: Array = []
 var _granny_seq := 0
 
@@ -535,16 +967,18 @@ func _spawn_one_granny() -> void:
 	var pos: Vector3 = _granny_spawns[_granny_seq % _granny_spawns.size()]
 	_granny_seq += 1
 	var normals := Catalog.ids_of_cat(Catalog.CAT_NORMAL)
-	# 与所有玩家清单的重叠池(常规品+大件都参与对抗)
+	# 从点名项目和类别候选池共同抽取NPC目标。类别单会把压力分散到多个货架，
+	# 点名爆款仍会保持明确争夺热点。
 	var overlap_pool: Array = []
 	var large_pool: Array = []
 	for pd in pdata:
 		for entry in pd["list"]:
-			if entry["cat"] == Catalog.CAT_LARGE:
-				if not large_pool.has(entry["id"]):
-					large_pool.append(entry["id"])
-			elif not overlap_pool.has(entry["id"]):
-				overlap_pool.append(entry["id"])
+			for id in OrderSystem.candidate_ids(entry):
+				if Catalog.ITEMS[id]["cat"] == Catalog.CAT_LARGE:
+					if not large_pool.has(id):
+						large_pool.append(id)
+				elif not overlap_pool.has(id):
+					overlap_pool.append(id)
 	var g := Granny.new()
 	g.main = self
 	g.body_color = Color.from_hsv(randf(), 0.45, 0.85)
@@ -573,24 +1007,19 @@ func _spawn_one_granny() -> void:
 ## 开发者模式:滑块调NPC数量(0-10)。开局前只记数;联机中禁用(会破坏同步)。
 func _set_npc_count(n: int) -> void:
 	if not game_started:
-		pending_npc = n
+		pending_npc = 4
 		if hud != null:
-			hud.set_npc_count_display(n)
+			hud.set_npc_count_display(4)
 		return
-	if net_mp:
-		return
-	var valid: Array[Granny] = []
+	# 四队模式不允许运行时增删扫货参赛者；环境大妈由RegionDirector管理。
+	return
+
+func _neutral_granny_count() -> int:
+	var count := 0
 	for g in grannies:
-		if is_instance_valid(g):
-			valid.append(g)
-	grannies = valid
-	while grannies.size() > n:
-		var g2: Granny = grannies.pop_back()
-		g2.despawn()
-	while grannies.size() < n:
-		_spawn_one_granny()
-	if hud != null:
-		hud.set_npc_count_display(grannies.size())
+		if is_instance_valid(g) and not g.is_team_bot:
+			count += 1
+	return count
 
 ## 客户端:所有实体转为傀儡(不模拟,只按同步状态摆位)
 func _make_client_puppets() -> void:
@@ -608,6 +1037,10 @@ func _make_client_puppets() -> void:
 		c.set_physics_process(false)
 	for co in checkouts:
 		co.set_physics_process(false)
+	# 软门帘也由主机物理权威模拟；客户端冻结刚体，只插值显示主机下发的姿态。
+	for node in get_tree().get_nodes_in_group("freezer_curtain_strip"):
+		if node is RigidBody3D:
+			(node as RigidBody3D).freeze = true
 
 # ---------- 教学关 ----------
 
@@ -628,6 +1061,12 @@ var npc_probe: NpcProbe
 ## 仅 WHITEBOX_PROPTEST 下创建:场内商品道具专项回归,见 prop_probe.gd
 var prop_probe: PropProbe
 
+## 仅 WHITEBOX_ORDERTEST 下创建:混合订单结构与匹配专项回归,见 order_probe.gd
+var order_probe: OrderProbe
+
+## 仅 WHITEBOX_LEVELTEST 下创建：New_Level实体CSG与过道净宽专项回归。
+var new_level_probe: NewLevelProbe
+
 # ---------- 环境与相机 ----------
 
 func _setup_environment() -> void:
@@ -636,7 +1075,13 @@ func _setup_environment() -> void:
 	env.background_color = Color(0.9, 0.92, 0.95)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(1, 1, 1)
-	env.ambient_light_energy = 0.65
+	# 降低无方向环境光，保留顶灯与太阳形成的明暗层次和投影。
+	env.ambient_light_energy = 0.45
+	# 个护美妆区使用局部FogVolume。全局密度保持0，只启用体积采样能力。
+	env.volumetric_fog_enabled = embedded_level
+	env.volumetric_fog_density = 0.0
+	env.volumetric_fog_length = 48.0
+	env.volumetric_fog_detail_spread = 1.6
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -645,6 +1090,13 @@ func _setup_environment() -> void:
 	sun.light_energy = 1.1
 	sun.shadow_enabled = true
 	add_child(sun)
+	if embedded_level:
+		for node in get_tree().get_nodes_in_group("aisle_downlight"):
+			if node is SpotLight3D:
+				var aisle_light := node as SpotLight3D
+				aisle_light.light_energy = 2.2
+				aisle_light.spot_range = 14.0
+				aisle_light.shadow_enabled = true
 	cam_rig = CameraRig.new()
 	add_child(cam_rig)
 
@@ -691,10 +1143,17 @@ func _process(delta: float) -> void:
 		return
 	if net_client:
 		if not game_over:
+			_tick_team_entrance_countdown(delta)
 			_client_tick(delta)
 		return
 	if game_over:
 		return
+	if team_prep_active:
+		_tick_team_entrance_countdown(delta)
+		_update_hud()
+		return
+	if region_director != null:
+		region_director.tick(delta)
 	_tick_locate(delta)
 
 	if phys_stress != null:
@@ -712,6 +1171,7 @@ func _process(delta: float) -> void:
 		tutorial_guide.tick(delta)
 	else:
 		elapsed += delta
+		_tick_central_black_friday_event()
 		if not in_grace:
 			time_left = maxf(0.0, time_left - delta)
 			if not closing_announced and time_left <= CLOSING_WARN:
@@ -745,7 +1205,7 @@ func _process(delta: float) -> void:
 		_void_sweep_timer = 0.5
 		for it in all_items:
 			if is_instance_valid(it) and it.state == Item.ItemState.FREE and it.global_position.y < -5.0:
-				it.set_free_at(MapLayout.respawn_pos(0.8))
+				it.set_free_at(layout_respawn_pos(0.8))
 
 	# 红色高亮(杀意感知):本机玩家"还缺"的商品在谁车里,那辆车亮红壳
 	_hl_timer -= delta
@@ -886,7 +1346,10 @@ func _client_tick(delta: float) -> void:
 	_update_hud_client()
 
 func _update_hud_client() -> void:
-	_update_timer_hud()
+	if team_prep_active:
+		_apply_team_prep_hud(int(ceil(team_prep_left)))
+	else:
+		_update_timer_hud()
 	hud.set_bars(player.stamina, player.imbalance)
 	hud.set_prompt(player.prompt_text, player.channel_progress)
 	hud.set_score(client_view.score)
@@ -1022,15 +1485,20 @@ func _throw_item_body(it: Item, owner: Player, fwd: Vector3) -> void:
 	it.angular_velocity = Vector3(randf_range(-9, 9), randf_range(-5, 5), randf_range(-9, 9))
 	it.body_entered.connect(func(body: Node) -> void: _thrown_item_hit(it, body, owner))
 	# 飞出足够距离后再开启场景碰撞，并复查此刻的真实接触体。
+	var item_ref: WeakRef = weakref(it)
+	var owner_ref: WeakRef = weakref(owner)
 	get_tree().create_timer(Catalog.THROW_WORLD_ARM_TIME).timeout.connect(func() -> void:
-		if not is_instance_valid(it) or not bool(it.get_meta("throw_active", false)):
+		var armed_item := item_ref.get_ref() as Item
+		var throw_owner := owner_ref.get_ref() as Player
+		if not is_instance_valid(armed_item) or not is_instance_valid(throw_owner) \
+				or not bool(armed_item.get_meta("throw_active", false)):
 			return
-		it.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
-		var contacts := it.get_colliding_bodies()
+		armed_item.collision_mask = Catalog.L_WORLD | Catalog.L_CHAR | Catalog.L_CART
+		var contacts := armed_item.get_colliding_bodies()
 		for contact in contacts:
-			if contact == owner or contact == owner.cart:
+			if contact == throw_owner or contact == throw_owner.cart:
 				continue
-			_thrown_item_hit(it, contact, owner)
+			_thrown_item_hit(armed_item, contact, throw_owner)
 			break)
 
 ## 瞄准预览与真实投掷共用这一份出手参数，避免白线落点和商品轨迹漂移。
@@ -1097,13 +1565,24 @@ func _thrown_item_hit(it: Item, body: Node, owner: Player) -> void:
 	_apply_throw_effect(it.item_id, pos, owner, direct_actor)
 	if tutorial_guide != null and owner == player:
 		tutorial_guide.on_throw_hit(it, body, pos)
+	# 数码家电区商品带有易碎特性：完成一次有效命中后永久损耗。
+	if Catalog.is_fragile(it.item_id):
+		Main.float_text(self, pos + Vector3.UP * 1.2, "易碎品损耗!", Color(1.0, 0.35, 0.18), 82)
+		net_item_gone_notify(it)
+		it.queue_free()
+		return
 	# 命中后商品仍留在场内，可再次拾取/装车；仅关闭角色碰撞避免持续蹭伤。
+	var landed_item_ref: WeakRef = weakref(it)
+	var landed_owner_ref: WeakRef = weakref(owner)
 	get_tree().create_timer(0.35).timeout.connect(func() -> void:
-		if is_instance_valid(it):
-			it.collision_mask = Catalog.L_WORLD | Catalog.L_CART | Catalog.L_ITEM
-			it.remove_collision_exception_with(owner)
-			if is_instance_valid(owner.cart):
-				it.remove_collision_exception_with(owner.cart))
+		var landed_item := landed_item_ref.get_ref() as Item
+		var landed_owner := landed_owner_ref.get_ref() as Player
+		if is_instance_valid(landed_item):
+			landed_item.collision_mask = Catalog.L_WORLD | Catalog.L_CART | Catalog.L_ITEM
+			if is_instance_valid(landed_owner):
+				landed_item.remove_collision_exception_with(landed_owner)
+				if is_instance_valid(landed_owner.cart):
+					landed_item.remove_collision_exception_with(landed_owner.cart))
 
 func _apply_throw_effect(id: String, pos: Vector3, owner: Player, direct_actor: Actor = null) -> void:
 	match Catalog.prop_kind(id):
@@ -1141,6 +1620,9 @@ func _throw_burst(pos: Vector3, owner: Player) -> void:
 		if not (node is Cart):
 			continue
 		var pushed_cart: Cart = node
+		if is_instance_valid(pushed_cart.cart_owner) \
+				and pushed_cart.cart_owner.is_friendly_source(owner):
+			continue
 		var cart_away := pushed_cart.global_position - pos
 		cart_away.y = 0.0
 		if cart_away.length() <= Catalog.BURST_RADIUS:
@@ -1149,11 +1631,13 @@ func _throw_burst(pos: Vector3, owner: Player) -> void:
 				cart_away.y = 0.0
 			if cart_away.length() <= 0.05:
 				cart_away = Vector3.FORWARD
-			var impulse := (cart_away.normalized() * Catalog.BURST_CART_PUSH \
-					+ Vector3.UP * Catalog.BURST_CART_LIFT) * pushed_cart.mass
-			pushed_cart.apply_central_impulse(impulse)
+			# 直接写入速度增量，避免刚落地休眠的空车吞掉同帧刚体冲量；
+			# 数值与原“冲量=目标速度×质量”等价，但节目效果更稳定。
+			pushed_cart.sleeping = false
+			pushed_cart.linear_velocity += cart_away.normalized() * Catalog.BURST_CART_PUSH \
+					+ Vector3.UP * Catalog.BURST_CART_LIFT
 			var flip_axis := Vector3(cart_away.z, 0.15, -cart_away.x).normalized()
-			pushed_cart.apply_torque_impulse(flip_axis * Catalog.BURST_CART_TORQUE * pushed_cart.mass)
+			pushed_cart.angular_velocity += flip_axis * Catalog.BURST_CART_TORQUE
 	Main.float_text(self, pos + Vector3.UP, "爆裂推离!", Color(1.0, 0.42, 0.08), 62)
 
 func _spawn_burst_vfx(pos: Vector3) -> void:
@@ -1222,8 +1706,8 @@ func _spawn_random_slippery(count: int, life: float) -> void:
 	var tries := 0
 	while placed < count and tries < 200:
 		tries += 1
-		var sx := MapLayout.slippery_x()
-		var sz := MapLayout.slippery_z()
+		var sx := layout_slippery_x()
+		var sz := layout_slippery_z()
 		var p := Vector3(randf_range(sx.x, sx.y), 0, randf_range(sz.x, sz.y))
 		var cell := _cell(p)
 		if grid.is_in_boundsv(cell) and not grid.is_point_solid(cell):
@@ -1232,25 +1716,47 @@ func _spawn_random_slippery(count: int, life: float) -> void:
 				net.rpc("ev_slippery", p, life)
 			placed += 1
 
-## 某玩家"还缺"的清单商品id集合:未结算,且其车斗/手里都没有同类
+## 某玩家当前仍可用于补单的商品ID集合。
+## 点名项目只返回指定ID；类别项目在扣除手中/车斗已有件数后，返回该分区全部候选ID。
 func missing_list_ids(idx: int = -1) -> Dictionary:
 	if idx < 0:
 		idx = local_idx
-	var p := players[idx]
 	var have := {}
-	if is_instance_valid(p.cart):
-		for it in p.cart.items_in_basket():
-			have[it.item_id] = true
-	for it2 in p.held:
-		if is_instance_valid(it2):
-			have[it2.item_id] = true
+	for actor in team_inventory_actors(players[idx].team_id):
+		if is_instance_valid(actor.cart):
+			for it in actor.cart.items_in_basket():
+				have[it.item_id] = int(have.get(it.item_id, 0)) + 1
+		for it2 in actor.held:
+			if is_instance_valid(it2):
+				have[it2.item_id] = int(have.get(it2.item_id, 0)) + 1
 	var missing := {}
+	# 先为点名项目预留同名商品，避免未来出现候选范围重叠时一件货重复满足两单。
 	for entry in pdata[idx]["list"]:
-		if not entry["scanned"] and not have.has(entry["id"]):
-			missing[entry["id"]] = true
+		if OrderSystem.is_category(entry) or OrderSystem.is_complete(entry):
+			continue
+		var id := str(entry["id"])
+		var remaining := OrderSystem.required(entry) - OrderSystem.delivered(entry)
+		var owned := mini(int(have.get(id, 0)), remaining)
+		have[id] = int(have.get(id, 0)) - owned
+		if owned < remaining:
+			missing[id] = true
+	for entry in pdata[idx]["list"]:
+		if not OrderSystem.is_category(entry) or OrderSystem.is_complete(entry):
+			continue
+		var remaining := OrderSystem.required(entry) - OrderSystem.delivered(entry)
+		for id in OrderSystem.candidate_ids(entry):
+			var used := mini(int(have.get(id, 0)), remaining)
+			have[id] = int(have.get(id, 0)) - used
+			remaining -= used
+			if remaining <= 0:
+				break
+		if remaining > 0:
+			for id in OrderSystem.candidate_ids(entry):
+				missing[id] = true
 	return missing
 
-## Q:高亮全场所有"清单上还缺"的商品(车里已有同类的不亮),绿闪3秒,CD10秒
+## Q：点名爆款高亮全部真实库存；类别单每缺1件只推荐最近2个候选，
+## 避免整片分区同时发绿。推荐只负责导航，不改变“该类别任意商品都可交付”的规则。
 func trigger_locate_skill(p: Player = null) -> void:
 	if p == null:
 		p = player
@@ -1262,14 +1768,7 @@ func trigger_locate_skill(p: Player = null) -> void:
 		return
 	p.locate_cd = 10.0
 	var idx := players.find(p)
-	var missing := missing_list_ids(idx)
-	var idxs: Array = []
-	for i in all_items.size():
-		var it = all_items[i]
-		if not is_instance_valid(it) or it.state == Item.ItemState.SCANNED:
-			continue
-		if missing.has(it.item_id):
-			idxs.append(i)
+	var idxs := _locate_recommendations(idx)
 	Main.float_text(self, p.global_position + Vector3.UP * 2.4,
 			"找货雷达:代购单已备齐!" if idxs.is_empty() else "找货雷达!锁定 %d 件缺货" % idxs.size(),
 			Color(0.3, 1.0, 0.5))
@@ -1279,6 +1778,71 @@ func trigger_locate_skill(p: Player = null) -> void:
 		var pid := net.peer_of_seat(idx)
 		if net.peer_alive(pid):
 			net.rpc_id(pid, "ev_locate", idxs)
+
+func _locate_recommendations(idx: int) -> Array:
+	var p := players[idx]
+	var team_actors := team_inventory_actors(p.team_id)
+	var selected := {}
+	var out: Array = []
+	for entry in pdata[idx]["list"]:
+		if OrderSystem.is_complete(entry):
+			continue
+		var remaining := OrderSystem.required(entry) - OrderSystem.delivered(entry) \
+				- _owned_matching_count(p, entry)
+		if remaining <= 0:
+			continue
+		var pool: Array = []
+		for i in all_items.size():
+			var it: Item = all_items[i]
+			if not is_instance_valid(it) or it.event_locked \
+					or it.state == Item.ItemState.SCANNED \
+					or selected.has(i) or not OrderSystem.matches(entry, it.item_id):
+				continue
+			var owned_by_team := false
+			for actor in team_actors:
+				if actor.held.has(it) or is_instance_valid(actor.cart) \
+						and actor.cart.items_in_basket().has(it):
+					owned_by_team = true
+					break
+			if owned_by_team:
+				continue
+			pool.append([p.global_position.distance_squared_to(it.global_position), i, it.item_id])
+		pool.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+		var chosen: Array = pool
+		if OrderSystem.is_category(entry):
+			chosen = []
+			var limit := mini(pool.size(), remaining * 2)
+			var seen_ids := {}
+			for candidate in pool:
+				if chosen.size() >= limit:
+					break
+				if seen_ids.has(candidate[2]):
+					continue
+				seen_ids[candidate[2]] = true
+				chosen.append(candidate)
+			for candidate in pool:
+				if chosen.size() >= limit:
+					break
+				if not chosen.has(candidate):
+					chosen.append(candidate)
+		for candidate in chosen:
+			var item_index := int(candidate[1])
+			if not selected.has(item_index):
+				selected[item_index] = true
+				out.append(item_index)
+	return out
+
+func _owned_matching_count(p: Player, entry: Dictionary) -> int:
+	var count := 0
+	for actor in team_inventory_actors(p.team_id):
+		for it in actor.held:
+			if is_instance_valid(it) and OrderSystem.matches(entry, it.item_id):
+				count += 1
+		if is_instance_valid(actor.cart):
+			for it in actor.cart.items_in_basket():
+				if is_instance_valid(it) and OrderSystem.matches(entry, it.item_id):
+					count += 1
+	return count
 
 func _tick_locate(delta: float) -> void:
 	_steal_bc_cd = maxf(0.0, _steal_bc_cd - delta)
@@ -1312,15 +1876,38 @@ func aimed_shelf_item_from(p: Player, direction: Vector3, max_distance := 8.0) -
 	if not is_instance_valid(p) or not direction.is_finite() or direction.length_squared() < 0.001:
 		return null
 	var ray_origin := p.global_position + Vector3.UP * THROW_ORIGIN_HEIGHT
-	var ray_end := ray_origin + direction.normalized() * max_distance
-	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end,
-			Catalog.L_WORLD | Catalog.L_ITEM)
-	query.collide_with_areas = false
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty() and hit.get("collider") is Item:
-		var item := hit["collider"] as Item
-		if item.state == Item.ItemState.SHELVED:
-			return item
+	var ray_dir := direction.normalized()
+	var ray_end := ray_origin + ray_dir * max_distance
+	# 货架商品不再有碰撞体，先做准星锥体选取，再单独用世界射线验证无遮挡。
+	var candidates: Array = []
+	for item in all_items:
+		if not is_instance_valid(item) or item.state != Item.ItemState.SHELVED or item.event_locked:
+			continue
+		var rel: Vector3 = item.global_position - ray_origin
+		var along := rel.dot(ray_dir)
+		if along < 0.15 or along > max_distance:
+			continue
+		var radial := (rel - ray_dir * along).length()
+		var aim_radius := clampf(item.box_size.length() * Catalog.SHELF_DISPLAY_SCALE * 0.32,
+				0.22, 0.72)
+		if radial <= aim_radius:
+			candidates.append([along, radial, item])
+	if candidates.is_empty():
+		return null
+	candidates.sort_custom(func(a: Array, b: Array) -> bool:
+		return a[0] < b[0] if not is_equal_approx(a[0], b[0]) else a[1] < b[1])
+	for entry in candidates:
+		var along := float(entry[0])
+		var query := PhysicsRayQueryParameters3D.create(ray_origin,
+				ray_origin + ray_dir * along, Catalog.L_WORLD)
+		query.collide_with_areas = false
+		query.exclude = [p.get_rid()]
+		if is_instance_valid(p.cart):
+			query.exclude.append(p.cart.get_rid())
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		# 层板/背板可能紧贴商品后方；只把明显位于商品之前的墙体视为遮挡。
+		if hit.is_empty() or ray_origin.distance_to(hit["position"]) >= along - 0.75:
+			return entry[2] as Item
 	return null
 
 func _update_camera(delta: float) -> void:
@@ -1365,7 +1952,9 @@ func _set_mouse_captured(c: bool) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if c else Input.MOUSE_MODE_VISIBLE
 
 func _update_timer_hud() -> void:
-	if tutorial:
+	if team_prep_active:
+		_apply_team_prep_hud(int(ceil(team_prep_left)))
+	elif tutorial:
 		hud.set_timer_text("教学模式", Color(0.6, 1, 0.7))
 		hud.set_phase("跟着屏幕上方的指引练一遍")
 	elif in_grace:
@@ -1381,8 +1970,12 @@ func _update_timer_hud() -> void:
 		hud.set_timer_text("%d:%02d" % [m, s], col)
 		if time_left > MATCH_TIME - 60.0:
 			hud.set_phase("开门冲刺")
+		elif not central_opened and central_warned:
+			hud.set_phase("黑五压轴预警 · 四门即将开放")
+		elif central_opened:
+			hud.set_phase("黑五压轴已开放 · 中央争夺战")
 		elif time_left > CLOSING_WARN:
-			hud.set_phase("扫货中盘")
+			hud.set_phase("分区扫货 · 寻找本局开放收银台")
 		else:
 			hud.set_phase("打烊冲刺——全场挤向收银台")
 
@@ -1397,6 +1990,9 @@ func _update_skill_hud() -> void:
 				else "右键 投掷:%.1f秒" % player.prop_cd
 	hud.set_item_wheel(wheel_items, player.throw_selection, not wheel_items.is_empty())
 	hud.set_obscured(player.obscure_time > 0.0)
+	hud.set_cold_meter(player.cold_meter,
+			player.cold_meter > 0.01 or player.frozen_time > 0.0,
+			player.frozen_time)
 	var s3 := "Ctrl稳住:就绪" if player.brace_cd <= 0.0 else ("Ctrl 稳住:格挡中!" if player.braced else "Ctrl 稳住:%d秒" % int(ceil(player.brace_cd)))
 	var sk := CharacterDef.skill_name(player.char_id)
 	var max_cd := CharacterDef.skill_cd(player.char_id)
@@ -1443,34 +2039,36 @@ func _trigger_flash_sale() -> void:
 		poss.append(sp)
 	if net_mp and not net_client:
 		net.rpc("ev_spawn_items", ids, poss)
-	hud.broadcast("限时特价!超值神秘箱已投放至卖场,数量有限,先到先得哦～(可顶替代购单上任意常规品)")
+	hud.broadcast("限时特价!超值神秘箱已投放至卖场,数量有限,先到先得哦～(可顶替类别订单1件，不能顶点名爆款)")
 	for g in grannies:
 		if is_instance_valid(g) and randf() < 0.6:
 			g.rush_to(pos)
 
-func _on_item_scanned(item: Item, by: Player) -> void:
+func _on_item_scanned(item: Item, by: Actor) -> void:
 	var idx := players.find(by)
-	if idx < 0:
+	var tid := by.team_id
+	if tid < 0 or tid >= team_data.size():
 		return
-	var pd: Dictionary = pdata[idx]
+	var pd: Dictionary = team_data[tid]
 	var pts := Catalog.points_for(item.item_id)
 	if item.category == Catalog.CAT_SALE:
 		pts += Catalog.SALE_BONUS
-		for entry in pd["list"]:
-			if entry["cat"] == Catalog.CAT_NORMAL and not entry["scanned"]:
-				entry["scanned"] = true
-				entry["via_sale"] = true
-				break
+		OrderSystem.fulfill_sale(pd["list"])
 	else:
-		for entry in pd["list"]:
-			if entry["id"] == item.item_id and not entry["scanned"]:
-				entry["scanned"] = true
-				break
+		OrderSystem.fulfill_item(pd["list"], item.item_id)
 	pd["score"] += pts
 	pd["counts"][item.category] = int(pd["counts"].get(item.category, 0)) + 1
 	var price := Catalog.price_of(item.item_id)
 	pd["orig"] += price
 	pd["saved"] += int(round(price * Catalog.discount_of(item.item_id)))
+	# 所有真人队员引用同一清单，并同步看到同一份队伍经济数据。
+	for i in pdata.size():
+		if int(pdata[i].get("team_id", -1)) != tid:
+			continue
+		pdata[i]["score"] = pd["score"]
+		pdata[i]["counts"] = pd["counts"]
+		pdata[i]["orig"] = pd["orig"]
+		pdata[i]["saved"] = pd["saved"]
 	Main.float_text(self, item.global_position + Vector3.UP * 0.8, "+%d" % pts, Color(0.5, 0.95, 0.55))
 
 func is_settled_agent(a: Actor) -> bool:
@@ -1716,7 +2314,8 @@ func random_shelved_item() -> Item:
 	var pool: Array = []
 	for it in all_items:
 		# 大件不参与随机顺手拿(避免大妈无意抬走玩家清单必需的电视)
-		if is_instance_valid(it) and it.state == Item.ItemState.SHELVED and it.category != Catalog.CAT_LARGE:
+		if is_instance_valid(it) and not it.event_locked \
+				and it.state == Item.ItemState.SHELVED and it.category != Catalog.CAT_LARGE:
 			pool.append(it)
 	if pool.is_empty():
 		return null

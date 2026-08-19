@@ -24,6 +24,11 @@ var obscure_time := 0.0          # 散落物遮挡：玩家压低视野，NPC缩
 var obscure_factor := 1.0
 var taser_time := 0.0            # 电击定身剩余时间
 var taser_immunity_time := 0.0   # 防连续电击无限控制
+var team_id := -1                # -1=中立环境NPC；0..3=蓝/橙/绿/紫四队
+var team_slot := -1              # 队内席位0/1
+var cold_meter := 0.0            # 冷冻区低温累积0..1
+var frozen_time := 0.0           # 低温冻僵剩余时间
+var cold_adapt_time := 0.0       # 解冻后的低温适应
 
 # 购物车挂接(玩家与大妈共用)
 var cart: Cart = null
@@ -144,6 +149,13 @@ func actor_tick(delta: float) -> void:
 		wet_traction_time = maxf(0.0, wet_traction_time - delta)
 		if wet_traction_time <= 0.0:
 			wet_traction_factor = 1.0
+	if frozen_time > 0.0:
+		frozen_time = maxf(0.0, frozen_time - delta)
+		if frozen_time <= 0.0:
+			cold_meter = minf(cold_meter, 0.35)
+			cold_adapt_time = 8.0
+	if cold_adapt_time > 0.0:
+		cold_adapt_time = maxf(0.0, cold_adapt_time - delta)
 	if obscure_time > 0.0:
 		obscure_time = maxf(0.0, obscure_time - delta)
 		if obscure_time <= 0.0:
@@ -282,7 +294,8 @@ func apply_motion(delta: float, wish: Vector3, speed: float) -> void:
 	move_and_slide()
 	# 兜底:任何原因跌出世界都拉回入口
 	if global_position.y < -5.0:
-		global_position = MapLayout.respawn_pos(0.5)
+		global_position = Main.instance.layout_respawn_pos(0.5) \
+				if Main.instance != null else MapLayout.respawn_pos(0.5)
 		velocity = Vector3.ZERO
 		push_velocity = Vector3.ZERO
 		reset_physics_interpolation()
@@ -311,7 +324,7 @@ func traction_factor() -> float:
 	return wet_traction_factor if wet_traction_time > 0.0 else 1.0
 
 func movement_factor() -> float:
-	if taser_time > 0.0:
+	if taser_time > 0.0 or frozen_time > 0.0:
 		return 0.0
 	return slow_factor if slow_time > 0.0 else 1.0
 
@@ -323,8 +336,15 @@ func apply_obscure(factor: float, duration: float) -> void:
 func perception_factor() -> float:
 	return obscure_factor if obscure_time > 0.0 else 1.0
 
-func is_friendly_source(_source: Node) -> bool:
-	return false
+func is_friendly_source(source: Node) -> bool:
+	if team_id < 0 or source == null:
+		return false
+	var source_actor: Actor = source as Actor
+	if source is Cart:
+		source_actor = (source as Cart).cart_owner as Actor
+	elif source.has_method("team_owner"):
+		source_actor = source.call("team_owner") as Actor
+	return source_actor != null and source_actor != self and source_actor.team_id == team_id
 
 func apply_taser(duration: float, immunity: float, source: Node = null) -> bool:
 	if downed or immune or taser_immunity_time > 0.0:
@@ -339,6 +359,8 @@ func apply_taser(duration: float, immunity: float, source: Node = null) -> bool:
 
 func add_imbalance(amount: float, _source: Node = null) -> void:
 	if downed or immune:
+		return
+	if amount > 0.0 and is_friendly_source(_source):
 		return
 	# 扎马步(马德胜):撞击与肘击一律不涨失衡。免疫优先于braced,
 	# 且不限来源类型——它比通用「稳住」更强,代价是2秒完全定身。
@@ -358,6 +380,8 @@ func add_imbalance(amount: float, _source: Node = null) -> void:
 ## 徒步角色缺少购物车保护：普通车撞按基础25的2倍结算；加速/技能冲撞直接满失衡倒地。
 func hit_by_cart(hit_cart: Cart) -> void:
 	if downed or immune:
+		return
+	if is_friendly_source(hit_cart):
 		return
 	# 扎马步:徒步状态下被撞也免疫并反击(技能是"人"的姿态,不依赖有没有推车)
 	if stance:

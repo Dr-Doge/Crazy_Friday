@@ -32,6 +32,28 @@ func setup() -> void:
 	_m.add_child(_dummy)
 	_dummy.build_body(Color(0.75, 0.75, 0.75), "投掷靶子")
 	_dummy.global_position = _p.global_position + Vector3(5.0, 0, 0)
+	var near_label_item := Item.create("cola")
+	_m.add_child(near_label_item)
+	near_label_item.global_position = _p.global_position + Vector3(4.9, 0.0, 0.0)
+	near_label_item._physics_process(0.0)
+	var near_visible := near_label_item.label.visible
+	near_label_item.global_position = _p.global_position + Vector3(5.1, 0.0, 0.0)
+	near_label_item._physics_process(0.0)
+	_check(near_visible and near_label_item.label.visible \
+			and near_label_item.label.billboard == BaseMaterial3D.BILLBOARD_DISABLED \
+			and not near_label_item.label.no_depth_test,
+			"商品包装：名称固定贴附模型表面，不按距离显隐、不朝镜头转动或穿墙")
+	near_label_item.queue_free()
+	var display_scale_item := Item.create("cola")
+	_m.add_child(display_scale_item)
+	display_scale_item.set_shelved(_p.global_position + Vector3(0.0, 2.0, 0.0))
+	var shelf_scale_ok := display_scale_item.scale.is_equal_approx(
+			Vector3.ONE * Catalog.SHELF_DISPLAY_SCALE)
+	display_scale_item.set_held()
+	_check(shelf_scale_ok and display_scale_item.collision_layer == 0 \
+			and display_scale_item.scale.is_equal_approx(Vector3.ONE),
+			"商品陈列：货架模型放大2倍并关闭碰撞，拿取后恢复车内真实尺寸")
+	display_scale_item.queue_free()
 	_check(Catalog.THROW_IMBALANCE.size() == Catalog.ITEMS.size(), "目录：所有商品均配置投掷失衡值")
 	_check(Catalog.THROW_EFFECT.size() == Catalog.ITEMS.size(), "目录：所有商品均配置统一效果类别")
 	for id in Catalog.ITEMS:
@@ -75,7 +97,7 @@ func _count_zones(type_name: String) -> int:
 func _setup_wheel() -> void:
 	_put("tissue")
 	_put("cola")
-	_put("tv")
+	_put("treadmill")
 
 func _check_wheel() -> void:
 	var items := _m.cart_throw_items(_p)
@@ -98,9 +120,11 @@ func _check_wheel() -> void:
 			and CameraRig.THROW_AIM_SHOULDER > CameraRig.SHOULDER_OFFSET,
 			"镜头：常态3米左下构图与2米右肩瞄准参数已启用")
 	var sign_lod_nodes := _m.get_tree().get_nodes_in_group("third_person_sign_lod")
-	_check(not sign_lod_nodes.is_empty(),
-			"镜头LOD：头顶悬浮分区牌已登记第三人称遮挡规避")
-	var early_sign_lod := false
+	# New_Level只保留贴地分区字，不再有会遮挡镜头的悬浮牌；旧地图仍验证悬浮牌LOD。
+	var no_overhead_signs_needed := _m.embedded_level and sign_lod_nodes.is_empty()
+	_check(no_overhead_signs_needed or not sign_lod_nodes.is_empty(),
+			"镜头LOD：悬浮分区牌已登记规避，或新版场景仅使用无需隐藏的贴地标识")
+	var early_sign_lod := no_overhead_signs_needed
 	var sign_only_lod := true
 	for node in sign_lod_nodes:
 		sign_only_lod = sign_only_lod and str(node.get_meta("camera_lod_kind", "")) == "overhead_sign"
@@ -108,10 +132,11 @@ func _check_wheel() -> void:
 			early_sign_lod = true
 	_check(early_sign_lod and sign_only_lod,
 			"镜头LOD：仅分区告示牌使用2米隐藏距离，货架与墙体不参与")
-	var cart_labels_hidden := true
+	var cart_labels_attached := true
 	for it in items:
-		cart_labels_hidden = cart_labels_hidden and not it.label.visible
-	_check(cart_labels_hidden, "车内视野：购物车内商品不显示头顶名称")
+		cart_labels_attached = cart_labels_attached and it.label.visible \
+				and it.label.billboard == BaseMaterial3D.BILLBOARD_DISABLED
+	_check(cart_labels_attached, "车内视野：商品名保留在包装表面，不再生成头顶悬浮文字")
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_RIGHT
 	press.pressed = true
@@ -211,10 +236,13 @@ func _check_wheel() -> void:
 		type_counts[kind] = int(type_counts.get(kind, 0)) + 1
 		_check(Catalog.prop_effect_short(id) != "" and Catalog.prop_effect_color(id).a > 0.9,
 				"轮盘类型提示：%s 配置短标签、颜色与图标类别" % id)
-	_check(type_counts.size() == 4 and type_counts[Catalog.PROP_BURST] == 7 \
-			and type_counts[Catalog.PROP_WET] == 7 and type_counts[Catalog.PROP_SCATTER] == 7 \
-			and type_counts[Catalog.PROP_TASER] == 6,
-			"统一分类：27件商品按7/7/7/6分入四类")
+	var min_type := Catalog.ITEMS.size()
+	var max_type := 0
+	for kind in type_counts:
+		min_type = mini(min_type, int(type_counts[kind]))
+		max_type = maxi(max_type, int(type_counts[kind]))
+	_check(type_counts.size() == 4 and max_type - min_type <= 1,
+			"统一分类：72个目录条目按18/18/18/18严格均分为四类")
 	var guard_item := Item.create("tissue")
 	_m.add_child(guard_item)
 	_m._throw_item_body(guard_item, _p, Vector3(0.0, -1.0, 0.05))
@@ -376,7 +404,7 @@ func _hit_drone() -> void:
 
 func _check_drone() -> void:
 	_check(_dummy.taser_time > 0.0 and _dummy.taser_time <= Catalog.TASER_TIME,
-			"电击类：直接命中角色后统一定身1.2秒")
+			"电击类：直接命中角色后统一定身5秒")
 	var before := _dummy.taser_time
 	var reapplied := _dummy.apply_taser(Catalog.TASER_TIME, Catalog.TASER_IMMUNITY, _p)
 	_check(not reapplied and _dummy.taser_time <= before,

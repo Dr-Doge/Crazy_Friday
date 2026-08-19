@@ -184,7 +184,7 @@ func _tick_drive(delta: float) -> void:
 func _prepare_goods_room() -> void:
 	_goods_a = _spawn_item("tissue", _points["goods_a"], true)
 	_goods_b = _spawn_item("thermos", _points["goods_b"], true)
-	_goods_decoy = _spawn_item("tv", _points["goods_decoy"], true)
+	_goods_decoy = _spawn_item("treadmill", _points["goods_decoy"], true)
 
 func _reset_goods_items() -> void:
 	if not is_instance_valid(_goods_a):
@@ -196,7 +196,7 @@ func _reset_goods_items() -> void:
 	else:
 		_goods_b.set_shelved(_points["goods_b"])
 	if not is_instance_valid(_goods_decoy):
-		_goods_decoy = _spawn_item("tv", _points["goods_decoy"], true)
+		_goods_decoy = _spawn_item("treadmill", _points["goods_decoy"], true)
 	else:
 		_goods_decoy.set_shelved(_points["goods_decoy"])
 
@@ -212,11 +212,11 @@ func _tick_goods() -> void:
 			if _cart_has(p.cart, "tissue"):
 				_advance()
 		2:
-			_say("02-3  故意拿起红色区域里的非目标电视，体验大件占满双手")
+			_say("02-3  故意拿起红色区域里的非目标折叠电动车，体验大件占满双手")
 			if p.held.has(_goods_decoy):
 				_advance()
 		3:
-			_say("02-4  拿错大件时不必折返购物车：按 R 原地放下电视，立刻腾出双手")
+			_say("02-4  拿错大件时不必折返购物车：按 R 原地放下折叠电动车，立刻腾出双手")
 			# 玩家若仍按习惯把红叉练习品装车，立即退回手中并给出明确反馈，
 			# 避免教程无响应；只有R丢下才算学会快速腾手。
 			if marks.get("dropped_decoy", false):
@@ -460,6 +460,11 @@ func on_shelf_item(it: Item) -> void:
 func on_player_dropped_item(it: Item) -> void:
 	if room == 1 and stage == 3 and it == _goods_decoy:
 		marks["dropped_decoy"] = true
+		# 教程目的已经达成，固定这件大型练习品，避免它滚回车下持续推动玩家车，
+		# 进而让下一房的偷窃假人追着移动中的购物车跑不完流程。
+		it.freeze = true
+		it.linear_velocity = Vector3.ZERO
+		it.angular_velocity = Vector3.ZERO
 
 func on_player_stole(_cart: Cart, item: Item) -> void:
 	if room == 2 and item == _combat_item:

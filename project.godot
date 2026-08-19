@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="疯抢星期五 Whitebox"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/New_Level.tscn"
 config/features=PackedStringArray("4.7")
 config/icon="res://icon.svg"
 

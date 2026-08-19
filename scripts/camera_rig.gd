@@ -240,6 +240,21 @@ func _rebuild_first_person_held_items(actor: Player) -> void:
 		visual.position.x = (float(i) - (valid_items.size() - 1) * 0.5) * 0.22
 		visual.rotation.y = (float(i) - 0.5) * 0.08 if valid_items.size() > 1 else 0.0
 		_fp_held_root.add_child(visual)
+		# 第一人称使用的是相机内复制体，也必须把名称印在包装表面，
+		# 否则拿起后会从“有包装字”突然退化成无标识色块。
+		var package_name := Label3D.new()
+		package_name.text = item.display_name
+		package_name.font = Catalog.ui_font_bold()
+		package_name.font_size = 42
+		package_name.pixel_size = minf(0.0018,
+				box.size.x / maxf(100.0, item.display_name.length() * 26.0))
+		package_name.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		package_name.no_depth_test = true
+		package_name.modulate = Color(Catalog.ITEMS[item.item_id]["color"]).darkened(0.55)
+		package_name.outline_size = 8
+		package_name.outline_modulate = Color(1, 1, 1, 0.92)
+		package_name.position.z = box.size.z * 0.5 + 0.002
+		visual.add_child(package_name)
 
 func _clear_first_person_held_items() -> void:
 	for item in _fp_hidden_world_items:
@@ -349,17 +364,16 @@ func aim_direction_from(origin: Vector3, exclusions: Array[RID] = []) -> Vector3
 func aimed_shelf_item(max_distance := 8.0) -> Item:
 	if camera == null or not is_inside_tree():
 		return null
-	var center := get_viewport().get_visible_rect().size * 0.5
-	var ray_origin := camera.project_ray_origin(center)
-	var ray_end := ray_origin + camera.project_ray_normal(center).normalized() * max_distance
-	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end,
-			Catalog.L_WORLD | Catalog.L_ITEM)
-	query.collide_with_areas = false
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty() and hit.get("collider") is Item:
-		var item := hit["collider"] as Item
-		if item.state == Item.ItemState.SHELVED:
-			return item
+	# 陈列商品无物理碰撞；本机与远程玩家统一走Main的软件准星命中，
+	# 避免两套判定在联机时出现“房主能拿、客户端不能拿”的分叉。
+	if Main.instance != null and is_instance_valid(Main.instance.player):
+		var p: Player = Main.instance.player
+		var origin := p.global_position + Vector3.UP * Main.THROW_ORIGIN_HEIGHT
+		var exclusions: Array[RID] = [p.get_rid()]
+		if is_instance_valid(p.cart):
+			exclusions.append(p.cart.get_rid())
+		return Main.instance.aimed_shelf_item_from(p,
+				aim_direction_from(origin, exclusions), max_distance)
 	return null
 
 ## 每帧跟随目标点并施加震动

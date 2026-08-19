@@ -23,10 +23,13 @@ var npc_count_label: Label
 var no_cd_check: CheckBox     # 开发者模式:所有技能无 CD
 var skill_label: Label
 var cd_wheel: Control         # 角色技能冷却圆环(塞尔达体力轮风格)
+var cold_wheel: Control       # 冷冻区低温计量圆环（淡蓝，屏幕侧边）
 var _cd_ratio := 0.0
 var _cd_ready := true
 var _cd_pulse := 0.0
 var _cd_fade := 0.0           # ready后渐隐计时
+var _cold_ratio := 0.0
+var _cold_frozen_time := 0.0
 var marquee: Label            # 大喇叭滚动横幅
 var menu: StartMenu           # 开始界面 + 联机大厅
 var tutorial_label: Label     # 教学指引大字
@@ -204,6 +207,19 @@ func _ready() -> void:
 	item_wheel.draw.connect(_draw_item_wheel)
 	root.add_child(item_wheel)
 
+	# 冷冻计量采用与技能CD一致的圆环语言，独立放在右侧中部，不再画在角色脚下。
+	cold_wheel = Control.new()
+	cold_wheel.custom_minimum_size = Vector2(150, 150)
+	cold_wheel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	cold_wheel.offset_left = -178
+	cold_wheel.offset_right = -28
+	cold_wheel.offset_top = -75
+	cold_wheel.offset_bottom = 75
+	cold_wheel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cold_wheel.visible = false
+	cold_wheel.draw.connect(_draw_cold_wheel)
+	root.add_child(cold_wheel)
+
 	# 散落物范围内的视野干扰；置于轮盘之上、准星之下，仍保留基本瞄准能力。
 	obscure_overlay = Control.new()
 	obscure_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -267,18 +283,15 @@ func _ready() -> void:
 	dtitle.add_theme_color_override("font_color", Color(1, 0.8, 0.3))
 	dv.add_child(dtitle)
 	npc_count_label = Label.new()
-	npc_count_label.text = "NPC数量: 8"
+	npc_count_label.text = "参赛编制: 4队 × 2人"
 	dv.add_child(npc_count_label)
 	npc_slider = HSlider.new()
-	npc_slider.min_value = 0
-	npc_slider.max_value = 10
+	npc_slider.min_value = 4
+	npc_slider.max_value = 4
 	npc_slider.step = 1
-	npc_slider.value = 8
+	npc_slider.value = 4
+	npc_slider.editable = false
 	npc_slider.custom_minimum_size = Vector2(340, 36)
-	npc_slider.value_changed.connect(func(v: float) -> void:
-		npc_count_label.text = "NPC数量: %d" % int(v)
-		npc_count_changed.emit(int(v))
-	)
 	dv.add_child(npc_slider)
 	# 所有技能无冷却
 	no_cd_check = CheckBox.new()
@@ -323,7 +336,7 @@ func _ready() -> void:
 	root.add_child(menu)
 
 	# 菜单阶段隐藏所有局内 HUD(逐个 append:数组字面量无法直接赋给 Array[Control])
-	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, controls_hint, item_wheel, obscure_overlay, crosshair, threat_layer]:
+	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, controls_hint, item_wheel, cold_wheel, obscure_overlay, crosshair, threat_layer]:
 		_ingame_nodes.append(n)
 	_set_ingame_visible(false)
 
@@ -353,7 +366,7 @@ func lock_menu_for_join() -> void:
 func reset_menu_network() -> void:
 	menu.reset_network()
 
-## 大厅成员变化:刷新成员列表(每行显示昵称、配色与角色)。
+## 大厅成员变化:刷新成员列表(每行显示昵称、队伍与角色)。
 ## members: [{name, color, char}],下标即座位号(0=房主)
 func set_lobby(members: Array, is_host: bool) -> void:
 	menu.show_lobby(members, is_host)
@@ -406,6 +419,32 @@ func set_skill_cd(ratio: float) -> void:
 	else:
 		_cd_fade = 0.0
 	cd_wheel.queue_redraw()
+
+func set_cold_meter(ratio: float, active: bool, frozen_time := 0.0) -> void:
+	_cold_ratio = clampf(ratio, 0.0, 1.0)
+	_cold_frozen_time = maxf(0.0, frozen_time)
+	cold_wheel.visible = active
+	if active:
+		cold_wheel.queue_redraw()
+
+func _draw_cold_wheel() -> void:
+	var center := cold_wheel.size * 0.5
+	var radius := 52.0
+	var width := 9.0
+	cold_wheel.draw_circle(center, 68.0, Color(0.08, 0.18, 0.25, 0.58))
+	cold_wheel.draw_arc(center, radius, 0, TAU, 64,
+			Color(0.35, 0.55, 0.66, 0.48), width, true)
+	var from := -PI * 0.5
+	var pulse := 1.0 + (0.12 * sin(Time.get_ticks_msec() * 0.012) if _cold_ratio >= 0.75 else 0.0)
+	cold_wheel.draw_arc(center, radius, from, from + TAU * _cold_ratio, 64,
+			Color(0.42, 0.88, 1.0, 0.98), width * pulse, true)
+	var value_text := "%.1fs" % _cold_frozen_time if _cold_frozen_time > 0.0 \
+			else "%d%%" % int(round(_cold_ratio * 100.0))
+	var title := "冻僵" if _cold_frozen_time > 0.0 else "低温"
+	cold_wheel.draw_string(Catalog.ui_font_bold(), center + Vector2(-45, 8), value_text,
+			HORIZONTAL_ALIGNMENT_CENTER, 90, 28, Color(0.72, 0.95, 1.0))
+	cold_wheel.draw_string(Catalog.ui_font_bold(), center + Vector2(-45, 40), title,
+			HORIZONTAL_ALIGNMENT_CENTER, 90, 20, Color(0.55, 0.84, 0.96))
 
 ## 塞尔达体力轮风格:环形冷却条。满时淡隐,cd中随剩余时间消减
 func _draw_cd_wheel() -> void:
@@ -570,8 +609,8 @@ func _draw_prop_type_icon(center: Vector2, kind: String, color: Color, radius: f
 			item_wheel.draw_colored_polygon(bolt, color)
 
 func set_npc_count_display(n: int) -> void:
-	npc_slider.set_value_no_signal(n)
-	npc_count_label.text = "NPC数量: %d" % n
+	npc_slider.set_value_no_signal(4)
+	npc_count_label.text = "教学模式: 无竞赛AI" if n == 0 else "参赛编制: 4队 × 2人"
 	if menu != null:
 		menu.set_npc_display(n)
 

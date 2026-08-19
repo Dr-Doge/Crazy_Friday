@@ -1,0 +1,1245 @@
+[gd_scene format=3 uid="uid://dbj1ok33tnfar"]
+
+[ext_resource type="Script" uid="uid://fak8oegdclh" path="res://scripts/main.gd" id="1_main"]
+
+[sub_resource type="StandardMaterial3D" id="Material_floor"]
+albedo_color = Color(0.78, 0.8, 0.82, 1)
+roughness = 0.9
+
+[sub_resource type="StandardMaterial3D" id="Material_wall"]
+albedo_color = Color(0.36, 0.39, 0.44, 1)
+roughness = 0.82
+
+[sub_resource type="StandardMaterial3D" id="Material_ceiling"]
+albedo_color = Color(0.94, 0.95, 0.97, 1)
+roughness = 0.92
+
+[sub_resource type="StandardMaterial3D" id="Material_light_housing"]
+albedo_color = Color(0.22, 0.24, 0.27, 1)
+metallic = 0.35
+roughness = 0.48
+
+[sub_resource type="StandardMaterial3D" id="Material_light_tube"]
+albedo_color = Color(1, 0.97, 0.88, 1)
+emission_enabled = true
+emission = Color(1, 0.93, 0.76, 1)
+emission_energy_multiplier = 4.0
+
+[sub_resource type="StandardMaterial3D" id="Material_shelf_fresh"]
+albedo_color = Color(0.31, 0.62, 0.76, 1)
+roughness = 0.7
+
+[sub_resource type="StandardMaterial3D" id="Material_shelf_appliance"]
+albedo_color = Color(0.49, 0.46, 0.68, 1)
+roughness = 0.72
+
+[sub_resource type="StandardMaterial3D" id="Material_shelf_snack"]
+albedo_color = Color(0.84, 0.59, 0.22, 1)
+roughness = 0.72
+
+[sub_resource type="StandardMaterial3D" id="Material_shelf_daily"]
+albedo_color = Color(0.44, 0.66, 0.39, 1)
+roughness = 0.72
+
+[sub_resource type="StandardMaterial3D" id="Material_premium"]
+albedo_color = Color(0.95, 0.56, 0.08, 1)
+metallic = 0.15
+roughness = 0.45
+
+[sub_resource type="StandardMaterial3D" id="Material_checkout"]
+albedo_color = Color(0.74, 0.26, 0.34, 1)
+roughness = 0.65
+
+[sub_resource type="SystemFont" id="Font_ui"]
+font_names = PackedStringArray("Microsoft YaHei", "SimHei", "Arial")
+subpixel_positioning = 0
+
+[node name="New_Level" type="Node3D" unique_id=2064747514]
+editor_description = "参考真实超市平面图重构的可编辑 CSG 白盒。卖场 54m×42m；普通货架净过道≥3.8m，横向穿越通道≥5m，中央主干道6m，适配两辆约1.1m宽购物车并排行驶。"
+script = ExtResource("1_main")
+embedded_level = true
+metadata/layout_version = "new_level_whitebox_v1"
+metadata/store_size_m = Vector2(54, 42)
+metadata/min_clear_aisle_m = 3.8
+metadata/main_aisle_m = 6.0
+metadata/reference = "supermarket-floor-plan.jpg"
+
+[node name="Architecture" type="Node3D" parent="." unique_id=1203071468]
+editor_description = "地板和外围墙体。南侧保留7m主入口及6m收银出口。"
+
+[node name="Floor" type="CSGBox3D" parent="Architecture" unique_id=410152085]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 0)
+use_collision = true
+size = Vector3(56, 0.4, 44)
+material = SubResource("Material_floor")
+
+[node name="Wall_North" type="CSGBox3D" parent="Architecture" unique_id=81256943]
+transform = Transform3D(1, 0, 0, 0, 1.6188177, 0, 0, 0, 1, 0, 3.6170816, -21.25)
+use_collision = true
+size = Vector3(54.5, 4.5, 0.5)
+material = SubResource("Material_wall")
+
+[node name="Wall_West" type="CSGBox3D" parent="Architecture" unique_id=221687742]
+transform = Transform3D(1, 0, 0, 0, 1.6188177, 0, 0, 0, 1, -27.25, 3.6170816, 0)
+use_collision = true
+size = Vector3(0.5, 4.5, 42)
+material = SubResource("Material_wall")
+
+[node name="Wall_East" type="CSGBox3D" parent="Architecture" unique_id=52104878]
+transform = Transform3D(1, 0, 0, 0, 1.6188177, 0, 0, 0, 1, 27.25, 3.6170816, 0)
+use_collision = true
+size = Vector3(0.5, 4.5, 42)
+material = SubResource("Material_wall")
+
+[node name="Wall_South_FarLeft" type="CSGBox3D" parent="Architecture" unique_id=2085219127]
+transform = Transform3D(1, 0, 0, 0, 1.6188177, 0, 0, 0, 1, -26.314697, 3.6170816, 21.25)
+use_collision = true
+size = Vector3(1.3706055, 4.5, 0.5)
+material = SubResource("Material_wall")
+
+[node name="Wall_South_Middle" type="CSGBox3D" parent="Architecture" unique_id=42914967]
+transform = Transform3D(1, 0, 0, 0, 1.6188177, 0, 0, 0, 1, -0.50115967, 3.6170816, 21.25)
+use_collision = true
+size = Vector3(30.984985, 4.5, 0.5)
+material = SubResource("Material_wall")
+
+[node name="Wall_South_Right" type="CSGBox3D" parent="Architecture" unique_id=1765178155]
+transform = Transform3D(1, 0, 0, 0, 1.6188177, 0, 0, 0, 1, 23.5, 3.6170816, 21.25)
+use_collision = true
+size = Vector3(7, 4.5, 0.5)
+material = SubResource("Material_wall")
+
+[node name="RuntimeOnly" type="Node3D" parent="." unique_id=1060950083 groups=["runtime_only"]]
+editor_description = "只在正式对局开始后显示的场景白盒；编辑排版和开始菜单阶段隐藏。"
+visible = false
+
+[node name="Ceiling" type="CSGBox3D" parent="RuntimeOnly" unique_id=805473846]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.65, 0)
+size = Vector3(56, 0.2, 44)
+material = SubResource("Material_ceiling")
+metadata/gameplay_collision = false
+
+[node name="AisleLighting" type="Node3D" parent="RuntimeOnly" unique_id=1481873925]
+editor_description = "六条主要过道灯带，每条四段；灯管为发光白盒，SpotLight3D只向下照明且关闭阴影。"
+
+[node name="Fixture_R01_C01" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=287358236 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, -16)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C01" unique_id=1630403906]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C01" unique_id=670826655]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C01" unique_id=2029594841 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R01_C02" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=405844925 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, -16)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C02" unique_id=2039592325]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C02" unique_id=636665950]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C02" unique_id=1823036647 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R01_C03" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1576136040 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, -16)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C03" unique_id=953417735]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C03" unique_id=1900371144]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C03" unique_id=847888044 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R01_C04" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=730594163 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, -16)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C04" unique_id=1168716679]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C04" unique_id=356639221]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R01_C04" unique_id=1163652055 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R02_C01" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1245602957 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, -7.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C01" unique_id=1876612508]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C01" unique_id=1673541418]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C01" unique_id=1211876564 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R02_C02" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1321768124 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, -7.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C02" unique_id=158472162]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C02" unique_id=277065661]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C02" unique_id=1471000519 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R02_C03" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=981112472 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, -7.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C03" unique_id=1993804074]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C03" unique_id=946625951]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C03" unique_id=788935420 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R02_C04" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=190269993 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, -7.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C04" unique_id=1523888000]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C04" unique_id=210599525]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R02_C04" unique_id=1198507100 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R03_C01" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=399336974 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, -1)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C01" unique_id=284163681]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C01" unique_id=769038312]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C01" unique_id=763345993 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R03_C02" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1443606042 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, -1)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C02" unique_id=227241410]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C02" unique_id=1606860784]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C02" unique_id=277268700 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R03_C03" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1617892905 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, -1)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C03" unique_id=1392507610]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C03" unique_id=1239815966]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C03" unique_id=1978691752 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R03_C04" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=570663286 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, -1)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C04" unique_id=274244257]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C04" unique_id=107871962]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R03_C04" unique_id=1496999171 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R04_C01" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=68870150 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, 5.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C01" unique_id=90769026]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C01" unique_id=394026208]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C01" unique_id=1321157448 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R04_C02" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1960439622 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, 5.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C02" unique_id=922300612]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C02" unique_id=1962813874]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C02" unique_id=34391311 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R04_C03" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1772342210 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, 5.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C03" unique_id=263553001]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C03" unique_id=597747906]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C03" unique_id=1025631482 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R04_C04" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=2144813020 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 5.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C04" unique_id=134182029]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C04" unique_id=237711290]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R04_C04" unique_id=1440245136 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R05_C01" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=536203434 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, 12.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C01" unique_id=422948845]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C01" unique_id=922613002]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C01" unique_id=158424896 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R05_C02" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1760991664 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, 12.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C02" unique_id=1029367821]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C02" unique_id=1619046881]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C02" unique_id=2016885260 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R05_C03" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=564664508 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, 12.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C03" unique_id=606748025]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C03" unique_id=1907403395]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C03" unique_id=552910737 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R05_C04" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1482784325 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 12.5)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C04" unique_id=916349707]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C04" unique_id=1122130103]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R05_C04" unique_id=680459255 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R06_C01" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1418847712 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0, 18)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C01" unique_id=1076911506]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C01" unique_id=132590823]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C01" unique_id=427659405 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R06_C02" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=2016423567 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, 18)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C02" unique_id=1846781496]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C02" unique_id=859282634]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C02" unique_id=1099370173 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R06_C03" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=2014636229 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, 18)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C03" unique_id=2103389688]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C03" unique_id=1528038982]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C03" unique_id=882394253 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="Fixture_R06_C04" type="Node3D" parent="RuntimeOnly/AisleLighting" unique_id=1779352113 groups=["aisle_light_fixture"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0, 18)
+
+[node name="Housing" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C04" unique_id=2097071183]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.48, 0)
+size = Vector3(10.6, 0.1, 0.32)
+material = SubResource("Material_light_housing")
+metadata/gameplay_collision = false
+
+[node name="Tube" type="CSGBox3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C04" unique_id=1849004811]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.39, 0)
+size = Vector3(10.15, 0.08, 0.12)
+material = SubResource("Material_light_tube")
+metadata/gameplay_collision = false
+
+[node name="DownLight" type="SpotLight3D" parent="RuntimeOnly/AisleLighting/Fixture_R06_C04" unique_id=1040035935 groups=["aisle_downlight"]]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 4.28, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.65
+spot_range = 9.0
+spot_attenuation = 1.2
+spot_angle = 67.0
+
+[node name="PerimeterCases" type="Node3D" parent="." unique_id=1925469522]
+editor_description = "沿北墙和东墙布置的冷柜/壁柜，保留至少4.5m外围环路。"
+
+[node name="NorthCase_Fresh_A" type="CSGBox3D" parent="PerimeterCases" unique_id=2025807670]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 1.05, -19.7)
+use_collision = true
+size = Vector3(8, 2.1, 1.5)
+material = SubResource("Material_shelf_fresh")
+
+[node name="NorthCase_Fresh_B" type="CSGBox3D" parent="PerimeterCases" unique_id=1849532373]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 1.05, -19.7)
+use_collision = true
+size = Vector3(8, 2.1, 1.5)
+material = SubResource("Material_shelf_fresh")
+
+[node name="NorthCase_Appliance_A" type="CSGBox3D" parent="PerimeterCases" unique_id=384361621]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 1.05, -19.7)
+use_collision = true
+size = Vector3(10, 2.1, 1.5)
+material = SubResource("Material_shelf_appliance")
+
+[node name="NorthCase_Appliance_B" type="CSGBox3D" parent="PerimeterCases" unique_id=1535824051]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.5, 1.05, -19.7)
+use_collision = true
+size = Vector3(10, 2.1, 1.5)
+material = SubResource("Material_shelf_appliance")
+
+[node name="EastCase_Appliance" type="CSGBox3D" parent="PerimeterCases" unique_id=1725184364]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.7, 1.05, -12.5)
+use_collision = true
+size = Vector3(1.5, 2.1, 8)
+material = SubResource("Material_shelf_appliance")
+
+[node name="EastCase_Snack_A" type="CSGBox3D" parent="PerimeterCases" unique_id=1395848115]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.7, 1.05, -2.5)
+use_collision = true
+size = Vector3(1.5, 2.1, 8)
+material = SubResource("Material_shelf_snack")
+
+[node name="EastCase_Snack_B" type="CSGBox3D" parent="PerimeterCases" unique_id=1918737596]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.7, 1.05, 7.5)
+use_collision = true
+size = Vector3(1.5, 2.1, 8)
+material = SubResource("Material_shelf_snack")
+
+[node name="EastCase_Daily" type="CSGBox3D" parent="PerimeterCases" unique_id=1722493309]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.7, 1.05, 16.5)
+use_collision = true
+size = Vector3(1.5, 2.1, 7)
+material = SubResource("Material_shelf_daily")
+
+[node name="WestCase_Fresh_A" type="CSGBox3D" parent="PerimeterCases" unique_id=1434176035]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25.7, 1.05, -15.5)
+use_collision = true
+size = Vector3(1.5, 2.1, 7)
+material = SubResource("Material_shelf_fresh")
+
+[node name="WestCase_Fresh_B" type="CSGBox3D" parent="PerimeterCases" unique_id=840363251]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25.7, 1.05, -7.5)
+use_collision = true
+size = Vector3(1.5, 2.1, 7)
+material = SubResource("Material_shelf_fresh")
+
+[node name="WestCase_Daily_A" type="CSGBox3D" parent="PerimeterCases" unique_id=1782569909]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25.7, 1.05, 0.5)
+use_collision = true
+size = Vector3(1.5, 2.1, 7)
+material = SubResource("Material_shelf_daily")
+
+[node name="WestCase_Daily_B" type="CSGBox3D" parent="PerimeterCases" unique_id=1918477506]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25.7, 1.05, 8)
+use_collision = true
+size = Vector3(1.5, 2.1, 6)
+material = SubResource("Material_shelf_daily")
+
+[node name="ShelfIslands" type="Node3D" parent="." unique_id=890815912]
+editor_description = "中央岛式货架。同行两组之间保留6m主干道；相邻货架净距4.6m。"
+
+[node name="Shelf_Fresh_01" type="CSGBox3D" parent="ShelfIslands" unique_id=877034094 groups=["new_level_shelf"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.95, -10.5)
+use_collision = true
+size = Vector3(10, 1.9, 0.18)
+material = SubResource("Material_shelf_fresh")
+metadata/zone = "fresh"
+
+[node name="Board_Low" type="CSGBox3D" parent="ShelfIslands/Shelf_Fresh_01" unique_id=718111869]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.59, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_fresh")
+
+[node name="Board_Mid" type="CSGBox3D" parent="ShelfIslands/Shelf_Fresh_01" unique_id=1415336918]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_fresh")
+
+[node name="Board_High" type="CSGBox3D" parent="ShelfIslands/Shelf_Fresh_01" unique_id=463517529]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_fresh")
+
+[node name="Shelf_Appliance_01" type="CSGBox3D" parent="ShelfIslands" unique_id=1027441491 groups=["new_level_shelf"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 0.95, -10.5)
+use_collision = true
+size = Vector3(12, 1.9, 0.18)
+material = SubResource("Material_shelf_appliance")
+metadata/zone = "appliance"
+
+[node name="Board_Low" type="CSGBox3D" parent="ShelfIslands/Shelf_Appliance_01" unique_id=321471790]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.59, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_appliance")
+
+[node name="Board_Mid" type="CSGBox3D" parent="ShelfIslands/Shelf_Appliance_01" unique_id=1555162852]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_appliance")
+
+[node name="Board_High" type="CSGBox3D" parent="ShelfIslands/Shelf_Appliance_01" unique_id=1667963219]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_appliance")
+
+[node name="Shelf_Fresh_02" type="CSGBox3D" parent="ShelfIslands" unique_id=1367436925 groups=["new_level_shelf"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.95, -4.5)
+use_collision = true
+size = Vector3(10, 1.9, 0.18)
+material = SubResource("Material_shelf_fresh")
+metadata/zone = "fresh"
+
+[node name="Board_Low" type="CSGBox3D" parent="ShelfIslands/Shelf_Fresh_02" unique_id=2100541707]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.59, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_fresh")
+
+[node name="Board_Mid" type="CSGBox3D" parent="ShelfIslands/Shelf_Fresh_02" unique_id=1233452563]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_fresh")
+
+[node name="Board_High" type="CSGBox3D" parent="ShelfIslands/Shelf_Fresh_02" unique_id=1778817193]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_fresh")
+
+[node name="Shelf_Appliance_02" type="CSGBox3D" parent="ShelfIslands" unique_id=19501756 groups=["new_level_shelf"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 0.95, -4.5)
+use_collision = true
+size = Vector3(12, 1.9, 0.18)
+material = SubResource("Material_shelf_appliance")
+metadata/zone = "appliance"
+
+[node name="Board_Low" type="CSGBox3D" parent="ShelfIslands/Shelf_Appliance_02" unique_id=1780920333]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.59, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_appliance")
+
+[node name="Board_Mid" type="CSGBox3D" parent="ShelfIslands/Shelf_Appliance_02" unique_id=555059481]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_appliance")
+
+[node name="Board_High" type="CSGBox3D" parent="ShelfIslands/Shelf_Appliance_02" unique_id=1282675195]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_appliance")
+
+[node name="Shelf_Daily_01" type="CSGBox3D" parent="ShelfIslands" unique_id=1114781210 groups=["new_level_shelf"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.95, 2.5)
+use_collision = true
+size = Vector3(10, 1.9, 0.18)
+material = SubResource("Material_shelf_daily")
+metadata/zone = "daily"
+
+[node name="Board_Low" type="CSGBox3D" parent="ShelfIslands/Shelf_Daily_01" unique_id=2122975090]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.59, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_daily")
+
+[node name="Board_Mid" type="CSGBox3D" parent="ShelfIslands/Shelf_Daily_01" unique_id=382209579]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_daily")
+
+[node name="Board_High" type="CSGBox3D" parent="ShelfIslands/Shelf_Daily_01" unique_id=1470199910]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_daily")
+
+[node name="Shelf_Snack_01" type="CSGBox3D" parent="ShelfIslands" unique_id=1826783030 groups=["new_level_shelf"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 0.95, 2.5)
+use_collision = true
+size = Vector3(12, 1.9, 0.18)
+material = SubResource("Material_shelf_snack")
+metadata/zone = "snack"
+
+[node name="Board_Low" type="CSGBox3D" parent="ShelfIslands/Shelf_Snack_01" unique_id=1895262708]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.59, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_snack")
+
+[node name="Board_Mid" type="CSGBox3D" parent="ShelfIslands/Shelf_Snack_01" unique_id=2115709300]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_snack")
+
+[node name="Board_High" type="CSGBox3D" parent="ShelfIslands/Shelf_Snack_01" unique_id=1151987260]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_snack")
+
+[node name="Shelf_Daily_02" type="CSGBox3D" parent="ShelfIslands" unique_id=1023396653 groups=["new_level_shelf"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.95, 8.5)
+use_collision = true
+size = Vector3(10, 1.9, 0.18)
+material = SubResource("Material_shelf_daily")
+metadata/zone = "daily"
+
+[node name="Board_Low" type="CSGBox3D" parent="ShelfIslands/Shelf_Daily_02" unique_id=1072404743]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.59, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_daily")
+
+[node name="Board_Mid" type="CSGBox3D" parent="ShelfIslands/Shelf_Daily_02" unique_id=577914378]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_daily")
+
+[node name="Board_High" type="CSGBox3D" parent="ShelfIslands/Shelf_Daily_02" unique_id=1715852194]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49, 0)
+use_collision = true
+size = Vector3(10, 0.08, 1.4)
+material = SubResource("Material_shelf_daily")
+
+[node name="Shelf_Snack_02" type="CSGBox3D" parent="ShelfIslands" unique_id=831668503 groups=["new_level_shelf"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 0.95, 8.5)
+use_collision = true
+size = Vector3(12, 1.9, 0.18)
+material = SubResource("Material_shelf_snack")
+metadata/zone = "snack"
+
+[node name="Board_Low" type="CSGBox3D" parent="ShelfIslands/Shelf_Snack_02" unique_id=861359129]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.59, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_snack")
+
+[node name="Board_Mid" type="CSGBox3D" parent="ShelfIslands/Shelf_Snack_02" unique_id=549908157]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.05, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_snack")
+
+[node name="Board_High" type="CSGBox3D" parent="ShelfIslands/Shelf_Snack_02" unique_id=1588401139]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.49, 0)
+use_collision = true
+size = Vector3(12, 0.08, 1.4)
+material = SubResource("Material_shelf_snack")
+
+[node name="FeatureIslands" type="Node3D" parent="." unique_id=1990804991]
+editor_description = "低矮生鲜台和爆款堆头，不遮挡第三人称视线；四周均有宽通道。"
+
+[node name="PremiumStand_A" type="CSGBox3D" parent="FeatureIslands" unique_id=1113402349 groups=["new_level_premium"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3.5)
+use_collision = true
+size = Vector3(2.2, 0.7, 2.2)
+material = SubResource("Material_premium")
+
+[node name="PremiumStand_B" type="CSGBox3D" parent="FeatureIslands" unique_id=802327471 groups=["new_level_premium"]]
+use_collision = true
+size = Vector3(2.2, 0.7, 2.2)
+material = SubResource("Material_premium")
+
+[node name="PremiumStand_C" type="CSGBox3D" parent="FeatureIslands" unique_id=1243989048 groups=["new_level_premium"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.5)
+use_collision = true
+size = Vector3(2.2, 0.7, 2.2)
+material = SubResource("Material_premium")
+
+[node name="CheckoutZone" type="Node3D" parent="." unique_id=287390953]
+editor_description = "左下角两条正式收银道。红色地面只做编辑器识别；运行时由Checkout生成闸机、围栏、传送带、扫码区与结算逻辑。"
+
+[node name="CheckoutLaneGuide_01" type="CSGBox3D" parent="CheckoutZone" unique_id=993763313 groups=["new_level_checkout_guide"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.622467, 0.015, 17.24687)
+size = Vector3(3.1, 0.03, 7.7)
+material = SubResource("Material_checkout")
+metadata/gameplay_collision = false
+
+[node name="CheckoutLaneGuide_02" type="CSGBox3D" parent="CheckoutZone" unique_id=1913960781 groups=["new_level_checkout_guide"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18.422466, 0.015, 17.24687)
+size = Vector3(3.1, 0.03, 7.7)
+material = SubResource("Material_checkout")
+metadata/gameplay_collision = false
+
+[node name="CartCorral_LeftRail" type="CSGBox3D" parent="CheckoutZone" unique_id=1147386901]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 0.45, 18.408634)
+use_collision = true
+size = Vector3(0.2, 0.9, 5)
+material = SubResource("Material_wall")
+
+[node name="CartCorral_RightRail" type="CSGBox3D" parent="CheckoutZone" unique_id=1919785293]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.45, 18.408634)
+use_collision = true
+size = Vector3(0.2, 0.9, 5)
+material = SubResource("Material_wall")
+
+[node name="LevelSignage" type="Node3D" parent="." unique_id=69123771]
+editor_description = "入口、收银和五个商品分区的场景内识别。地贴不参与碰撞。"
+
+[node name="ZoneFloor_Fresh" type="CSGBox3D" parent="LevelSignage" unique_id=301432593]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.01, -7.5)
+size = Vector3(12, 0.02, 11.5)
+material = SubResource("Material_shelf_fresh")
+metadata/gameplay_collision = false
+
+[node name="ZoneFloor_Appliance" type="CSGBox3D" parent="LevelSignage" unique_id=1033171103]
+transform = Transform3D(0.8162468, 0, 0, 0, 1, 0, 0, 0, 1, 13.489199, 0.01, -7.5)
+size = Vector3(22, 0.02, 11.5)
+material = SubResource("Material_shelf_appliance")
+metadata/gameplay_collision = false
+
+[node name="ZoneFloor_Daily" type="CSGBox3D" parent="LevelSignage" unique_id=1463170026]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.01, 5.5)
+size = Vector3(12, 0.02, 10.5)
+material = SubResource("Material_shelf_daily")
+metadata/gameplay_collision = false
+
+[node name="ZoneFloor_Snack" type="CSGBox3D" parent="LevelSignage" unique_id=1137434387]
+transform = Transform3D(0.8162468, 0, 0, 0, 1, 0, 0, 0, 1, 13.489199, 0.01, 5.5)
+size = Vector3(22, 0.02, 10.5)
+material = SubResource("Material_shelf_snack")
+metadata/gameplay_collision = false
+
+[node name="ZoneFloor_Premium" type="CSGBox3D" parent="LevelSignage" unique_id=780260655]
+transform = Transform3D(-4.3711385e-08, 0, 0.99999994, 0, 1, 0, -0.99999994, 0, -4.3711385e-08, 0, 0, 0)
+size = Vector3(12, 0.024, 4.5)
+material = SubResource("Material_premium")
+metadata/gameplay_collision = false
+
+[node name="Sign_Entrance" type="Label3D" parent="LevelSignage" unique_id=1274265876 groups=["third_person_sign_lod"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.5, 3.2, 20.5)
+pixel_size = 0.008
+billboard = 1
+no_depth_test = true
+modulate = Color(0.2, 0.95, 0.45, 1)
+text = "↓ 入口 · 购物车领取 ↓"
+font = SubResource("Font_ui")
+font_size = 84
+outline_size = 14
+metadata/camera_lod_kind = "overhead_sign"
+metadata/camera_lod_half_extents = Vector3(4, 0.8, 0.2)
+metadata/camera_lod_hide_distance = 2.0
+metadata/camera_lod_show_distance = 2.65
+
+[node name="Sign_Checkout" type="Label3D" parent="LevelSignage" unique_id=1178416029 groups=["third_person_sign_lod"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21.022467, 3.2, 12.25)
+pixel_size = 0.008
+billboard = 1
+no_depth_test = true
+modulate = Color(1, 0.35, 0.3, 1)
+text = "结账出口 · 仅两条收银道"
+font = SubResource("Font_ui")
+font_size = 84
+outline_size = 14
+metadata/camera_lod_kind = "overhead_sign"
+metadata/camera_lod_half_extents = Vector3(4, 0.8, 0.2)
+metadata/camera_lod_hide_distance = 2.0
+metadata/camera_lod_show_distance = 2.65
+
+[node name="Sign_Fresh" type="Label3D" parent="LevelSignage" unique_id=1366456373 groups=["third_person_sign_lod"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 3, -12.2)
+pixel_size = 0.008
+billboard = 1
+modulate = Color(0.55, 0.85, 1, 1)
+text = "生鲜冷冻区"
+font = SubResource("Font_ui")
+font_size = 72
+metadata/camera_lod_kind = "overhead_sign"
+metadata/camera_lod_half_extents = Vector3(3, 0.8, 0.2)
+metadata/camera_lod_hide_distance = 2.0
+metadata/camera_lod_show_distance = 2.65
+
+[node name="Sign_Appliance" type="Label3D" parent="LevelSignage" unique_id=1725775945 groups=["third_person_sign_lod"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 3, -12.2)
+pixel_size = 0.008
+billboard = 1
+modulate = Color(0.75, 0.7, 1, 1)
+text = "家电区"
+font = SubResource("Font_ui")
+font_size = 72
+metadata/camera_lod_kind = "overhead_sign"
+metadata/camera_lod_half_extents = Vector3(3, 0.8, 0.2)
+metadata/camera_lod_hide_distance = 2.0
+metadata/camera_lod_show_distance = 2.65
+
+[node name="Sign_Daily" type="Label3D" parent="LevelSignage" unique_id=2091736929 groups=["third_person_sign_lod"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 3, 0.2)
+pixel_size = 0.008
+billboard = 1
+modulate = Color(0.65, 1, 0.55, 1)
+text = "日用百货区"
+font = SubResource("Font_ui")
+font_size = 72
+metadata/camera_lod_kind = "overhead_sign"
+metadata/camera_lod_half_extents = Vector3(3, 0.8, 0.2)
+metadata/camera_lod_hide_distance = 2.0
+metadata/camera_lod_show_distance = 2.65
+
+[node name="Sign_Snack" type="Label3D" parent="LevelSignage" unique_id=1172096539 groups=["third_person_sign_lod"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 3, 0.2)
+pixel_size = 0.008
+billboard = 1
+modulate = Color(1, 0.75, 0.25, 1)
+text = "零食玩具区"
+font = SubResource("Font_ui")
+font_size = 72
+metadata/camera_lod_kind = "overhead_sign"
+metadata/camera_lod_half_extents = Vector3(3, 0.8, 0.2)
+metadata/camera_lod_hide_distance = 2.0
+metadata/camera_lod_show_distance = 2.65
+
+[node name="Sign_Premium" type="Label3D" parent="LevelSignage" unique_id=1085127214 groups=["third_person_sign_lod"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.8, 0)
+pixel_size = 0.008
+billboard = 1
+modulate = Color(1, 0.55, 0.05, 1)
+text = "★ 黑五爆款专区 ★"
+font = SubResource("Font_ui")
+font_size = 80
+outline_size = 14
+metadata/camera_lod_kind = "overhead_sign"
+metadata/camera_lod_half_extents = Vector3(4, 0.8, 0.2)
+metadata/camera_lod_hide_distance = 2.0
+metadata/camera_lod_show_distance = 2.65
+
+[node name="GameplayMarkers" type="Node3D" parent="." unique_id=2118838540]
+editor_description = "正式玩法使用的玩家、NPC、收银、特价与大件货位锚点。"
+
+[node name="PlayerSpawn_01" type="Marker3D" parent="GameplayMarkers" unique_id=1754252403 groups=["new_level_player_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.5, 0.1, 18.5)
+
+[node name="PlayerSpawn_02" type="Marker3D" parent="GameplayMarkers" unique_id=626077691 groups=["new_level_player_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14.8, 0.1, 18.5)
+
+[node name="PlayerSpawn_03" type="Marker3D" parent="GameplayMarkers" unique_id=318345986 groups=["new_level_player_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20.2, 0.1, 18.5)
+
+[node name="PlayerSpawn_04" type="Marker3D" parent="GameplayMarkers" unique_id=236196780 groups=["new_level_player_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.1, 0.1, 17)
+
+[node name="PlayerSpawn_05" type="Marker3D" parent="GameplayMarkers" unique_id=594021650 groups=["new_level_player_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22.9, 0.1, 17)
+
+[node name="PlayerSpawn_06" type="Marker3D" parent="GameplayMarkers" unique_id=1530066836 groups=["new_level_player_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.4, 0.1, 17)
+
+[node name="CheckoutAnchor_01" type="Marker3D" parent="GameplayMarkers" unique_id=1906993201 groups=["new_level_checkout_anchor"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.622467, 0.1, 17.24687)
+
+[node name="CheckoutAnchor_02" type="Marker3D" parent="GameplayMarkers" unique_id=1815423757 groups=["new_level_checkout_anchor"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18.422466, 0.1, 17.24687)
+
+[node name="GrannySpawn_01" type="Marker3D" parent="GameplayMarkers" unique_id=37779753 groups=["new_level_granny_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22, 0.1, -16)
+
+[node name="GrannySpawn_02" type="Marker3D" parent="GameplayMarkers" unique_id=1684870148 groups=["new_level_granny_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0.1, -16)
+
+[node name="GrannySpawn_03" type="Marker3D" parent="GameplayMarkers" unique_id=654735454 groups=["new_level_granny_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.1, -16)
+
+[node name="GrannySpawn_04" type="Marker3D" parent="GameplayMarkers" unique_id=638810646 groups=["new_level_granny_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22, 0.1, -7.5)
+
+[node name="GrannySpawn_05" type="Marker3D" parent="GameplayMarkers" unique_id=1931531281 groups=["new_level_granny_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.5, 0.1, -1)
+
+[node name="GrannySpawn_06" type="Marker3D" parent="GameplayMarkers" unique_id=1628267728 groups=["new_level_granny_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 0.1, -1)
+
+[node name="GrannySpawn_07" type="Marker3D" parent="GameplayMarkers" unique_id=1008487252 groups=["new_level_granny_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0.1, 10.5)
+
+[node name="GrannySpawn_08" type="Marker3D" parent="GameplayMarkers" unique_id=1222302034 groups=["new_level_granny_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.1, 11)
+
+[node name="SalePoint_01" type="Marker3D" parent="GameplayMarkers" unique_id=660745005 groups=["new_level_sale_point"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.1, -7.5)
+
+[node name="SalePoint_02" type="Marker3D" parent="GameplayMarkers" unique_id=950100500 groups=["new_level_sale_point"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 0.1, -7.5)
+
+[node name="SalePoint_03" type="Marker3D" parent="GameplayMarkers" unique_id=1686221188 groups=["new_level_sale_point"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.1, 5.5)
+
+[node name="SalePoint_04" type="Marker3D" parent="GameplayMarkers" unique_id=1332389224 groups=["new_level_sale_point"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 0.1, 5.5)
+
+[node name="SalePoint_05" type="Marker3D" parent="GameplayMarkers" unique_id=983245369 groups=["new_level_sale_point"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+
+[node name="LargeSlot_01" type="Marker3D" parent="GameplayMarkers" unique_id=236176618 groups=["new_level_large_slot"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.5, 0.5, -15.5)
+
+[node name="LargeSlot_02" type="Marker3D" parent="GameplayMarkers" unique_id=2118638477 groups=["new_level_large_slot"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14.5, 0.5, -15.5)
+
+[node name="LargeSlot_03" type="Marker3D" parent="GameplayMarkers" unique_id=1514481532 groups=["new_level_large_slot"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 18.5, 0.5, -15.5)
+
+[node name="LargeSlot_04" type="Marker3D" parent="GameplayMarkers" unique_id=554832782 groups=["new_level_large_slot"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22.5, 0.5, -15.5)
+
+[node name="ZoneAnchor_Fresh" type="Marker3D" parent="GameplayMarkers" unique_id=281297386 groups=["new_level_zone_fresh"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.1, -7.5)
+
+[node name="ZoneAnchor_Appliance" type="Marker3D" parent="GameplayMarkers" unique_id=651547354 groups=["new_level_zone_appliance"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 0.1, -7.5)
+
+[node name="ZoneAnchor_Daily" type="Marker3D" parent="GameplayMarkers" unique_id=1258354431 groups=["new_level_zone_daily"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.1, 5.5)
+
+[node name="ZoneAnchor_Snack" type="Marker3D" parent="GameplayMarkers" unique_id=1934385435 groups=["new_level_zone_snack"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 0.1, 5.5)
+
+[node name="ZoneAnchor_Premium" type="Marker3D" parent="GameplayMarkers" unique_id=1995202649 groups=["new_level_zone_premium"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, 0)
+
+[node name="AisleClearanceMarkers" type="Node3D" parent="." unique_id=2127961152]
+editor_description = "验收标记：普通纵向净过道4.6m；货架组间横向穿越通道5.6m；中央纵向主通道6m。"
+
+[node name="Aisle_Left_4_6m" type="Marker3D" parent="AisleClearanceMarkers" unique_id=1685252384]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.1, -7.5)
+metadata/clearance_m = 4.6
+
+[node name="Aisle_Right_4_6m" type="Marker3D" parent="AisleClearanceMarkers" unique_id=602395953]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15.0771265, 0.1, -7.5)
+metadata/clearance_m = 4.6
+
+[node name="CrossAisle_5_6m" type="Marker3D" parent="AisleClearanceMarkers" unique_id=2111010800]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.1, -1)
+metadata/clearance_m = 5.6
+
+[node name="MainSpine_6m" type="Marker3D" parent="AisleClearanceMarkers" unique_id=1458760972]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.78856325, 0.1, 2)
+metadata/clearance_m = 6.0
+
+[node name="CheckoutLane_4m" type="Marker3D" parent="AisleClearanceMarkers" unique_id=689999919]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20.9, 0.1, 15.5)
+metadata/clearance_m = 4.0

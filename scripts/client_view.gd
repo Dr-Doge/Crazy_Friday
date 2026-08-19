@@ -9,7 +9,7 @@ class_name ClientView extends RefCounted
 const LERP_LAMBDA := 14.0
 
 ## 状态包字段(与 net.gd 的 _gather_* 一一对应):
-##   p  玩家c  购物车   g  大妈   i  商品   co 闸机
+##   p  玩家c  购物车   g  大妈   i  商品   co 闸机   fc 冷冻软门帘
 ##   t  剩余时间   ig 是否宽限期   gl 宽限剩余
 var state := {}
 ## 主机单独推给本机的 HUD 数据(清单行与分数)
@@ -50,8 +50,23 @@ func interpolate(delta: float) -> void:
 	_grannies(k, delta)
 	_buddies(k, delta)
 	_items(k)
+	_curtains(k)
 	_gates()
 	_clock()
+
+func _curtains(k: float) -> void:
+	var packet: Array = state.get("fc", [])
+	var strips: Array[Node] = _m.get_tree().get_nodes_in_group("freezer_curtain_strip")
+	for i in mini(packet.size(), strips.size()):
+		if not (strips[i] is RigidBody3D):
+			continue
+		var strip := strips[i] as RigidBody3D
+		var sample: Array = packet[i]
+		if sample.size() < 2:
+			continue
+		strip.global_position = strip.global_position.lerp(sample[0], k)
+		var target_q: Quaternion = sample[1]
+		strip.global_basis = Basis(strip.global_basis.get_rotation_quaternion().slerp(target_q, k))
 
 ## 玩家:位置/朝向插值,状态量(失衡/体力/倒地/技能CD)直接覆盖
 func _players(k: float, delta: float) -> void:
@@ -86,6 +101,10 @@ func _players(k: float, delta: float) -> void:
 			_apply_cart_attachment(p, bool(a[19]))
 		if a.size() > 20:
 			_sync_held(p, a[20])
+		if a.size() > 23:
+			p.cold_meter = a[21]
+			p.frozen_time = a[22]
+			p.cold_adapt_time = a[23]
 		p.puppet_update(delta)
 
 ## 主机权威的上/下车状态必须在客户端显式落地。位置插值只能让角色看起来跟着车走，
@@ -135,6 +154,10 @@ func _grannies(k: float, delta: float) -> void:
 		g.body_root.rotation.x = lerpf(g.body_root.rotation.x, gs[i][3], k)
 		if gs[i].size() > 4:
 			_sync_held(g, gs[i][4])
+		if gs[i].size() > 7:
+			g.cold_meter = gs[i][5]
+			g.frozen_time = gs[i][6]
+			g.cold_adapt_time = gs[i][7]
 		g.puppet_update(delta)
 
 func _buddies(k: float, delta: float) -> void:
@@ -185,11 +208,14 @@ func _sync_held(actor: Actor, indices: Array) -> void:
 ## 客户端永不模拟商品刚体，但仍维护碰撞层供车斗 Area 查询轮盘库存。
 func _apply_item_state(it: Item, new_state: int) -> void:
 	it.state = new_state
+	it.apply_state_scale()
 	it.freeze = true
-	if it.state == Item.ItemState.SHELVED or it.state == Item.ItemState.FREE:
+	if it.state == Item.ItemState.FREE:
 		it.collision_layer = Catalog.L_ITEM
 		it.collision_mask = Catalog.L_WORLD | Catalog.L_CART | Catalog.L_ITEM
 	else:
+		# 货架商品同样无碰撞；客户端准星选择使用主机复核的软件命中，
+		# 不能让非房主重新被突出包装挡住。
 		it.collision_layer = 0
 		it.collision_mask = 0
 

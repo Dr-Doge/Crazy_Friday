@@ -1,12 +1,13 @@
 class_name Net extends Node
-## 局域网联机(2-6人,同一网络):主机权威模拟,客户端发输入、收状态渲染。
+## 局域网联机(1-8名真人,同一网络):固定四队八席，空席由AI补齐。
 ## 大厅制:主机建房→客户端陆续加入→主机点"开始对局"统一开局。
 ## 世界用共享种子在各端确定性重建,运行时只同步动态状态(20Hz不可靠)+关键事件(可靠RPC)。
 
 const PORT := 7788
-const MAX_CLIENTS := 5     # 主机+5客户端=6人
+const MAX_CLIENTS := 7     # 主机+7客户端=8人，四队各两席
 const SYNC_INTERVAL := 3   # 每3个物理帧同步一次(约20Hz)
-const NET_VERSION := 9     # v9:同步客户端准星与手持归属，修复远程拿货/手持表现
+const NET_VERSION := 12    # v12:大厅显式选队，固定四队八席并由队伍AI补齐
+                           # v9:同步客户端准星与手持归属，修复远程拿货/手持表现
                            # v8:玩家包同步购物车挂接状态，修复客户端驾驶仍卡第一人称
 
 var main: Main
@@ -14,8 +15,8 @@ var is_host := false
 var active := false            # 联机对局进行中
 var peers: Array[int] = []     # 大厅接入顺序(开局时座位=下标+1)
 var seat_peers: Array[int] = []# 开局后:座位i(≥1)对应seat_peers[i-1]的peer id
-## 大厅档案:peer_id -> {name: String, color: int}。客户端连上后自行上报,
-## 之后在大厅里改名/换色也会实时推送过来。
+## 大厅档案:peer_id -> {name, char, team}。客户端连上后自行上报，
+## 之后在大厅里改名/换队/换角色也会实时推送过来。
 var lobby_profiles := {}
 var _frame := 0
 var _item_cursor := 0
@@ -104,7 +105,7 @@ func _on_connected_ok() -> void:
 	main.hud.set_menu_status("已连上主机!正在同步你的角色档案...")
 	push_profile()
 
-## 把本机档案(昵称+配色+所选角色)上报给主机。在大厅里改档案也调这个。
+## 把本机档案(昵称+所选角色+队伍偏好)上报给主机。在大厅里改档案也调这个。
 func push_profile() -> void:
 	if is_host:
 		# 主机自己就是权威,直接刷新大厅
@@ -117,10 +118,10 @@ func push_profile() -> void:
 	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return
 	rpc_id(1, "client_profile", PlayerProfile.display_name, PlayerProfile.color_index,
-			PlayerProfile.char_id)
+			PlayerProfile.char_id, PlayerProfile.team_index)
 
 @rpc("any_peer", "call_remote", "reliable")
-func client_profile(pname: String, color: int, char_id: String = "") -> void:
+func client_profile(pname: String, color: int, char_id: String = "", team: int = 0) -> void:
 	if not is_host or active:
 		return
 	var pid := multiplayer.get_remote_sender_id()
@@ -128,6 +129,7 @@ func client_profile(pname: String, color: int, char_id: String = "") -> void:
 		"name": PlayerProfile.sanitize(pname),
 		"color": clampi(color, 0, PlayerProfile.COLORS.size() - 1),
 		"char": CharacterDef.valid_id(char_id),
+		"team": clampi(team, 0, 3),
 	}
 	_lobby_update()
 
@@ -167,6 +169,7 @@ func lobby_members() -> Array:
 		"name": PlayerProfile.display_name,
 		"color": PlayerProfile.color_index,
 		"char": PlayerProfile.char_id,
+		"team": PlayerProfile.team_index,
 	}]
 	for pid in peers:
 		var prof: Dictionary = lobby_profiles.get(pid, {})
@@ -174,6 +177,7 @@ func lobby_members() -> Array:
 			"name": str(prof.get("name", "连接中…")),
 			"color": int(prof.get("color", 0)),
 			"char": CharacterDef.valid_id(str(prof.get("char", ""))),
+			"team": clampi(int(prof.get("team", 0)), 0, 3),
 		})
 	return out
 
@@ -195,17 +199,22 @@ func start_game() -> void:
 	var raw_names: Array = []
 	var raw_colors: Array = []
 	var chars: Array = []
+	var raw_teams: Array = []
 	for m in members:
 		raw_names.append(m["name"])
 		raw_colors.append(m["color"])
 		chars.append(CharacterDef.valid_id(str(m.get("char", ""))))
+		raw_teams.append(int(m.get("team", 0)))
 	var names := PlayerProfile.resolve_names(raw_names)
-	var colors := PlayerProfile.resolve_colors(raw_colors)
+	var teams := PlayerProfile.resolve_teams(raw_teams)
+	var colors: Array = []
+	for team in teams:
+		colors.append(int(team))
 	for i in peers.size():
 		rpc_id(peers[i], "client_start", world_seed, main.pending_npc, NET_VERSION,
-				i + 1, total, names, colors, chars)
+				i + 1, total, names, colors, chars, teams)
 	print("[Net] 进入对局 身份=主机 玩家数=", total)
-	main.start_mp(true, world_seed, main.pending_npc, 0, total, names, colors, chars)
+	main.start_mp(true, world_seed, main.pending_npc, 0, total, names, colors, chars, teams)
 
 func _on_peer_left(id: int) -> void:
 	if is_host:
@@ -246,7 +255,7 @@ func leave_lobby() -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func client_start(world_seed: int, npc: int, ver: int, my_seat: int, total: int,
-		names: Array, colors: Array, chars: Array = []) -> void:
+		names: Array, colors: Array, chars: Array = [], teams: Array = []) -> void:
 	print("[Net] 收到开局指令 seed=", world_seed, " npc=", npc, " ver=", ver, " 座位=", my_seat, " 总人数=", total)
 	if ver != NET_VERSION:
 		main.hud.set_menu_status("联机失败:各电脑的游戏版本不一致!\n请把同一份exe拷给所有人后重试")
@@ -256,7 +265,7 @@ func client_start(world_seed: int, npc: int, ver: int, my_seat: int, total: int,
 		return
 	active = true
 	print("[Net] 进入对局 身份=客户端 座位=", my_seat)
-	main.start_mp(false, world_seed, npc, my_seat, total, names, colors, chars)
+	main.start_mp(false, world_seed, npc, my_seat, total, names, colors, chars, teams)
 
 ## 开局后由main调用:登记同步对象表(两端顺序一致)
 func register_world() -> void:
@@ -291,13 +300,16 @@ func _physics_process(_delta: float) -> void:
 		# 所有客户端都断开时不再广播(向已死peer发包会刷channel报错)
 		if multiplayer.get_peers().is_empty():
 			return
-		# 玩家包与车辆包20Hz各自独立发(6人数据合包会超MTU);大妈/商品包10Hz交替
+		# 玩家包与车辆包20Hz各自独立发(8人数据合包会超MTU);大妈/商品包10Hz交替
 		if _frame % SYNC_INTERVAL == 0:
 			rpc("sync_state", _gather_players())
 			rpc("sync_state", _gather_carts())
 			@warning_ignore("integer_division")
 			if (_frame / SYNC_INTERVAL) % 2 == 0:
-				rpc("sync_state", _gather_world())
+				var world := _gather_world()
+				# AI补位后角色包已接近MTU；角色与活动物/门帘分成两个独立不可靠包。
+				rpc("sync_state", {"g": world["g"], "b": world["b"]})
+				rpc("sync_state", {"i": world["i"], "fc": world["fc"]})
 	else:
 		# 客户端:每帧上送持续输入+本机镜头朝向(主机按客户端视角解算移动方向)
 		var mv := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -387,7 +399,8 @@ func _gather_players() -> Dictionary:
 				p.locate_cd, p.prop_cd, p.brace_cd,
 				p.char_cd, p.stance_time, p.stun_time,
 				p.taser_time, p.taser_immunity_time, p.obscure_time, p.obscure_factor,
-				p.attached, _held_item_indices(p)])
+				p.attached, _held_item_indices(p),
+				p.cold_meter, p.frozen_time, p.cold_adapt_time])
 		_sync_text("pp%d" % i, "pp", i, p.prompt_text)
 	return {"p": ps}
 
@@ -412,7 +425,8 @@ func _gather_world() -> Dictionary:
 		var g = grannies_net[i]
 		if is_instance_valid(g):
 			gs.append([g.global_position, g.body_root.rotation.y, g.hand_pose,
-					g.body_root.rotation.x, _held_item_indices(g)])
+					g.body_root.rotation.x, _held_item_indices(g),
+					g.cold_meter, g.frozen_time, g.cold_adapt_time])
 			_sync_text("gw%d" % i, "gw", i, g.want_label.text)
 			_sync_text("gb%d" % i, "gb", i, g.bubble.text if g.bubble.visible else "")
 		else:
@@ -426,12 +440,13 @@ func _gather_world() -> Dictionary:
 			continue
 		act.append([i, it.state, it.global_position, it.global_rotation.y])
 	var its: Array = []
-	if act.size() <= 14:
+	# 四队AI与冷库门帘增加了世界包常驻数据，活动商品分片缩至10件以守住ENet MTU。
+	if act.size() <= 10:
 		its = act
 	else:
-		for j in 14:
+		for j in 10:
 			its.append(act[(_item_cursor + j) % act.size()])
-		_item_cursor = (_item_cursor + 14) % act.size()
+		_item_cursor = (_item_cursor + 10) % act.size()
 	var bs: Array = []
 	for buddy in main.warehouse_buddies:
 		if is_instance_valid(buddy):
@@ -439,7 +454,13 @@ func _gather_world() -> Dictionary:
 					buddy.body_root.rotation.x, buddy.imbalance, buddy.downed, buddy.active])
 		else:
 			bs.append(null)
-	return {"g": gs, "i": its, "b": bs}
+	var curtains: Array = []
+	for node in main.get_tree().get_nodes_in_group("freezer_curtain_strip"):
+		if node is RigidBody3D:
+			var strip := node as RigidBody3D
+			curtains.append([strip.global_position,
+					strip.global_basis.get_rotation_quaternion()])
+	return {"g": gs, "i": its, "b": bs, "fc": curtains}
 
 func _held_item_indices(actor: Actor) -> Array:
 	var out: Array = []
@@ -465,6 +486,14 @@ func ev_float(pos: Vector3, text: String, color: Color, size: int) -> void:
 @rpc("authority", "call_remote", "reliable")
 func ev_broadcast(text: String) -> void:
 	main.hud.broadcast(text)
+
+@rpc("authority", "call_remote", "reliable")
+func ev_central_black_friday_open() -> void:
+	main.open_central_black_friday(true)
+
+@rpc("authority", "call_remote", "reliable")
+func ev_team_entrances_open() -> void:
+	main.open_team_entrances(true)
 
 @rpc("authority", "call_remote", "reliable")
 func ev_shake(v: float) -> void:
