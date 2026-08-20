@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_vjyjn"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/其他商品/瓶子001.fbx" id="2_tvbpq"]
+
+[node name="瓶子001" type="Node3D" unique_id=610009444]
+script = ExtResource("1_vjyjn")
+metadata/source_size = Vector3(0.2831726, 0.9996948, 0.28422546)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/瓶子001.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/瓶子001.fbx"
+metadata/art_prefab = true
+metadata/display_name = "瓶子001"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=2104866557]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4998474, 0)
+
+[node name="瓶子001" type="Node3D" parent="SourceOrientation" unique_id=1402864150 instance=ExtResource("2_tvbpq")]

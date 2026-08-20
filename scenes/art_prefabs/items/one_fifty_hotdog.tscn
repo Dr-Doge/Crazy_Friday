@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_0lpvf"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/冷冻区/CostCow热狗.glb" id="2_bwmcn"]
+
+[node name="one_fifty_hotdog" type="Node3D" unique_id=135176162]
+script = ExtResource("1_0lpvf")
+material_profile_key = "item:one_fifty_hotdog"
+metadata/source_size = Vector3(0.9996581, 0.39815217, 0.36722153)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/CostCow热狗.glb"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/CostCow热狗.glb"
+metadata/art_prefab = true
+metadata/item_id = "one_fifty_hotdog"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1101376734]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.7640333e-05, 5.3539872e-05, 0.0003437847)
+
+[node name="CostCow热狗" type="Node3D" parent="SourceOrientation" unique_id=2106900616 instance=ExtResource("2_bwmcn")]

@@ -41,6 +41,7 @@ var name_label: Label3D         # 头顶名牌(玩家自定义昵称,染本人�
 var hand_l: MeshInstance3D      # 双手小球
 var hand_r: MeshInstance3D
 var hand_pose := "idle"         # idle / push / channel / carry,由子类每帧设置
+var cart_pointer: Node3D         # 贴地购物车方向箭头；不穿透场景几何
 var _hand_time := 0.0
 var _elbow_anim := 0.0
 var _down_timer := 0.0
@@ -111,7 +112,8 @@ func build_body(color: Color, title: String, height := 1.7) -> void:
 	name_label.font_size = 72
 	name_label.pixel_size = 0.004
 	name_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	name_label.no_depth_test = true
+	# 名牌必须参加深度测试：隔着货架、墙体和分区设施不再“透视报点”。
+	name_label.no_depth_test = false
 	name_label.modulate = color.lightened(0.45)
 	name_label.outline_size = 14
 	name_label.outline_modulate = Color(0, 0, 0, 0.85)
@@ -119,6 +121,66 @@ func build_body(color: Color, title: String, height := 1.7) -> void:
 	add_child(name_label)
 
 	add_to_group("characters")
+
+## 在角色脚边生成一枚世界空间箭头。箭头本身不碰撞，且会被地图遮挡；
+## 箭头根节点始终绕角色转动，尖端朝向该玩家绑定的购物车。
+func build_cart_pointer(color: Color) -> void:
+	if is_instance_valid(cart_pointer):
+		cart_pointer.queue_free()
+	cart_pointer = Node3D.new()
+	cart_pointer.name = "CartDirectionPointer"
+	add_child(cart_pointer)
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color.lightened(0.2)
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 1.35
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.no_depth_test = false
+
+	var shaft := MeshInstance3D.new()
+	var shaft_mesh := BoxMesh.new()
+	shaft_mesh.size = Vector3(0.13, 0.055, 0.76)
+	shaft_mesh.material = mat
+	shaft.mesh = shaft_mesh
+	shaft.position = Vector3(0.0, 0.0, -0.05)
+	cart_pointer.add_child(shaft)
+
+	var head := MeshInstance3D.new()
+	var head_mesh := CylinderMesh.new()
+	head_mesh.top_radius = 0.0
+	head_mesh.bottom_radius = 0.28
+	head_mesh.height = 0.42
+	head_mesh.radial_segments = 3
+	head_mesh.material = mat
+	head.mesh = head_mesh
+	head.rotation.x = -PI * 0.5
+	head.position = Vector3(0.0, 0.0, -0.62)
+	cart_pointer.add_child(head)
+	cart_pointer.visible = false
+
+func _update_cart_pointer() -> void:
+	if not is_instance_valid(cart_pointer):
+		return
+	# 每台机器只显示自己控制角色的箭头，避免把对手的弃车位置变成额外情报。
+	if self is Player:
+		var owner := self as Player
+		if owner.main != null and is_instance_valid(owner.main.player) and owner.main.player != owner:
+			cart_pointer.visible = false
+			return
+	if not is_instance_valid(cart):
+		cart_pointer.visible = false
+		return
+	var to_cart := cart.global_position - global_position
+	to_cart.y = 0.0
+	if to_cart.length_squared() < 0.04:
+		cart_pointer.visible = false
+		return
+	var direction := to_cart.normalized()
+	cart_pointer.visible = true
+	cart_pointer.position = direction * 1.45 + Vector3.UP * 0.12
+	cart_pointer.rotation.y = atan2(-direction.x, -direction.z)
 
 ## 改名(大厅改档案后即时生效)
 func set_display_name(t: String) -> void:
@@ -164,6 +226,7 @@ func actor_tick(delta: float) -> void:
 	taser_immunity_time = maxf(0.0, taser_immunity_time - delta)
 	_update_held_positions()
 	_update_hands(delta)
+	_update_cart_pointer()
 
 ## 角色意外掉进车斗时，短暂忽略该车碰撞并沿最近侧边推出。
 ## 这是连续物理解困窗口，不改变角色世界坐标，也不会把人瞬移到固定点。
@@ -251,6 +314,18 @@ func attach_cart() -> void:
 	# 车翻了?抓住的同时自动扶正
 	if cart.global_transform.basis.y.dot(Vector3.UP) < 0.8:
 		cart.right_up()
+	# 手持商品直接上车时自动落入自己的车斗，避免角色进入推车姿态后
+	# 商品仍黏在双手上。所有权变化仍由主机执行并通过普通商品状态包同步。
+	var load_index := 0
+	while not held.is_empty():
+		var item: Item = held.pop_front()
+		var col := load_index % 3
+		var row := int(load_index / 3.0)
+		var local_drop := Vector3((col - 1) * 0.22,
+				Cart.FLOOR_TOP + item.collider_half_height() + 0.24 + row * 0.16,
+				-0.18 + (load_index % 2) * 0.34)
+		item.set_free_at(cart.to_global(local_drop), Vector3(0.0, -0.35, 0.0))
+		load_index += 1
 	attached = true
 	cart.attached_agent = self
 	_saved_layer = collision_layer
@@ -281,6 +356,7 @@ func get_pushed_cart() -> Cart:
 func puppet_update(delta: float) -> void:
 	_update_held_positions()
 	_update_hands(delta)
+	_update_cart_pointer()
 
 ## 子类通用移动:wish为水平方向单位向量
 func apply_motion(delta: float, wish: Vector3, speed: float) -> void:
@@ -336,6 +412,10 @@ func apply_obscure(factor: float, duration: float) -> void:
 func perception_factor() -> float:
 	return obscure_factor if obscure_time > 0.0 else 1.0
 
+## 环境NPC可覆写更低的难受上限；玩家仍固定使用100。
+func max_imbalance_value() -> float:
+	return MAX_IMBALANCE
+
 func is_friendly_source(source: Node) -> bool:
 	if team_id < 0 or source == null:
 		return false
@@ -371,10 +451,11 @@ func add_imbalance(amount: float, _source: Node = null) -> void:
 		Main.float_text(self, global_position + Vector3.UP * 2.2, "稳如老狗!!", Color(0.4, 0.9, 1.0), 76)
 		return
 	_last_hit_time = Time.get_ticks_msec() * 0.001
+	var limit := max_imbalance_value()
 	var raw := imbalance + amount
-	imbalance = clampf(raw, 0.0, MAX_IMBALANCE)
-	if imbalance >= MAX_IMBALANCE:
-		last_overflow = raw - MAX_IMBALANCE
+	imbalance = clampf(raw, 0.0, limit)
+	if imbalance >= limit:
+		last_overflow = raw - limit
 		knockdown()
 
 ## 徒步角色缺少购物车保护：普通车撞按基础25的2倍结算；加速/技能冲撞直接满失衡倒地。
@@ -414,7 +495,7 @@ func knockdown() -> void:
 		return
 	downed = true
 	_down_timer = DOWN_TIME
-	imbalance = MAX_IMBALANCE
+	imbalance = max_imbalance_value()
 	drop_all_held(true)
 	var tw := create_tween()
 	tw.tween_property(body_root, "rotation:x", -PI * 0.5, 0.25).set_trans(Tween.TRANS_BOUNCE)
@@ -424,7 +505,7 @@ func knockdown() -> void:
 
 func _recover() -> void:
 	downed = false
-	imbalance = 30.0
+	imbalance = minf(30.0, max_imbalance_value() * 0.3)
 	_last_hit_time = Time.get_ticks_msec() * 0.001
 	var tw := create_tween()
 	tw.tween_property(body_root, "rotation:x", 0.0, 0.3)
@@ -532,4 +613,14 @@ func try_elbow(dir_override := Vector3.ZERO) -> bool:
 		if Main.instance != null:
 			Main.instance.shake_for(self, 0.25)
 			Main.instance.shake_for(best, 0.5)
+		return true
+	# 没有命中角色时继续检测生鲜区地面活物；它们不是Actor，单独由区域导演
+	# 结算夸张形变、闪烁与弹飞，避免把普通散落商品也变成可攻击目标。
+	if Main.instance != null and Main.instance.region_director != null \
+			and Main.instance.region_director.try_hit_live_good(self, fwd, best_d):
+		return true
+	# 贩卖机与墙体同属静态CSG，不在characters组内；没有命中角色/活鲜时再做近距锥形判定。
+	if Main.instance != null and Main.instance.region_director != null \
+			and Main.instance.region_director.try_hit_vending_machine(self, fwd, best_d):
+		return true
 	return true

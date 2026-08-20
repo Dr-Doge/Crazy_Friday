@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_fw11d"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/饮料零食区/怨气森林气泡水.fbx" id="2_01u2p"]
+
+[node name="sparkling_water" type="Node3D" unique_id=1868924747]
+script = ExtResource("1_fw11d")
+material_profile_key = "item:sparkling_water"
+metadata/source_size = Vector3(0.38919073, 1.0015869, 0.40853888)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/怨气森林气泡水.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/怨气森林气泡水.fbx"
+metadata/art_prefab = true
+metadata/item_id = "sparkling_water"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=546891367]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0015869141, -0.50079346, -0.0008392334)
+
+[node name="怨气森林气泡水" type="Node3D" parent="SourceOrientation" unique_id=144335416 instance=ExtResource("2_01u2p")]

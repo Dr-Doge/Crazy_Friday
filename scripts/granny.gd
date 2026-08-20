@@ -44,7 +44,7 @@ var main: Main
 var body_color := Color(0, 0, 0, 0)   # 由main指定,与自己的车同色
 var shopping_list: Array = []          # 购物清单(商品id)。大妈是真顾客,玩家才是投机者
 var is_team_bot := false               # 四队空席AI；仍复用成熟购物/战斗/结算状态机
-var acquired := {}                     # 已到手的清单项
+var acquired := {}                     # 已到手数量，支持队伍订单同一SKU需求多件
 var want_label: Label3D
 var bubble: Label3D                    # 对话气泡
 var _say_cd := 0.0
@@ -61,6 +61,9 @@ var target_checkout: Checkout = null
 var action_timer := 0.0
 var steal_timer := 0.0
 var checkout_deadline := 0.0   # 剩余时间低于此值就去结算
+var checkout_ready_reported := false
+var black_friday_targets: Array[String] = []
+var prep_locked := false              # 开局等待室锁；不关闭物理进程，避免开门事件漏唤醒
 var _charge_cd := 0.0
 var _aggression_timer := 0.0
 var _elbow_cd := 0.0
@@ -95,7 +98,7 @@ func _ready() -> void:
 	want_label.font_size = 38
 	want_label.pixel_size = 0.0035
 	want_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	want_label.no_depth_test = true
+	want_label.no_depth_test = false
 	want_label.modulate = Color(1, 0.85, 0.5)
 	want_label.outline_size = 8
 	want_label.outline_modulate = Color(0, 0, 0, 0.8)
@@ -108,7 +111,7 @@ func _ready() -> void:
 	bubble.font_size = 46
 	bubble.pixel_size = 0.0038
 	bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	bubble.no_depth_test = true
+	bubble.no_depth_test = false
 	bubble.modulate = Color(1, 1, 1)
 	bubble.outline_size = 12
 	bubble.outline_modulate = Color(0.15, 0.1, 0.25, 0.95)
@@ -134,12 +137,16 @@ func on_elbowed(_by: Actor) -> void:
 func is_running() -> bool:
 	return state in [GState.RAM, GState.CHASE, GState.BRAWL]
 
-## 对手从她这里偷走商品:该商品重新变回"想要"(acquired擦除),并当场追逐夺回。
+## 对手从她这里偷走商品:已到手数量减一，并当场追逐夺回。
 ## 追不上/商品进了对手车斗,常规决策的冲撞/偷窃会自然接管——记仇但不死盯。
 var chase_target: Actor = null
 
 func on_robbed(item: Item, thief: Actor) -> void:
-	acquired.erase(item.item_id)
+	var left := maxi(int(acquired.get(item.item_id, 0)) - 1, 0)
+	if left > 0:
+		acquired[item.item_id] = left
+	else:
+		acquired.erase(item.item_id)
 	_update_want_label()
 	say_from_pool(SAY_STOLEN)
 	if downed or _in_checkout_chain():
@@ -153,6 +160,15 @@ func _physics_process(delta: float) -> void:
 	actor_tick(delta)
 	if downed or main == null or main.game_over:
 		apply_motion(delta, Vector3.ZERO, 0.0)
+		return
+	if prep_locked:
+		# 保持脚本和物理帧存活，仅暂停AI决策。旧做法 set_physics_process(false)
+		# 会让一次漏掉的开门事件把AI永久留在入口，直到外力碰撞才看似“唤醒”。
+		apply_motion(delta, Vector3.ZERO, 0.0)
+		if attached and is_instance_valid(cart):
+			cart.linear_velocity = Vector3.ZERO
+			cart.angular_velocity = Vector3.ZERO
+			_stick_to_handle()
 		return
 	if taser_time > 0.0 or frozen_time > 0.0:
 		hand_pose = "stunned"
@@ -664,6 +680,14 @@ func _scanning_state(delta: float) -> void:
 	if give_up or finished:
 		_leave_world = finished
 		if finished:
+			if is_team_bot and not checkout_ready_reported and main != null:
+				checkout_ready_reported = true
+				main.on_team_bot_checkout_ready(self)
+			# NPC结算后直接送出通道并移除；不再依靠出口寻路，避免卡在闸机内。
+			if main != null:
+				main.teleport_checkout_agent_outside(self, target_checkout)
+			_despawn_and_leave()
+			return
 			# 结算完毕:开去出口离场,不再挡道
 			want_label.text = "买完收工~"
 			want_label.modulate = Color(0.55, 0.95, 0.6)
@@ -719,6 +743,26 @@ func rush_to(pos: Vector3) -> void:
 	_drive_path_to(pos)
 	state = GState.DRIVE
 
+func rush_to_black_friday(pos: Vector3, item_ids: Array[String]) -> void:
+	black_friday_targets = item_ids.duplicate()
+	rush_to(pos)
+
+func release_from_prep() -> void:
+	prep_locked = false
+	set_physics_process(true)
+	# 无论锁定前处在哪个临时状态，都从一次新决策开始，避免沿用指向门外的旧空路径。
+	state = GState.IDLE
+	path.clear()
+	path_idx = 0
+	_after_drive = ""
+	_after_walk = ""
+	_state_time = 0.0
+	_prev_state = GState.IDLE
+	if is_instance_valid(cart):
+		cart.sleeping = false
+		cart.linear_velocity = Vector3.ZERO
+		cart.angular_velocity = Vector3.ZERO
+
 func _on_knockdown() -> void:
 	_say_cd = 0.0   # 摔倒必喊
 	say_from_pool(SAY_KNOCKDOWN)
@@ -739,17 +783,28 @@ func _in_checkout_chain() -> bool:
 func _wanted(id: String) -> bool:
 	if id == "sale_box":
 		return true   # 特价箱人人都想要
-	return shopping_list.has(id) and not acquired.has(id)
+	if black_friday_targets.has(id):
+		return int(acquired.get(id, 0)) < 1
+	return shopping_list.has(id) and int(acquired.get(id, 0)) < shopping_list.count(id)
 
 func _list_complete() -> bool:
-	for id in shopping_list:
-		if not acquired.has(id):
+	var required_counts := _shopping_list_counts()
+	for id in required_counts:
+		if int(acquired.get(id, 0)) < int(required_counts[id]):
 			return false
 	return true
+
+func _shopping_list_counts() -> Dictionary:
+	var counts := {}
+	for id in shopping_list:
+		counts[id] = int(counts.get(id, 0)) + 1
+	return counts
 
 ## 购物欲无底洞:清单买齐就补1-2个新目标(上限9项,防止头顶字条无限变长)。
 ## 库存被抢空时补的目标只能靠偷/撞获得→大妈越到后期越有攻击性。
 func _refill_appetite() -> void:
+	if is_team_bot:
+		return
 	if shopping_list.size() >= 9:
 		return
 	var pool := Catalog.ids_of_cat(Catalog.CAT_NORMAL) + Catalog.ids_of_cat(Catalog.CAT_NEED)
@@ -774,17 +829,21 @@ func _actor_cart_has_wanted(rival: Actor) -> bool:
 	return rival_cart != null and _cart_has_wanted(rival_cart)
 
 func _register_acquired(it: Item) -> void:
-	if shopping_list.has(it.item_id):
-		acquired[it.item_id] = true
+	if shopping_list.has(it.item_id) or black_friday_targets.has(it.item_id):
+		acquired[it.item_id] = mini(int(acquired.get(it.item_id, 0)) + 1,
+				shopping_list.count(it.item_id))
 		_update_want_label()
 
 func _update_want_label() -> void:
 	if want_label == null:
 		return
 	var missing: Array = []
-	for id in shopping_list:
-		if not acquired.has(id):
-			missing.append(Catalog.ITEMS[id]["name"])
+	var required_counts := _shopping_list_counts()
+	for id in required_counts:
+		var remaining := int(required_counts[id]) - int(acquired.get(id, 0))
+		if remaining > 0:
+			var suffix := "×%d" % remaining if remaining > 1 else ""
+			missing.append(str(Catalog.ITEMS[id]["name"]) + suffix)
 	if missing.is_empty():
 		want_label.text = "买齐了!"
 		want_label.modulate = Color(0.55, 0.95, 0.6)

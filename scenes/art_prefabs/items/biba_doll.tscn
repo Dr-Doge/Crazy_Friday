@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_vfktw"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/玩具区/碧芭娃娃.fbx" id="2_2155u"]
+
+[node name="biba_doll" type="Node3D" unique_id=336858867]
+script = ExtResource("1_vfktw")
+material_profile_key = "item:biba_doll"
+metadata/source_size = Vector3(0.7069961, 0.99891055, 0.38412315)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/碧芭娃娃.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/碧芭娃娃.fbx"
+metadata/art_prefab = true
+metadata/item_id = "biba_doll"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=445457953]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0002373755, -6.4373016e-06, 0.00043329597)
+
+[node name="碧芭娃娃" type="Node3D" parent="SourceOrientation" unique_id=101826298 instance=ExtResource("2_2155u")]

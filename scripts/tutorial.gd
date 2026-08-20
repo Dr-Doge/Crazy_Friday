@@ -156,7 +156,7 @@ func _tick_drive(delta: float) -> void:
 	var p: Player = _m.player
 	match stage:
 		0:
-			_say("01-1  徒步自动使用75°第一人称 · WASD移动 · 鼠标观察  %s" % _progress(p.global_position.distance_to(_origin), MOVE_DIST))
+			_say("01-1  徒步使用第三人称 · WASD移动 · 鼠标观察  %s" % _progress(p.global_position.distance_to(_origin), MOVE_DIST))
 			if p.global_position.distance_to(_origin) >= MOVE_DIST:
 				_advance()
 		1:
@@ -204,7 +204,7 @@ func _tick_goods() -> void:
 	var p: Player = _m.player
 	match stage:
 		0:
-			_say("02-1  按F放车进入第一人称 · 白点对准卫生纸后长按E（右键可放大观察）")
+			_say("02-1  按F放车保持第三人称 · 白点对准卫生纸后长按E（右键可切换越肩观察）")
 			if marks.get("shelf:tissue", false):
 				_advance()
 		1:
@@ -332,7 +332,8 @@ func _prepare_lab_room() -> void:
 	_lab_cart.attached_agent = _lab_dummy
 
 func _prepare_lab_inventory() -> void:
-	for id in ["thermos", "detergent", "tissue", "drone"]:
+	# 卫生纸是订单货，不进入弹药轮盘；其余都是额外商品，供连续四步投掷训练。
+	for id in ["tissue", "cola", "detergent", "candy", "kettle", "drone"]:
 		_add_to_player_cart(id)
 	# 李洋技能需要目标车内有一件自己仍缺的商品。
 	_add_item_to_cart(_lab_cart, "drone")
@@ -342,7 +343,7 @@ func _tick_lab() -> void:
 	var p: Player = _m.player
 	match stage:
 		0:
-			_say("04-1  按F驾驶自己的购物车，再滚动滚轮选择车内商品")
+			_say("04-1  按F驾驶并滚动滚轮：轮盘只显示车内不在购物清单上的额外商品")
 			if p.attached and (p.throw_selection != _selection_start or marks.get("wheel", false)):
 				_advance()
 		1:

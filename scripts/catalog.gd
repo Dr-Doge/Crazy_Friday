@@ -2,7 +2,7 @@ class_name Catalog
 ## 商品目录与全局常量:分类、分区、计分、价格与黑五折扣、物理层位
 
 # 游戏版本号:改版时同步更新 export_presets.cfg 里的导出文件名
-const GAME_VERSION := "v0.18.2"
+const GAME_VERSION := "v0.19.0"
 
 # 商品分类(计分见策划案第十节)
 const CAT_NEED := "need"      # 必需品 15分,库存<需求,必然争抢
@@ -39,6 +39,9 @@ const ZONE_TOY := "toy"
 const ZONE_BEAUTY := "beauty"
 const ZONE_CLOTHING := "clothing"
 const ZONE_PREMIUM := "premium"
+
+## 生鲜生态商品只以地面活物形式生成，不进入普通货柜铺货池。
+const LIVE_FRESH_IDS := ["king_crab", "xianyu_fish"]
 
 const SHOPPING_ZONES := [
 	ZONE_FRESH, ZONE_FROZEN, ZONE_SNACK, ZONE_TOY,
@@ -179,6 +182,9 @@ const L_WORLD := 1
 const L_CHAR := 2
 const L_CART := 4
 const L_ITEM := 8
+# 冷冻软门帘只从自身一侧感知角色/购物车并接受推力；角色和车辆的碰撞掩码
+# 不包含此层，因此穿行时不会被布条卡住。
+const L_CURTAIN := 16
 
 static var _font: SystemFont
 static var _font_bold: SystemFont

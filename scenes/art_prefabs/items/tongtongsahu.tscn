@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_2gumc"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/玩具区/TongTongSahu木偶摆件.fbx" id="2_4qtjk"]
+
+[node name="tongtongsahu" type="Node3D" unique_id=1247387654]
+script = ExtResource("1_2gumc")
+material_profile_key = "item:tongtongsahu"
+metadata/source_size = Vector3(0.40874526, 0.9986862, 0.3835832)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/TongTongSahu木偶摆件.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/TongTongSahu木偶摆件.fbx"
+metadata/art_prefab = true
+metadata/item_id = "tongtongsahu"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1288816576]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0006201863, -0.00018274784, 0.0010455698)
+
+[node name="TongTongSahu木偶摆件" type="Node3D" parent="SourceOrientation" unique_id=2117479626 instance=ExtResource("2_4qtjk")]

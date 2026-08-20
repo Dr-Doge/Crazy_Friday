@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_o25i1"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/玩具区/激动武士矮达.fbx" id="2_4b02j"]
+
+[node name="lego" type="Node3D" unique_id=1312707484]
+script = ExtResource("1_o25i1")
+material_profile_key = "item:lego"
+metadata/source_size = Vector3(0.7663914, 0.999056, 0.57252705)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/激动武士矮达.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/激动武士矮达.fbx"
+metadata/art_prefab = true
+metadata/item_id = "lego"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=536658018]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.00041919947, -0.00052562356, 0.00016123056)
+
+[node name="激动武士矮达" type="Node3D" parent="SourceOrientation" unique_id=1608901365 instance=ExtResource("2_4b02j")]

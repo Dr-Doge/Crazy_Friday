@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_onkv7"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/饮料零食区/喜事桶装薯片.fbx" id="2_wuxdp"]
+
+[node name="chips" type="Node3D" unique_id=1417774381]
+script = ExtResource("1_onkv7")
+material_profile_key = "item:chips"
+metadata/source_size = Vector3(0.99341154, 0.8920803, 0.999465)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/喜事桶装薯片.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/喜事桶装薯片.fbx"
+metadata/art_prefab = true
+metadata/item_id = "chips"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1606774288]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0009866953, 5.7518482e-05, -0.00039595366)
+
+[node name="喜事桶装薯片" type="Node3D" parent="SourceOrientation" unique_id=1372566865 instance=ExtResource("2_wuxdp")]

@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_ahcbx"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/冷冻区/尚方宝剑咸鱼.fbx" id="2_3s12e"]
+
+[node name="salted_sword" type="Node3D" unique_id=985276107]
+script = ExtResource("1_ahcbx")
+material_profile_key = "item:salted_sword"
+metadata/source_size = Vector3(1.000371, 0.18916827, 0.08986916)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/尚方宝剑咸鱼.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/尚方宝剑咸鱼.fbx"
+metadata/art_prefab = true
+metadata/item_id = "salted_sword"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=519524436]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.201599e-05, -0.0001250878, -7.891655e-05)
+
+[node name="尚方宝剑咸鱼" type="Node3D" parent="SourceOrientation" unique_id=1060636823 instance=ExtResource("2_3s12e")]

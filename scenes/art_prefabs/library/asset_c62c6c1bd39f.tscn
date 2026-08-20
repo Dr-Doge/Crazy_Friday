@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_8iknj"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/场景3d资产/管道01.fbx" id="2_vir4o"]
+
+[node name="管道01" type="Node3D" unique_id=239747485]
+script = ExtResource("1_8iknj")
+metadata/source_size = Vector3(1.0000917, 0.33654785, 0.9767458)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/管道01.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/管道01.fbx"
+metadata/art_prefab = true
+metadata/display_name = "管道01"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1462604198]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0002593994, -0.16827393, 6.1035156e-05)
+
+[node name="管道01" type="Node3D" parent="SourceOrientation" unique_id=479084321 instance=ExtResource("2_vir4o")]

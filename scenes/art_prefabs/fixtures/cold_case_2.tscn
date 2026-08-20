@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_qppe8"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜002（带材质）.fbx" id="2_ae84v"]
+
+[node name="cold_case_2" type="Node3D" unique_id=2075290861]
+script = ExtResource("1_qppe8")
+material_profile_key = "cold_case_2"
+metadata/source_size = Vector3(1, 0.60561395, 0.55626774)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜002（带材质）.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜002（带材质）.fbx"
+metadata/art_prefab = true
+metadata/fixture_kind = "cold_case_2"
+metadata/asset_kind = "fixture"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=817955765]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.9802322e-08, -0.30280697, 0)
+
+[node name="冰柜002（带材质）" type="Node3D" parent="SourceOrientation" unique_id=16058805 instance=ExtResource("2_ae84v")]

@@ -488,6 +488,10 @@ func ev_broadcast(text: String) -> void:
 	main.hud.broadcast(text)
 
 @rpc("authority", "call_remote", "reliable")
+func ev_vending_hit(machine_name: String) -> void:
+	main.play_vending_hit_visual(machine_name, true)
+
+@rpc("authority", "call_remote", "reliable")
 func ev_central_black_friday_open() -> void:
 	main.open_central_black_friday(true)
 

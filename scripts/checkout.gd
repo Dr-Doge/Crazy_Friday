@@ -117,29 +117,31 @@ func setup_oriented(spec: Dictionary, index: int) -> Array:
 
 	sign_label = Label3D.new()
 	sign_label.name = "Sign"
-	sign_label.text = "自助收银 %d" % index
+	sign_label.text = "%02d号 · 开放" % index
 	sign_label.font = Catalog.ui_font()
-	sign_label.font_size = 90
-	sign_label.pixel_size = 0.006
+	sign_label.font_size = 58
+	sign_label.pixel_size = 0.004
 	sign_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	sign_label.no_depth_test = true
+	sign_label.no_depth_test = false
 	sign_label.modulate = Color(0.2, 0.75, 0.35)
 	sign_label.outline_size = 12
-	sign_label.position = _lane_point(_gate_in_z, 3.0)
-	add_child(sign_label)
+	# 开关状态直接印在入口挡板上，不再悬浮到车道上空；挡板升起时文字随门移动。
+	# local -Z是车从卖场驶来时看到的入口正面。
+	sign_label.position = Vector3(0.0, 0.0, -0.13)
+	gate.add_child(sign_label)
 	return rects
 
 ## 打烊冲刺:通道关闭
 func force_close() -> void:
 	lane_open = false
-	sign_label.text = "已关闭"
+	sign_label.text = "%02d号 · 关闭" % lane_index
 	sign_label.modulate = Color(0.9, 0.25, 0.2)
 
 func set_round_open(open: bool) -> void:
 	lane_open = open
 	if not is_instance_valid(sign_label):
 		return
-	sign_label.text = "自助收银 %d · 开放" % lane_index if open else "自助收银 %d · 本局关闭" % lane_index
+	sign_label.text = "%02d号 · 开放" % lane_index if open else "%02d号 · 关闭" % lane_index
 	sign_label.modulate = Color(0.2, 0.9, 0.38) if open else Color(0.9, 0.25, 0.2)
 
 func _physics_process(delta: float) -> void:
@@ -237,10 +239,12 @@ func _physics_process(delta: float) -> void:
 			if Main.instance != null:
 				Main.instance.net_item_gone_notify(it)
 			it.queue_free()
-	elif _was_scanning:
+	elif agent is Player and not bool(scanning_cart.get_meta("team_checkout_entered", false)):
+		# 队伍结算要求的是两名队员都进入收银通道；没带货的队员同样可以报到。
+		# 车体元数据防止空车停在扫描位时每秒重复发出结算信号。
 		_was_scanning = false
-		if agent is Player:
-			lane_settled.emit(agent)
+		scanning_cart.set_meta("team_checkout_entered", true)
+		lane_settled.emit(agent)
 
 ## NPC离场时立即释放占用与免战状态，不必等到下一帧Area重叠列表刷新。
 func release_cart(cart: Cart) -> void:

@@ -1,5 +1,5 @@
 class_name CameraRig extends Node3D
-## 徒步第一人称 / 驾车第三人称混合相机。
+## 徒步与驾车共用第三人称相机，按住右键平滑切入右肩越肩瞄准。
 ## 本节点即 pivot,层级:CameraRig → SpringArm3D(防穿墙) → Camera3D。
 ##
 ## pivot 关闭物理插值:它在 _process 里用 lerp 自己平滑,再叠一层插值会与
@@ -25,7 +25,7 @@ const MIN_WORLD_AIM_DISTANCE := 10.0 # 近处场景不再把会聚点吸回角�
 const NEAR_LOD_HIDE_DISTANCE := 2.0
 const NEAR_LOD_SHOW_DISTANCE := 2.65
 const NEAR_LOD_SCAN_INTERVAL := 0.06
-const SENS := 0.0025            # 鼠标灵敏度：降低约17%，第一人称精确瞄准更稳定
+const DEFAULT_SENS := 0.0025    # 鼠标灵敏度基准；准备阶段滑块调整倍率
 const PITCH_MIN := -1.15        # 俯角上限
 const PITCH_MAX := 0.35         # 仰角上限
 const FOLLOW_LAMBDA := 10.0     # 跟随平滑系数(越大越跟手)
@@ -36,6 +36,7 @@ const SPAWN_POS := Vector3(MapLayout.PLAYER_SPAWN.x, 1.5, MapLayout.PLAYER_SPAWN
 var yaw := 0.0
 var pitch := -0.30
 var shake := 0.0
+var mouse_sensitivity := DEFAULT_SENS
 var spring: SpringArm3D
 var camera: Camera3D
 var _near_lod_timer := 0.0
@@ -240,21 +241,6 @@ func _rebuild_first_person_held_items(actor: Player) -> void:
 		visual.position.x = (float(i) - (valid_items.size() - 1) * 0.5) * 0.22
 		visual.rotation.y = (float(i) - 0.5) * 0.08 if valid_items.size() > 1 else 0.0
 		_fp_held_root.add_child(visual)
-		# 第一人称使用的是相机内复制体，也必须把名称印在包装表面，
-		# 否则拿起后会从“有包装字”突然退化成无标识色块。
-		var package_name := Label3D.new()
-		package_name.text = item.display_name
-		package_name.font = Catalog.ui_font_bold()
-		package_name.font_size = 42
-		package_name.pixel_size = minf(0.0018,
-				box.size.x / maxf(100.0, item.display_name.length() * 26.0))
-		package_name.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-		package_name.no_depth_test = true
-		package_name.modulate = Color(Catalog.ITEMS[item.item_id]["color"]).darkened(0.55)
-		package_name.outline_size = 8
-		package_name.outline_modulate = Color(1, 1, 1, 0.92)
-		package_name.position.z = box.size.z * 0.5 + 0.002
-		visual.add_child(package_name)
 
 func _clear_first_person_held_items() -> void:
 	for item in _fp_hidden_world_items:
@@ -317,8 +303,14 @@ func throw_preview_visible() -> bool:
 
 ## 鼠标环绕视角
 func look(rel: Vector2) -> void:
-	yaw -= rel.x * SENS
-	pitch = clampf(pitch - rel.y * SENS, PITCH_MIN, PITCH_MAX)
+	yaw -= rel.x * mouse_sensitivity
+	pitch = clampf(pitch - rel.y * mouse_sensitivity, PITCH_MIN, PITCH_MAX)
+
+func set_sensitivity_multiplier(multiplier: float) -> void:
+	mouse_sensitivity = DEFAULT_SENS * clampf(multiplier, 0.4, 2.5)
+
+func sensitivity_multiplier() -> float:
+	return mouse_sensitivity / DEFAULT_SENS
 
 ## 碰撞震动(可叠加,封顶)
 func add_shake(v: float) -> void:

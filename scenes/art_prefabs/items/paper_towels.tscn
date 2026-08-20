@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_wi4xu"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/饮料零食区/阿诺牌蛋白粉.fbx" id="2_mfcql"]
+
+[node name="paper_towels" type="Node3D" unique_id=122796549]
+script = ExtResource("1_wi4xu")
+material_profile_key = "item:paper_towels"
+metadata/source_size = Vector3(0.6467996, 1.0009586, 0.744498)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/阿诺牌蛋白粉.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/阿诺牌蛋白粉.fbx"
+metadata/art_prefab = true
+metadata/item_id = "paper_towels"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1419678447]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0005668402, -0.00084269047, -0.00015556812)
+
+[node name="阿诺牌蛋白粉" type="Node3D" parent="SourceOrientation" unique_id=1058853998 instance=ExtResource("2_mfcql")]

@@ -1,5 +1,5 @@
 class_name OrderProbe extends RefCounted
-## 混合订单专项回归：结构、类别计数、Q候选、结算匹配、特价替代与HUD。
+## 队伍点名订单专项回归：25件/四专区结构、共享引用、库存可完成性与折叠UI。
 
 var _m: Main
 var _fails: Array[String] = []
@@ -34,109 +34,126 @@ func setup() -> void:
 			and not Catalog.is_fragile("cola"),
 			"分区特性：家电区普通与大件商品均标记易碎，其他分区不误伤")
 	var list: Array = _m.pdata[0]["list"]
-	var exacts: Array = list.filter(func(e): return not OrderSystem.is_category(e))
-	var categories: Array = list.filter(func(e): return OrderSystem.is_category(e))
-	_check(exacts.size() == 2 and categories.size() == 4,
-			"订单结构：2条明确指定商品 + 4条分区类别计数")
-	_check(OrderSystem.required_total(list) == 12,
-			"订单总量：开局共享单要求12件商品，中央压轴开放后再按实存追加")
-	var category_units := 0
-	var zones := {}
-	for entry in categories:
-		category_units += OrderSystem.required(entry)
-		zones[OrderSystem.zone(entry)] = true
-	_check(category_units == 10 and zones.size() == 4,
-			"类别结构：从八个独立常规专区错位选四区，按3+3+2+2分配十件")
-	var exact_normal := true
-	for entry in exacts:
-		exact_normal = exact_normal and entry["cat"] == Catalog.CAT_NORMAL
-	_check(exact_normal, "点名项目：开局保留少量明确SKU制造交叉竞争")
-	_check(_m.team_data.size() == 4 and _m.team_bots.size() == 7 \
-			and _m.pdata[0]["list"] == _m.team_data[_m.player.team_id]["list"],
-			"四队框架：单人测试空缺的7个席位由AI补齐，真人使用队伍共享订单")
+	_check(not list.is_empty() and list.all(func(e): return not OrderSystem.is_category(e)),
+			"订单结构：正式局只包含指定商品名称，不再生成类别任选项目")
+	_check(OrderSystem.required_total(list) == Main.TEAM_ORDER_TOTAL,
+			"订单总量：每队共享单从真实上架库存随机抽取固定25件，允许同品重复")
+	var all_teams_valid := _m.team_data.size() == 4
+	var zone_sets: Array = []
+	for team_id in _m.team_data.size():
+		var team: Dictionary = _m.team_data[team_id]
+		var team_list: Array = team["list"]
+		var order_zones: Array = team.get("order_zones", [])
+		var actual_zones := {}
+		for entry in team_list:
+			actual_zones[OrderSystem.zone(entry)] = true
+		zone_sets.append(actual_zones.keys())
+		all_teams_valid = all_teams_valid and OrderSystem.required_total(team_list) == 25 \
+				and team_list.all(func(e): return not OrderSystem.is_category(e)) \
+				and order_zones.size() == 4 and actual_zones.size() == 4 \
+				and order_zones.has(Main.TEAM_ENTRY_ORDER_ZONES[team_id])
+	_check(all_teams_valid,
+			"四队订单：每队25件只来自4个专区，且保底包含本队入口首区")
+	var overlap_valid := true
+	for team_id in 4:
+		var overlap_count := 0
+		for zone in zone_sets[team_id]:
+			for other_id in 4:
+				if other_id != team_id and (zone_sets[other_id] as Array).has(zone):
+					overlap_count += 1
+					break
+		overlap_valid = overlap_valid and overlap_count >= 2
+	_check(overlap_valid, "专区竞争：每队至少有2个订单专区与其他队重合")
+	_check(_m.team_bots.size() == 7 and is_same(_m.pdata[0]["list"],
+			_m.team_data[_m.player.team_id]["list"]),
+			"队内共享：真人与AI队友读取同一份订单对象和实时交付进度")
+	var bot_split_valid := true
+	for team_id in 4:
+		var slot_zero := _m._team_bot_targets(team_id, 0)
+		var slot_one := _m._team_bot_targets(team_id, 1)
+		var combined := slot_zero + slot_one
+		bot_split_valid = bot_split_valid and combined.size() == Main.TEAM_ORDER_TOTAL
+		for entry in _m.team_data[team_id]["list"]:
+			bot_split_valid = bot_split_valid \
+					and combined.count(str(entry["id"])) == OrderSystem.required(entry)
+	_check(bot_split_valid,
+			"AI协作：同一商品的多件需求按队内两个席位拆分，合计覆盖完整25件")
+	var checkout_slots: Array = _m.team_data[0].get("checkout_ready_slots", [])
+	var first_waits := not _m._mark_team_checkout_ready(0, 0)
+	var second_finishes := _m._mark_team_checkout_ready(0, 1)
+	_check(checkout_slots.size() == 2 and first_waits and second_finishes,
+			"队伍结算：首名队员只登记等待，两个席位都进入收银台后才完成")
+	_m.team_data[0]["checkout_ready_slots"] = [false, false]
 
-	var count_two: Dictionary = {}
-	for entry in categories:
-		if OrderSystem.required(entry) == 2:
-			count_two = entry
-			break
-	var candidates := OrderSystem.candidate_ids(count_two)
-	_check(candidates.size() >= 2, "类别候选：同一订单允许多种商品完成")
-	var usable: Array[String] = []
-	for id in candidates:
-		var is_exact := exacts.any(func(e): return str(e["id"]) == id)
-		if Catalog.ITEMS[id]["cat"] == Catalog.CAT_NORMAL and not is_exact:
-			usable.append(id)
-		if usable.size() >= 2:
-			break
-	var held_items: Array[Item] = []
-	for id in usable:
-		var it := Item.create(id)
-		_m.add_child(it)
-		_m.all_items.append(it)
-		_m.player.take_item(it)
-		held_items.append(it)
-	var missing_with_two := _m.missing_list_ids(0)
-	var category_still_missing := false
-	for id in candidates:
-		var is_exact := exacts.any(func(e): return str(e["id"]) == id)
-		if not is_exact:
-			category_still_missing = category_still_missing or missing_with_two.has(id)
-	_check(_m._owned_matching_count(_m.player, count_two) == 2 and not category_still_missing,
-			"Q雷达：队伍库存达到类别要求后，不再泛亮该区非点名候选")
-	_m.player.drop_all_held(false)
+	var shelf_stock := {}
+	for item in _m.all_items:
+		if is_instance_valid(item) and item.state == Item.ItemState.SHELVED:
+			shelf_stock[item.item_id] = int(shelf_stock.get(item.item_id, 0)) + 1
+	var globally_required := {}
+	for team in _m.team_data:
+		for entry in team["list"]:
+			var id := str(entry["id"])
+			globally_required[id] = int(globally_required.get(id, 0)) + OrderSystem.required(entry)
+	var stock_safe := true
+	for id in globally_required:
+		stock_safe = stock_safe and int(globally_required[id]) <= int(shelf_stock.get(id, 0))
+	_check(stock_safe, "库存校验：四队全部100件需求合计不超过本局真实上架库存")
+
+	var exact := list[0] as Dictionary
+	var missing := _m.missing_list_ids(0)
 	var recommendations := _m._locate_recommendations(0)
-	var category_recommendations := 0
-	var recommended_ids := {}
-	for item_index in recommendations:
-		var recommended: Item = _m.all_items[item_index]
-		if OrderSystem.matches(count_two, recommended.item_id):
-			category_recommendations += 1
-			recommended_ids[recommended.item_id] = true
-	_check(category_recommendations > 0 \
-			and recommended_ids.size() >= mini(2, category_recommendations),
-			"Q雷达：类别单优先展示不同SKU，明确点名则保留全部真实库存高亮")
+	var q_found_exact := recommendations.any(func(item_index: int) -> bool:
+		return _m.all_items[item_index].item_id == str(exact["id"]))
+	_check(missing.has(str(exact["id"])) and q_found_exact,
+			"Q雷达：缺货集合与高亮候选都直接指向清单上的指定SKU")
 
-	for id in usable:
-		var scanned := Item.create(id)
-		_m.add_child(scanned)
-		_m._on_item_scanned(scanned, _m.player)
-	_check(OrderSystem.is_complete(count_two) and OrderSystem.delivered(count_two) == 2,
-			"收银匹配：不同商品可累计完成同一类别计数")
-
-	var exact := exacts[0] as Dictionary
-	var wrong_need := ""
-	for id in Catalog.ids_of_cat(Catalog.CAT_NEED):
-		if id != exact["id"]:
-			wrong_need = id
+	var ordered_ids := list.map(func(e): return str(e["id"]))
+	var wrong_id := ""
+	for id in Catalog.ITEMS:
+		if id != "sale_box" and not ordered_ids.has(id):
+			wrong_id = id
 			break
-	var wrong := Item.create(wrong_need)
+	var target_before := OrderSystem.delivered(exact)
+	var wrong := Item.create(wrong_id)
 	_m.add_child(wrong)
 	_m._on_item_scanned(wrong, _m.player)
-	_check(not OrderSystem.is_complete(exact),
-			"点名项目：同为爆款的其他商品不能顶替指定商品")
+	_check(OrderSystem.delivered(exact) == target_before,
+			"点名匹配：任何其他商品都不能顶替当前指定SKU")
+	for i in OrderSystem.required(exact):
+		var scanned := Item.create(str(exact["id"]))
+		_m.add_child(scanned)
+		_m._on_item_scanned(scanned, _m.player)
+	_check(OrderSystem.is_complete(exact), "共享结算：同名商品按数量累计直至该行完成")
 
-	var before_sale := 0
-	for entry in categories:
-		before_sale += OrderSystem.delivered(entry)
+	var before_sale := OrderSystem.delivered_total(list)
 	var sale := Item.create("sale_box")
 	_m.add_child(sale)
 	_m._on_item_scanned(sale, _m.player)
-	var after_sale := 0
-	for entry in categories:
-		after_sale += OrderSystem.delivered(entry)
-	_check(after_sale == before_sale + 1 \
-			and not OrderSystem.is_complete(exact),
-			"特价箱：只顶替一个类别单位，不跳过点名爆款")
+	_check(OrderSystem.delivered_total(list) == before_sale,
+			"点名订单：特价箱和非清单货只能计价，不能替代指定需求")
 
 	var rows := _m._build_rows(0)
-	var has_category_progress := false
+	var has_named_progress := false
 	for row in rows:
-		if not row.get("header", false) and "类别×" in str(row.get("text", "")) \
-				and "已交付" in str(row.get("text", "")):
-			has_category_progress = true
+		if not row.get("header", false) and str(exact["name"]) in str(row.get("text", "")):
+			has_named_progress = true
 			break
-	_check(has_category_progress, "HUD：类别订单显示需求数量与交付进度")
+	_check(has_named_progress, "HUD：共享清单逐行显示指定商品名称和数量进度")
+	var compact_rows := ListRows.present(rows, "", false)
+	var player_team := int(_m.pdata[0].get("team_id", 0))
+	var current_zone := str((_m.team_data[player_team]["order_zones"] as Array)[0])
+	var local_rows := ListRows.present(rows, current_zone, false)
+	var expanded_rows := ListRows.present(rows, "", true)
+	_check(compact_rows.size() == 4 \
+			and compact_rows.all(func(row): return row.get("header", false) \
+					and row.get("collapsed", false) and "仍需" in str(row.get("text", ""))) \
+			and local_rows.size() > compact_rows.size() and local_rows.size() < expanded_rows.size(),
+			"HUD折叠：仅脚下专区展开，其余三区压缩为专区名与剩余需求件数")
+	_check(expanded_rows.size() == rows.size() and InputMap.has_action("show_orders"),
+			"Tab总览：按住Tab时恢复全部专区订单明细，松开后可重新折叠")
+	_check(ListRows.is_cart_secured(false, {"hand": 0, "cart": 1}) \
+			and not ListRows.is_cart_secured(false, {"hand": 2, "cart": 0}),
+			"HUD勾选：队内任意购物车出现1件需求品即打勾划线，单纯手持不触发")
 	_m.get_tree().create_timer(0.15).timeout.connect(_report)
 
 func _check(ok: bool, msg: String) -> void:

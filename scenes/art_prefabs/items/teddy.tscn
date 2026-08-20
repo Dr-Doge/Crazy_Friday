@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_4uv10"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/玩具区/拉肚肚.fbx" id="2_0uaii"]
+
+[node name="teddy" type="Node3D" unique_id=565440440]
+script = ExtResource("1_4uv10")
+material_profile_key = "item:teddy"
+metadata/source_size = Vector3(0.7133175, 0.99993324, 0.6587571)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/拉肚肚.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/拉肚肚.fbx"
+metadata/art_prefab = true
+metadata/item_id = "teddy"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1042798022]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0002722144, -9.7721815e-05, 0.00047791004)
+
+[node name="拉肚肚" type="Node3D" parent="SourceOrientation" unique_id=1317262440 instance=ExtResource("2_0uaii")]

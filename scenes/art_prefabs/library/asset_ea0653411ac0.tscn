@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_nvf1v"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/场景3d资产/钢管01.fbx" id="2_a5loj"]
+
+[node name="钢管01" type="Node3D" unique_id=2064725440]
+script = ExtResource("1_nvf1v")
+metadata/source_size = Vector3(1.0000001, 0.11195755, 0.07895282)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/钢管01.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/钢管01.fbx"
+metadata/art_prefab = true
+metadata/display_name = "钢管01"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1838282670]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.1035156e-05, -0.055978775, 8.577481e-05)
+
+[node name="钢管01" type="Node3D" parent="SourceOrientation" unique_id=1814561984 instance=ExtResource("2_a5loj")]

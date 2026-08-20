@@ -26,11 +26,8 @@ static func create(root: Node3D, pos: Vector3, zone_radius := Catalog.SCATTER_RA
 func _build_visual() -> void:
 	_cloud_root = Node3D.new()
 	add_child(_cloud_root)
-	var colors := [
-		Color(0.78, 0.68, 0.46, 0.58),
-		Color(0.72, 0.74, 0.68, 0.52),
-		Color(0.42, 0.36, 0.24, 0.56),
-	]
+	var colors := [Color(1.0, 0.82, 0.92, 0.34), Color(1.0, 0.72, 0.87, 0.28),
+			Color(0.95, 0.62, 0.82, 0.30)]
 	for i in 32:
 		var mi := MeshInstance3D.new()
 		var sphere := SphereMesh.new()
@@ -49,16 +46,28 @@ func _build_visual() -> void:
 		_cloud_root.add_child(mi)
 
 	var lb := Label3D.new()
-	lb.text = "散落遮挡"
+	lb.text = "粉雾遮蔽"
 	lb.font = Catalog.ui_font_bold()
 	lb.font_size = 40
 	lb.pixel_size = 0.003
 	lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lb.modulate = Color(1.0, 0.88, 0.58)
+	lb.modulate = Color(1.0, 0.82, 0.92)
 	lb.outline_size = 10
 	lb.outline_modulate = Color(0.08, 0.06, 0.03, 0.9)
 	lb.position = Vector3(0, 1.45, 0)
 	_cloud_root.add_child(lb)
+	var volume := FogVolume.new()
+	volume.name = "ScatterBeautyFog"
+	volume.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+	volume.size = Vector3(radius * 2.0, 4.0, radius * 2.0)
+	volume.position.y = 2.0
+	var fog := FogMaterial.new()
+	fog.density = 0.62
+	fog.albedo = Color(1.0, 0.84, 0.92)
+	fog.emission = Color(0.32, 0.13, 0.22)
+	fog.edge_fade = 1.6
+	volume.material = fog
+	add_child(volume)
 
 func _physics_process(delta: float) -> void:
 	lifetime -= delta

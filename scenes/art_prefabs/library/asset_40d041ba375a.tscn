@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_rd7qg"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾02.fbx" id="2_is3su"]
+
+[node name="皮皮虾02" type="Node3D" unique_id=1221189652]
+script = ExtResource("1_rd7qg")
+metadata/source_size = Vector3(0.99783766, 0.5110203, 0.5398032)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾02.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾02.fbx"
+metadata/art_prefab = true
+metadata/display_name = "皮皮虾02"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=166213702]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0013195872, -0.00032916665, -3.1471252e-05)
+
+[node name="皮皮虾02" type="Node3D" parent="SourceOrientation" unique_id=2020650553 instance=ExtResource("2_is3su")]

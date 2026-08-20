@@ -4,6 +4,7 @@ class_name Hud extends CanvasLayer
 
 signal npc_count_changed(count: int)
 signal no_cd_changed(on: bool)   # 开发者模式:所有技能无冷却
+signal mouse_sensitivity_changed(multiplier: float)
 signal start_game_pressed
 signal start_tutorial_pressed
 signal host_pressed
@@ -14,6 +15,7 @@ signal quit_pressed           # 主界面:退出游戏
 
 var time_label: Label
 var phase_label: Label
+var prep_countdown_label: Label
 var score_label: Label
 var list_vbox: VBoxContainer
 var list_rows: Array[RichTextLabel] = []
@@ -35,6 +37,9 @@ var menu: StartMenu           # 开始界面 + 联机大厅
 var tutorial_label: Label     # 教学指引大字
 var controls_hint: Label      # 常规局右上完整键位表；教学中由逐步指引替代
 var prompt_label: Label
+var sensitivity_panel: Control
+var sensitivity_slider: HSlider
+var sensitivity_value_label: Label
 var broadcast_panel: PanelContainer
 var broadcast_label: Label
 var stamina_fill: ColorRect
@@ -48,6 +53,14 @@ var threat_arrows: Array[Label] = []
 var item_wheel: Control            # 右下购物车商品投掷轮盘
 var crosshair: Control             # 屏幕中心白点准星
 var obscure_overlay: Control       # 散落遮挡类商品的本机视野效果
+var minimap: Control
+var aim_info: Control
+var _minimap_bounds: Dictionary = {}
+var _aimed_item: Item
+var _aimed_screen_pos := Vector2.ZERO
+var _skill_text := ""
+var _minimap_style: StyleBoxFlat
+var _aim_style: StyleBoxFlat
 var _wheel_items: Array = []
 var _wheel_selected := 0
 var _wheel_available := false
@@ -104,6 +117,21 @@ func _ready() -> void:
 	phase_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.5))
 	top.add_child(phase_label)
 
+	# 开局准备倒计时单独占据画面中央，避免与顶部比赛计时混在一起。
+	prep_countdown_label = Label.new()
+	prep_countdown_label.text = ""
+	prep_countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	prep_countdown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	prep_countdown_label.add_theme_font_override("font", Catalog.ui_font_bold())
+	prep_countdown_label.add_theme_font_size_override("font_size", 168)
+	prep_countdown_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.18))
+	prep_countdown_label.add_theme_color_override("font_outline_color", Color(0.08, 0.04, 0.0, 0.9))
+	prep_countdown_label.add_theme_constant_override("outline_size", 18)
+	prep_countdown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	prep_countdown_label.visible = false
+	root.add_child(prep_countdown_label)
+	prep_countdown_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
 	# 超市大喇叭:乡土大广告精神污染大红字,破屏滚动播报
 	marquee = Label.new()
 	marquee.text = ""
@@ -137,37 +165,40 @@ func _ready() -> void:
 	# 底部:技能状态+体力/失衡
 	var bars := VBoxContainer.new()
 	skill_label = Label.new()
-	skill_label.text = "Q 找货雷达:就绪"
-	skill_label.add_theme_font_size_override("font_size", 24)
-	skill_label.add_theme_color_override("font_color", Color(0.55, 0.95, 0.6))
-	skill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	bars.add_child(skill_label)
-	# 技能冷却圆环(塞尔达体力轮风格:满时淡隐,cd中亮起并随进度消减)
+	skill_label.visible = false
+	bars.add_child(skill_label) # 隐藏兼容节点仍挂树，避免成为未释放孤儿
+	# 技能冷却环独立放在两根状态条右侧。
 	cd_wheel = Control.new()
-	cd_wheel.custom_minimum_size = Vector2(0, 56)
+	cd_wheel.custom_minimum_size = Vector2(150, 92)
 	cd_wheel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cd_wheel.draw.connect(_draw_cd_wheel)
-	bars.add_child(cd_wheel)
 	stamina_fill = _make_bar(bars, "体力槽 (Shift冲刺消耗)", Color(0.35, 0.85, 0.4))
 	imbalance_fill = _make_bar(bars, "失衡值 (满100倒地翻车)", Color(0.95, 0.45, 0.2))
+	var status_row := HBoxContainer.new()
+	status_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	status_row.add_theme_constant_override("separation", 18)
+	status_row.add_child(bars)
+	status_row.add_child(cd_wheel)
 	var bars_wrap := CenterContainer.new()
-	bars_wrap.add_child(bars)
+	bars_wrap.add_child(status_row)
 	root.add_child(bars_wrap)
 	bars_wrap.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE, 20)
-	# 整体左移,给右下角加大的键位表让位
-	bars_wrap.offset_left -= 340
-	bars_wrap.offset_right -= 340
 
 	# 交互提示+长按进度
 	prompt_label = Label.new()
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	prompt_label.add_theme_font_override("font", Catalog.ui_font_bold())
-	prompt_label.add_theme_font_size_override("font_size", 38)
+	prompt_label.add_theme_font_size_override("font_size", 28)
 	prompt_label.add_theme_color_override("font_color", Color(1, 0.28, 0.22))
 	prompt_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.65))
 	prompt_label.add_theme_constant_override("outline_size", 8)
+	prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	prompt_label.max_lines_visible = 2
+	prompt_label.custom_minimum_size.y = 76
 	root.add_child(prompt_label)
 	prompt_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE, 232)
+	prompt_label.offset_left += 150
+	prompt_label.offset_right -= 150
 	channel_bg = ColorRect.new()
 	channel_bg.color = Color(0, 0, 0, 0.5)
 	channel_bg.custom_minimum_size = Vector2(220, 12)
@@ -182,18 +213,26 @@ func _ready() -> void:
 	channel_fill.size = Vector2(0, 8)
 	channel_bg.add_child(channel_fill)
 
-	# 右下:操作说明(精简三行)
+	# 删除旧右上键位表；键位只通过底部红色动态提示显示。
 	controls_hint = Label.new()
-	controls_hint.text = "F 推/放车 · E 交互(准星锁货/长按搜偷) · R 装车 · Shift 冲刺\n手持/驾驶时滚轮选商品 · 按住右键放大瞄准/松开投掷 · 左键 肘击 · Q 雷达\n空格 角色技能 · Ctrl 稳住 · Esc鼠标 · F1 开发者"
-	controls_hint.add_theme_font_override("font", Catalog.ui_font_bold())
-	controls_hint.add_theme_font_size_override("font_size", 30)
-	controls_hint.add_theme_color_override("font_color", Color(1, 0.25, 0.18))
-	controls_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
-	controls_hint.add_theme_constant_override("outline_size", 6)
+	controls_hint.text = ""
+	controls_hint.visible = false
 	root.add_child(controls_hint)
-	controls_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
-	controls_hint.offset_top += 145
-	controls_hint.offset_bottom += 145
+
+	minimap = Control.new()
+	minimap.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	# 旧版350×310；按需求放大为700×620，仍贴右上角保留20px边距。
+	minimap.offset_left = -720
+	minimap.offset_right = -20
+	minimap.offset_top = 20
+	minimap.offset_bottom = 640
+	minimap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if DisplayServer.get_name() != "headless":
+		minimap.draw.connect(_draw_minimap)
+	root.add_child(minimap)
+	if DisplayServer.get_name() != "headless":
+		_minimap_style = _panel_style(Color(0.025, 0.035, 0.055, 0.88), Color(1, 0.72, 0.18))
+		_aim_style = _panel_style(Color(0.04, 0.05, 0.07, 0.92), Color(1.0, 0.72, 0.18))
 
 	# 完整圆环的圆心贴住屏幕右下角，视口只露出左上四分之一。
 	# 商品按整圆循环排列，固定金框内的商品就是右键投掷目标。
@@ -227,12 +266,18 @@ func _ready() -> void:
 	obscure_overlay.draw.connect(_draw_obscure_overlay)
 	root.add_child(obscure_overlay)
 
-	# 极简准星：只保留屏幕中心白点和一圈暗边，避免遮挡商品标签。
+	# 白点准星取消，保留不可见Control仅兼容旧引用。
 	crosshair = Control.new()
 	crosshair.set_anchors_preset(Control.PRESET_FULL_RECT)
 	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	crosshair.draw.connect(_draw_crosshair)
+	crosshair.visible = false
 	root.add_child(crosshair)
+	aim_info = Control.new()
+	aim_info.set_anchors_preset(Control.PRESET_FULL_RECT)
+	aim_info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if DisplayServer.get_name() != "headless":
+		aim_info.draw.connect(_draw_aim_info)
+	root.add_child(aim_info)
 
 	# 「余光」威胁箭头层(马德胜被动):按方向摆在屏幕边缘,只给信息不给数值
 	threat_layer = Control.new()
@@ -310,6 +355,44 @@ func _ready() -> void:
 	dev_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, 14)
 	dev_panel.offset_top = 470
 
+	# 开局准备阶段ESC设置：只调整本机镜头，不参与联网权威状态。
+	sensitivity_panel = CenterContainer.new()
+	sensitivity_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	sensitivity_panel.visible = false
+	var sensitivity_box := PanelContainer.new()
+	sensitivity_box.custom_minimum_size = Vector2(560, 240)
+	var sensitivity_vbox := VBoxContainer.new()
+	sensitivity_vbox.add_theme_constant_override("separation", 18)
+	sensitivity_box.add_child(sensitivity_vbox)
+	var sensitivity_title := Label.new()
+	sensitivity_title.text = "鼠标视角灵敏度"
+	sensitivity_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sensitivity_title.add_theme_font_override("font", Catalog.ui_font_bold())
+	sensitivity_title.add_theme_font_size_override("font_size", 34)
+	sensitivity_vbox.add_child(sensitivity_title)
+	sensitivity_value_label = Label.new()
+	sensitivity_value_label.text = "100%"
+	sensitivity_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sensitivity_value_label.add_theme_font_size_override("font_size", 25)
+	sensitivity_vbox.add_child(sensitivity_value_label)
+	sensitivity_slider = HSlider.new()
+	sensitivity_slider.min_value = 0.4
+	sensitivity_slider.max_value = 2.5
+	sensitivity_slider.step = 0.05
+	sensitivity_slider.value = 1.0
+	sensitivity_slider.custom_minimum_size = Vector2(500, 44)
+	sensitivity_slider.value_changed.connect(func(value: float) -> void:
+		sensitivity_value_label.text = "%d%%" % int(round(value * 100.0))
+		mouse_sensitivity_changed.emit(value))
+	sensitivity_vbox.add_child(sensitivity_slider)
+	var sensitivity_hint := Label.new()
+	sensitivity_hint.text = "ESC 保存并返回准备区"
+	sensitivity_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sensitivity_hint.add_theme_font_size_override("font_size", 20)
+	sensitivity_vbox.add_child(sensitivity_hint)
+	sensitivity_panel.add_child(sensitivity_box)
+	root.add_child(sensitivity_panel)
+
 	# 教学指引大字(教学模式用)
 	tutorial_label = Label.new()
 	tutorial_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -336,7 +419,7 @@ func _ready() -> void:
 	root.add_child(menu)
 
 	# 菜单阶段隐藏所有局内 HUD(逐个 append:数组字面量无法直接赋给 Array[Control])
-	for n in [top, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, controls_hint, item_wheel, cold_wheel, obscure_overlay, crosshair, threat_layer]:
+	for n in [top, prep_countdown_label, marquee, list_panel, bars_wrap, prompt_label, ch_wrap, item_wheel, cold_wheel, obscure_overlay, minimap, aim_info, threat_layer]:
 		_ingame_nodes.append(n)
 	_set_ingame_visible(false)
 
@@ -405,6 +488,7 @@ func set_tutorial_text(t: String) -> void:
 func set_tutorial_room(index: int) -> void:
 	_tutorial_room = index
 	controls_hint.visible = false
+	minimap.visible = false
 	item_wheel.visible = index >= 3 and _wheel_available
 	marquee.visible = false
 	_bc_queue.clear()
@@ -440,7 +524,7 @@ func _draw_cold_wheel() -> void:
 			Color(0.42, 0.88, 1.0, 0.98), width * pulse, true)
 	var value_text := "%.1fs" % _cold_frozen_time if _cold_frozen_time > 0.0 \
 			else "%d%%" % int(round(_cold_ratio * 100.0))
-	var title := "冻僵" if _cold_frozen_time > 0.0 else "低温"
+	var title := "A/D挣扎" if _cold_frozen_time > 0.0 else "低温"
 	cold_wheel.draw_string(Catalog.ui_font_bold(), center + Vector2(-45, 8), value_text,
 			HORIZONTAL_ALIGNMENT_CENTER, 90, 28, Color(0.72, 0.95, 1.0))
 	cold_wheel.draw_string(Catalog.ui_font_bold(), center + Vector2(-45, 40), title,
@@ -449,7 +533,7 @@ func _draw_cold_wheel() -> void:
 ## 塞尔达体力轮风格:环形冷却条。满时淡隐,cd中随剩余时间消减
 func _draw_cd_wheel() -> void:
 	var ctrl := cd_wheel
-	var center := Vector2(ctrl.size.x * 0.5, 28)
+	var center := Vector2(ctrl.size.x * 0.5, 30)
 	var r := 22.0          # 外半径
 	var w := 4.5            # 环宽
 	var inner := r - w
@@ -470,11 +554,15 @@ func _draw_cd_wheel() -> void:
 		var hue := fill * 0.33   # 0→0.33 (红→绿)
 		var c := Color.from_hsv(hue, 0.75, 0.92)
 		ctrl.draw_arc(center, r, from, to, 48, c, w, true)
+	ctrl.draw_string(Catalog.ui_font_bold(), Vector2(5, 84), "技能冷却槽位",
+			HORIZONTAL_ALIGNMENT_CENTER, 140, 19, Color(1.0, 0.35, 0.24))
+	ctrl.draw_string(Catalog.ui_font_bold(), Vector2(35, 38), "✓" if _cd_ready else "CD",
+			HORIZONTAL_ALIGNMENT_CENTER, 80, 20,
+			Color(0.45, 1.0, 0.62) if _cd_ready else Color(1.0, 0.72, 0.25))
 
 func set_skill(text: String, ready: bool) -> void:
-	skill_label.text = text
-	skill_label.add_theme_color_override("font_color",
-			Color(0.55, 0.95, 0.6) if ready else Color(0.75, 0.75, 0.75))
+	_skill_text = text
+	cd_wheel.queue_redraw()
 
 func set_item_wheel(items: Array[Item], selected: int, available: bool) -> void:
 	_wheel_items = items
@@ -489,10 +577,139 @@ func _draw_crosshair() -> void:
 	crosshair.draw_circle(c, 5.5, Color(0, 0, 0, 0.72))
 	crosshair.draw_circle(c, 3.0, Color(1, 1, 1, 0.98))
 
-func set_obscured(active: bool) -> void:
-	if _obscured == active:
+func set_minimap_bounds(bounds: Dictionary) -> void:
+	_minimap_bounds = bounds.duplicate()
+	if minimap != null:
+		minimap.queue_redraw()
+
+func _minimap_world_rect() -> Rect2:
+	var result := Rect2(-45.0, -45.0, 90.0, 90.0)
+	if _minimap_bounds.is_empty():
+		return result
+	var first := true
+	for key in _minimap_bounds:
+		var rect: Rect2 = _minimap_bounds[key]
+		if first:
+			result = rect
+			first = false
+		else:
+			result = result.merge(rect)
+	return result.grow(5.0)
+
+func _minimap_point(world: Vector3, world_rect: Rect2, draw_rect: Rect2) -> Vector2:
+	return Vector2(
+			draw_rect.position.x + (world.x - world_rect.position.x) / world_rect.size.x * draw_rect.size.x,
+			draw_rect.position.y + (world.z - world_rect.position.y) / world_rect.size.y * draw_rect.size.y)
+
+func _draw_minimap() -> void:
+	if minimap == null:
 		return
-	_obscured = active
+	var panel := Rect2(Vector2.ZERO, minimap.size)
+	minimap.draw_style_box(_minimap_style, panel)
+	minimap.draw_string(Catalog.ui_font_bold(), Vector2(0, 28), "超市小地图",
+			HORIZONTAL_ALIGNMENT_CENTER, minimap.size.x, 23, Color.WHITE)
+	var map_rect := Rect2(12, 38, minimap.size.x - 24, minimap.size.y - 50)
+	var world_rect := _minimap_world_rect()
+	var zone_names := {"Fresh": "生鲜", "Frozen": "冷冻", "Snacks": "零食饮料",
+			"Toys": "玩具", "Electronics": "数码家电", "Daily": "日用品",
+			"Beauty": "个护美妆", "Clothing": "服饰"}
+	var zone_colors := {"Fresh": Color(0.35, 0.75, 0.62, 0.46), "Frozen": Color(0.32, 0.68, 0.9, 0.46),
+			"Snacks": Color(0.92, 0.63, 0.24, 0.46), "Toys": Color(0.85, 0.5, 0.76, 0.46),
+			"Electronics": Color(0.48, 0.55, 0.86, 0.46), "Daily": Color(0.64, 0.76, 0.4, 0.46),
+			"Beauty": Color(1.0, 0.65, 0.83, 0.48), "Clothing": Color(0.72, 0.55, 0.9, 0.46)}
+	for key in _minimap_bounds:
+		var wr: Rect2 = _minimap_bounds[key]
+		var a := _minimap_point(Vector3(wr.position.x, 0, wr.position.y), world_rect, map_rect)
+		var b := _minimap_point(Vector3(wr.end.x, 0, wr.end.y), world_rect, map_rect)
+		var zr := Rect2(a, b - a)
+		minimap.draw_rect(zr, zone_colors.get(key, Color(0.5, 0.5, 0.5, 0.4)), true)
+		minimap.draw_rect(zr, Color(1, 1, 1, 0.32), false, 1.5)
+		minimap.draw_string(Catalog.ui_font_bold(), zr.get_center() + Vector2(-zr.size.x * 0.5, 5),
+				str(zone_names.get(key, key)), HORIZONTAL_ALIGNMENT_CENTER, zr.size.x, 15, Color.WHITE)
+	var central_a := _minimap_point(Vector3(-5.0, 0, -5.0), world_rect, map_rect)
+	var central_b := _minimap_point(Vector3(5.0, 0, 5.0), world_rect, map_rect)
+	var central_rect := Rect2(central_a, central_b - central_a)
+	minimap.draw_rect(central_rect, Color(0.98, 0.28, 0.16, 0.72), true)
+	minimap.draw_rect(central_rect, Color(1.0, 0.86, 0.22), false, 2.0)
+	minimap.draw_string(Catalog.ui_font_bold(), central_rect.get_center() + Vector2(-central_rect.size.x * 0.5, 5),
+			"黑五", HORIZONTAL_ALIGNMENT_CENTER, central_rect.size.x, 14, Color.WHITE)
+	var main := Main.instance
+	if main == null:
+		return
+	var map_actors: Array = main.team_inventory_actors(main.player.team_id) \
+			if is_instance_valid(main.player) else []
+	for actor in map_actors:
+		if not is_instance_valid(actor) or not (actor is Actor):
+			continue
+		var map_actor := actor as Actor
+		var point := _minimap_point(map_actor.global_position, world_rect, map_rect)
+		var actor_color := Catalog.team_color(map_actor.team_id).lightened(0.25)
+		minimap.draw_circle(point, 7.0, actor_color)
+		minimap.draw_arc(point, 8.0, 0, TAU, 20, Color.WHITE, 2.0)
+		# 世界的 X/Z 轴与小地图的 X/Y 轴一一对应；箭头读取角色模型的
+		# 正前方，因此玩家和队友即使重叠也能看出各自在朝哪里观察。
+		var forward3: Vector3 = -map_actor.body_root.global_transform.basis.z
+		var facing := Vector2(forward3.x, forward3.z).normalized()
+		if facing.length_squared() > 0.001:
+			var side := Vector2(-facing.y, facing.x)
+			var tip := point + facing * 18.0
+			var arrow := PackedVector2Array([
+				tip,
+				point + facing * 7.0 + side * 5.0,
+				point + facing * 7.0 - side * 5.0,
+			])
+			minimap.draw_colored_polygon(arrow, actor_color)
+			minimap.draw_polyline(PackedVector2Array([arrow[0], arrow[1], arrow[2], arrow[0]]),
+					Color.WHITE, 2.0)
+	if is_instance_valid(main.player) and is_instance_valid(main.player.cart) and not main.player.attached:
+		var cp := _minimap_point(main.player.cart.global_position, world_rect, map_rect)
+		minimap.draw_rect(Rect2(cp - Vector2(8, 5), Vector2(16, 10)), Color(1.0, 0.84, 0.25), true)
+		minimap.draw_circle(cp + Vector2(-5, 7), 3.0, Color.WHITE)
+		minimap.draw_circle(cp + Vector2(5, 7), 3.0, Color.WHITE)
+
+func _panel_style(bg: Color, border: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg
+	style.border_color = border
+	style.set_border_width_all(3)
+	style.corner_radius_top_left = 10
+	style.corner_radius_top_right = 10
+	style.corner_radius_bottom_left = 10
+	style.corner_radius_bottom_right = 10
+	return style
+
+func set_aimed_item(item: Item, camera: Camera3D) -> void:
+	_aimed_item = item if is_instance_valid(item) else null
+	if _aimed_item != null and is_instance_valid(camera) and not camera.is_position_behind(_aimed_item.global_position):
+		_aimed_screen_pos = camera.unproject_position(_aimed_item.global_position)
+	else:
+		_aimed_item = null
+	if aim_info != null and DisplayServer.get_name() != "headless":
+		aim_info.queue_redraw()
+
+func _draw_aim_info() -> void:
+	if aim_info == null or not is_instance_valid(_aimed_item):
+		return
+	# 瞄准注释卡整体放大至旧版1.5倍，替代已移除的模型名称标签。
+	var box_size := Vector2(495, 123)
+	var box_pos := _aimed_screen_pos + Vector2(63, -144)
+	box_pos.x = clampf(box_pos.x, 16.0, aim_info.size.x - box_size.x - 16.0)
+	box_pos.y = clampf(box_pos.y, 90.0, aim_info.size.y - box_size.y - 190.0)
+	var rect := Rect2(box_pos, box_size)
+	aim_info.draw_line(_aimed_screen_pos, rect.position + Vector2(0, rect.size.y * 0.6),
+			Color(1.0, 0.78, 0.22), 6.0)
+	aim_info.draw_circle(_aimed_screen_pos, 15.0, Color(1.0, 0.78, 0.22, 0.45), false, 4.5)
+	aim_info.draw_style_box(_aim_style, rect)
+	aim_info.draw_string(Catalog.ui_font_bold(), rect.position + Vector2(24, 47), _aimed_item.display_name,
+			HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 48, 38, Color.WHITE)
+	var effect := "投掷效果：%s · 失衡%.0f" % [Catalog.prop_effect_short(_aimed_item.item_id),
+			Catalog.throw_imbalance(_aimed_item.item_id)]
+	aim_info.draw_string(Catalog.ui_font(), rect.position + Vector2(24, 94), effect,
+			HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 48, 29, Catalog.prop_effect_color(_aimed_item.item_id).lightened(0.25))
+
+func set_obscured(active: bool) -> void:
+	# 遮蔽道具改由与个护区相同的粉雾壳呈现。
+	_obscured = false
 	obscure_overlay.queue_redraw()
 
 func _draw_obscure_overlay() -> void:
@@ -649,6 +866,8 @@ func _process(delta: float) -> void:
 	_cd_pulse += delta
 	if is_instance_valid(cd_wheel):
 		cd_wheel.queue_redraw()
+	if is_instance_valid(minimap) and DisplayServer.get_name() != "headless":
+		minimap.queue_redraw()
 	if _mq_active:
 		# 破屏滚动+轻微歪扭抖动(精神污染)
 		marquee.position.x -= MQ_SPEED * delta
@@ -680,6 +899,22 @@ func broadcast(text: String) -> void:
 func set_timer_text(text: String, color: Color) -> void:
 	time_label.text = text
 	time_label.add_theme_color_override("font_color", color)
+
+func set_prep_countdown(seconds: int, shown: bool) -> void:
+	if prep_countdown_label == null:
+		return
+	prep_countdown_label.text = "%d" % maxi(seconds, 0)
+	prep_countdown_label.visible = shown
+
+func set_sensitivity_panel(shown: bool, multiplier := 1.0) -> void:
+	if sensitivity_panel == null:
+		return
+	if shown and sensitivity_slider != null:
+		sensitivity_slider.value = clampf(multiplier, 0.4, 2.5)
+	sensitivity_panel.visible = shown
+
+func sensitivity_panel_visible() -> bool:
+	return sensitivity_panel != null and sensitivity_panel.visible
 
 func set_phase(text: String) -> void:
 	phase_label.text = text
@@ -729,7 +964,7 @@ func set_list(rows: Array) -> void:
 			var c: Color = r.get("color", Color.WHITE)
 			list_rows[i].text = "[font_size=34][color=#%s]%s[/color][/font_size]" % [c.lightened(0.2).to_html(false), t]
 		elif r.get("green", false):
-			list_rows[i].text = "[s][color=#7ef291]%s[/color][/s]" % t
+			list_rows[i].text = "[s][color=#7ef291]✓ %s[/color][/s]" % t
 		else:
 			list_rows[i].text = "[color=#ffffff]%s[/color]" % t
 

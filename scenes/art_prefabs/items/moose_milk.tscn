@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_h40jr"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/生鲜区/枫叶麋鹿鲜奶.fbx" id="2_xmejk"]
+
+[node name="moose_milk" type="Node3D" unique_id=807777765]
+script = ExtResource("1_h40jr")
+material_profile_key = "item:moose_milk"
+metadata/source_size = Vector3(0.6540115, 0.9992723, 0.546582)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/枫叶麋鹿鲜奶.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/枫叶麋鹿鲜奶.fbx"
+metadata/art_prefab = true
+metadata/item_id = "moose_milk"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=131201332]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.00039109588, 0.00020709634, 8.6158514e-05)
+
+[node name="枫叶麋鹿鲜奶" type="Node3D" parent="SourceOrientation" unique_id=506879085 instance=ExtResource("2_xmejk")]

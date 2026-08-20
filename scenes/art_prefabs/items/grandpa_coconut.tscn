@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_tfwd3"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/饮料零食区/爷树牌椰汁.fbx" id="2_n7poo"]
+
+[node name="grandpa_coconut" type="Node3D" unique_id=1617140289]
+script = ExtResource("1_tfwd3")
+material_profile_key = "item:grandpa_coconut"
+metadata/source_size = Vector3(0.50180185, 0.9984371, 0.5759853)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/爷树牌椰汁.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/爷树牌椰汁.fbx"
+metadata/art_prefab = true
+metadata/item_id = "grandpa_coconut"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1515553822]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.1273575e-05, -0.0006098151, 0.0006606877)
+
+[node name="爷树牌椰汁" type="Node3D" parent="SourceOrientation" unique_id=1354991326 instance=ExtResource("2_n7poo")]

@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_xk2of"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/材质贴图/罐装饮料002/罐子02.glb.fbx" id="2_bfqxd"]
+
+[node name="罐子02_glb" type="Node3D" unique_id=1016908238]
+script = ExtResource("1_xk2of")
+metadata/source_size = Vector3(0.70233154, 1.0007324, 0.70666504)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/罐装饮料002/罐子02.glb.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/罐装饮料002/罐子02.glb.fbx"
+metadata/art_prefab = true
+metadata/display_name = "罐子02.glb"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1667591686]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5003662, 0)
+
+[node name="罐子02_glb" type="Node3D" parent="SourceOrientation" unique_id=1175971003 instance=ExtResource("2_bfqxd")]

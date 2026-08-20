@@ -25,8 +25,12 @@ var display_name := ""
 var category := ""
 var state: ItemState = ItemState.FREE
 var box_size := Vector3.ONE
-var label: Label3D
+var label: Label3D = null # 白盒商品的首个表面标签；正式美术模型保持为空。
 var surface_labels: Array[Label3D] = []
+var visual_mesh: MeshInstance3D
+var visual_root: Node3D
+var _visual_base_color := Color.WHITE
+var _live_hit_tween: Tween
 var ping_shell: MeshInstance3D   # 找货雷达的绿色高亮壳
 var _cart_label_sources := {}    # 正处于哪些车斗感应区；非空时隐藏商品头顶名称
 ## 中央黑五区开门前使用。锁定商品保持SHELVED，但不可见、不可射线选取、不可被AI锁定。
@@ -65,6 +69,23 @@ static func create(id: String) -> Item:
 	box.material = mat
 	mesh.mesh = box
 	it.add_child(mesh)
+	it.visual_mesh = mesh
+	it.visual_root = mesh
+	it._visual_base_color = data["color"]
+	# 正式商品模型采用等比包围盒内接，最大尺寸不会越过Catalog规定的白盒。
+	# 缺少对应资产的专区继续显示白盒，便于美术逐批交付而不破坏玩法。
+	var art_visual := ArtAssetFitter.create_product_visual(id, it.box_size)
+	if art_visual != null:
+		mesh.visible = false
+		it.add_child(art_visual)
+		it.visual_root = art_visual
+		var imported_mesh := ArtAssetFitter.first_mesh(art_visual)
+		if imported_mesh != null:
+			it.visual_mesh = imported_mesh
+	else:
+		# 尚未替换正式美术资产的彩色白盒缺少包装辨识度，因此把名称作为
+		# 包装印字贴回模型表面。正式模型依靠自身贴图，只保留瞄准注释卡。
+		it._build_surface_labels(str(data["name"]), Color(data["color"]).darkened(0.5))
 
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
@@ -72,9 +93,7 @@ static func create(id: String) -> Item:
 	col.shape = shape
 	it.add_child(col)
 
-	# 商品名是包装的一部分：固定贴在最大包装面的正反两侧，不再悬浮、
-	# 不朝向镜头，也不穿墙显示。正反两面保证从货架任一过道侧都能读到。
-	it._build_surface_labels(str(data["name"]), Color(data["color"]).darkened(0.5))
+	# 正式商品名称只在玩家瞄准时由HUD注释卡显示；白盒商品同时保留表面印字。
 
 	# 找货雷达高亮壳:绿色描边,穿墙可见,平时隐藏
 	var ping := MeshInstance3D.new()
@@ -178,6 +197,29 @@ func _refresh_label_visibility() -> void:
 		if is_instance_valid(lb):
 			lb.visible = not event_locked
 
+## 地面活鲜被肘击时做极端压扁+回弹并闪成白粉色，反馈只作用视觉网格，
+## 不缩放刚体根节点和碰撞体，避免物理求解因瞬时缩放发散。
+func play_live_hit_feedback() -> void:
+	if not bool(get_meta("live_fresh_good", false)) or not is_instance_valid(visual_root):
+		return
+	if _live_hit_tween != null and _live_hit_tween.is_valid():
+		_live_hit_tween.kill()
+	# 白盒BoxMesh可以安全改色；导入模型的ArrayMesh材质可能跨实例共享，
+	# 这里只做形变反馈，避免一次击打把同款商品全部染色。
+	var mat: StandardMaterial3D = null
+	if visual_root == visual_mesh and is_instance_valid(visual_mesh) \
+			and visual_mesh.mesh != null and visual_mesh.mesh.get_surface_count() > 0:
+		mat = visual_mesh.get_active_material(0) as StandardMaterial3D
+	visual_root.scale = Vector3(1.75, 0.28, 1.45)
+	if mat != null:
+		mat.albedo_color = Color(1.0, 0.72, 0.88)
+	_live_hit_tween = create_tween().set_parallel(true)
+	_live_hit_tween.tween_property(visual_root, "scale", Vector3.ONE, 0.42) \
+			.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	if mat != null:
+		_live_hit_tween.tween_property(mat, "albedo_color", _visual_base_color, 0.22) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
 ## 冻结摆上货架
 func set_shelved(pos: Vector3, shelf_yaw := 0.0) -> void:
 	clear_cart_label_hides()
@@ -189,7 +231,10 @@ func set_shelved(pos: Vector3, shelf_yaw := 0.0) -> void:
 	collision_layer = 0
 	collision_mask = 0
 	global_position = pos
-	var stand_pitch := -PI * 0.5 if box_size.z > box_size.y * 1.15 else 0.0
+	# 扁平包装仍立起陈列；所有模型统一约定本地+Z为包装正面。
+	var label_face_is_horizontal := visual_root == visual_mesh \
+			and box_size.y <= box_size.x and box_size.y <= box_size.z
+	var stand_pitch := -PI * 0.5 if label_face_is_horizontal else 0.0
 	global_rotation = Vector3(stand_pitch, shelf_yaw, 0.0)
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
@@ -241,7 +286,3 @@ func set_scanned_at(pos: Vector3) -> void:
 	collision_mask = 0
 	global_position = pos
 	global_rotation = Vector3.ZERO
-	if label:
-		for lb in surface_labels:
-			lb.modulate = Color(0.1, 0.55, 0.2)
-			lb.text = display_name + " ✓"

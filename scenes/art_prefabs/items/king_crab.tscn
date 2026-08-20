@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_hbxnr"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾.glb" id="2_1tbni"]
+
+[node name="king_crab" type="Node3D" unique_id=51572394]
+script = ExtResource("1_hbxnr")
+material_profile_key = "item:king_crab"
+metadata/source_size = Vector3(0.9979739, 0.34482747, 0.31445372)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾.glb"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾.glb"
+metadata/art_prefab = true
+metadata/item_id = "king_crab"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1271179146]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0016286373, 0.0012864172, -0.0011089742)
+
+[node name="皮皮虾" type="Node3D" parent="SourceOrientation" unique_id=555869348 instance=ExtResource("2_1tbni")]

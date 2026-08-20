@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_st1mq"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/场景3d资产/LED灯管.fbx" id="2_2oowo"]
+
+[node name="led_tube" type="Node3D" unique_id=1169138556]
+script = ExtResource("1_st1mq")
+material_profile_key = "led_tube"
+metadata/source_size = Vector3(0.999756, 0.3199768, 0.17385875)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/LED灯管.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/LED灯管.fbx"
+metadata/art_prefab = true
+metadata/fixture_kind = "led_tube"
+metadata/asset_kind = "fixture"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1089241255]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.0517578e-05, -0.1599884, -1.5243888e-05)
+
+[node name="LED灯管" type="Node3D" parent="SourceOrientation" unique_id=1327642915 instance=ExtResource("2_2oowo")]

@@ -1,6 +1,6 @@
 class_name OrderSystem
-## 混合代购订单的纯数据规则。
-## 正式对局使用“点名爆款 + 分区类别计数”，教学固定订单仍兼容旧的点名条目结构。
+## 代购订单的纯数据规则。
+## 正式对局使用指定SKU计数；类别条目仅为旧存档/教学回退兼容保留。
 
 const KIND_EXACT := "exact"
 const KIND_CATEGORY := "category"

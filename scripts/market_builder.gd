@@ -374,7 +374,7 @@ static func _sign(parent: Node3D, name: String, pos: Vector3, text: String, colo
 	lb.font_size = 200
 	lb.pixel_size = 0.008
 	lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lb.no_depth_test = true
+	lb.no_depth_test = false
 	lb.modulate = Color(1, 1, 1)
 	lb.outline_size = 24
 	lb.outline_modulate = color.darkened(0.55)

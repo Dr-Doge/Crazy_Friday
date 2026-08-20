@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_f87r0"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/饮料零食区/威龙战术辣条.fbx" id="2_j6822"]
+
+[node name="tactical_spicy_strips" type="Node3D" unique_id=1129561964]
+script = ExtResource("1_f87r0")
+material_profile_key = "item:tactical_spicy_strips"
+metadata/source_size = Vector3(0.7322299, 1.002893, 0.39251345)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/威龙战术辣条.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/威龙战术辣条.fbx"
+metadata/art_prefab = true
+metadata/item_id = "tactical_spicy_strips"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=832989981]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0015183389, -0.00023269653, 0.0009649545)
+
+[node name="威龙战术辣条" type="Node3D" parent="SourceOrientation" unique_id=1640109626 instance=ExtResource("2_j6822")]

@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_aat4o"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/场景3d资产/普通货架001（白膜）.fbx" id="2_q0ynq"]
+
+[node name="upright_shelf" type="Node3D" unique_id=150280036]
+script = ExtResource("1_aat4o")
+material_profile_key = "upright_shelf"
+metadata/source_size = Vector3(3.4990585, 1.9559011, 1.066855)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/普通货架001（白膜）.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/普通货架001（白膜）.fbx"
+metadata/art_prefab = true
+metadata/fixture_kind = "upright_shelf"
+metadata/asset_kind = "fixture"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1135454826]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.7906137, -0.97595054, -0.005855143)
+
+[node name="普通货架001（白膜）" type="Node3D" parent="SourceOrientation" unique_id=48149697 instance=ExtResource("2_q0ynq")]

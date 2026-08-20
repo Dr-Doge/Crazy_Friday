@@ -13,13 +13,20 @@ var _index := 0
 var _mischief_timer := 0.0
 var _charge_target: Node3D = null
 var _charge_time := 0.0
+var _missed_mischief_attempts := 0
 var _aggro_target: Actor = null
 var _aggro_time := 0.0
 var _elbow_cd := 0.0
 
 const KID_CHARGE_SPEED := 7.4
+const KID_CHARGE_CHANCE := 0.32
+const KID_IMPACT_IMBALANCE := 24.0
 const GRANNY_AGGRO_TIME := 12.0
 const GRANNY_AGGRO_SPEED := 3.0
+const KID_MAX_IMBALANCE := 55.0
+const GRANNY_MAX_IMBALANCE := 70.0
+var _kid_motion_time := 0.0
+var _kid_base_scale := Vector3.ONE
 
 func setup(owner_main, npc_kind: Kind, bounds: Rect2, index: int) -> void:
 	main = owner_main
@@ -34,11 +41,13 @@ func setup(owner_main, npc_kind: Kind, bounds: Rect2, index: int) -> void:
 	add_to_group("region_kids" if kind == Kind.KID else "region_grannies")
 	_add_distinctive_visuals(color)
 	_pick_target()
-	_mischief_timer = 3.5 + float(index) * 1.35 + randf_range(0.0, 2.0)
+	# 错开第一轮恶作剧；之后每次计时结束也只按概率发起冲撞。
+	_mischief_timer = 5.5 + float(index) * 1.5 + randf_range(0.0, 3.0)
 
 func _add_distinctive_visuals(color: Color) -> void:
 	if kind == Kind.KID:
 		body_root.scale = Vector3(0.78, 0.78, 0.78)
+		_kid_base_scale = body_root.scale
 		_add_sphere(Vector3(0, 1.22, 0), 0.34, Color(1.0, 0.78, 0.55))
 		_add_box(Vector3(0, 1.46, 0), Vector3(0.62, 0.12, 0.52), Color(0.1, 0.75, 0.95))
 		_add_box(Vector3(0, 0.72, 0.28), Vector3(0.58, 0.55, 0.22), Color(0.18, 0.82, 0.36))
@@ -80,6 +89,9 @@ func _material(color: Color) -> StandardMaterial3D:
 func _physics_process(delta: float) -> void:
 	actor_tick(delta)
 	if downed or main == null or main.game_over:
+		if kind == Kind.KID and is_instance_valid(body_root):
+			body_root.position.y = lerpf(body_root.position.y, 0.0, 1.0 - exp(-10.0 * delta))
+			body_root.scale = body_root.scale.lerp(_kid_base_scale, 1.0 - exp(-10.0 * delta))
 		apply_motion(delta, Vector3.ZERO, 0.0)
 		return
 	_retarget_time -= delta
@@ -100,10 +112,16 @@ func _physics_process(delta: float) -> void:
 	wish.y = 0.0
 	if wish.length() > 0.1:
 		wish = (wish.normalized() + _separation() * 0.9).normalized()
+		if kind == Kind.KID:
+			# 在前进方向上叠加小幅左右蛇形，不改变总体寻路目标。
+			var side := Vector3(-wish.z, 0.0, wish.x)
+			wish = (wish + side * sin(_kid_motion_time * 5.2 + float(_index)) * 0.2).normalized()
 	var speed := KID_CHARGE_SPEED if is_instance_valid(_charge_target) else \
 			(5.2 if kind == Kind.KID else (GRANNY_AGGRO_SPEED if is_instance_valid(_aggro_target) else 0.72))
 	hand_pose = "idle"
 	apply_motion(delta, wish, speed)
+	if kind == Kind.KID:
+		_animate_kid_hop(delta, wish)
 	if kind == Kind.KID and _impact_cd <= 0.0:
 		_try_kid_impact()
 	elif kind == Kind.BLOCKING_GRANNY and is_instance_valid(_aggro_target) \
@@ -115,18 +133,44 @@ func _tick_kid_intent(delta: float) -> void:
 		_charge_time -= delta
 		if _charge_time <= 0.0:
 			_charge_target = null
-			_mischief_timer = randf_range(6.0, 10.0)
+			_mischief_timer = randf_range(12.0, 18.0)
 		return
 	_mischief_timer -= delta
 	if _mischief_timer > 0.0:
 		return
+	# 主动冲撞不再逢冷却必触发；连续三次克制后第四次保底，避免长时间完全没节目。
+	if randf() > KID_CHARGE_CHANCE and _missed_mischief_attempts < 3:
+		_missed_mischief_attempts += 1
+		_mischief_timer = randf_range(3.5, 6.0)
+		return
+	_missed_mischief_attempts = 0
 	_charge_target = _nearest_competitor_target(16.0)
 	if is_instance_valid(_charge_target):
 		_charge_time = 3.6
 		Main.float_text(self, global_position + Vector3.UP * 1.8,
 				"看我创你!", Color(1.0, 0.45, 0.05), 58)
 	else:
-		_mischief_timer = 2.0
+		_mischief_timer = randf_range(4.0, 6.0)
+
+## 熊孩子用弹簧式蹦跳移动：落地时横向压扁、腾空时纵向拉长，并伴随左右歪摆。
+## 只改变视觉根，不缩放CharacterBody碰撞胶囊，避免夸张动画干扰物理解算。
+func _animate_kid_hop(delta: float, wish: Vector3) -> void:
+	if not is_instance_valid(body_root):
+		return
+	var moving := wish.length_squared() > 0.01
+	_kid_motion_time += delta * (8.8 if moving else 3.2)
+	var wave := sin(_kid_motion_time)
+	var airborne := maxf(0.0, wave)
+	var landing := maxf(0.0, -wave)
+	var target_y := airborne * 0.2 if moving else 0.0
+	var stretch_y := 1.0 + airborne * 0.42 - landing * 0.2
+	var squash_xz := 1.0 - airborne * 0.14 + landing * 0.2
+	var target_scale := _kid_base_scale * Vector3(squash_xz, stretch_y, squash_xz)
+	var k := 1.0 - exp(-18.0 * delta)
+	body_root.position.y = lerpf(body_root.position.y, target_y, k)
+	body_root.scale = body_root.scale.lerp(target_scale, k)
+	body_root.rotation.z = lerp_angle(body_root.rotation.z,
+			sin(_kid_motion_time * 0.52 + float(_index)) * (0.16 if moving else 0.06), k)
 
 func _nearest_competitor_target(max_distance: float) -> Node3D:
 	var best: Node3D = null
@@ -171,6 +215,9 @@ func add_imbalance(amount: float, source: Node = null) -> void:
 	super.add_imbalance(amount, source)
 	if kind == Kind.BLOCKING_GRANNY and amount > 0.0 and is_instance_valid(attacker):
 		_alert_granny_group(attacker)
+
+func max_imbalance_value() -> float:
+	return KID_MAX_IMBALANCE if kind == Kind.KID else GRANNY_MAX_IMBALANCE
 
 func _attacker_from(source: Node) -> Actor:
 	if source is Cart:
@@ -221,13 +268,13 @@ func _try_kid_impact() -> void:
 		var actor := node as Actor
 		if global_position.distance_to(actor.global_position) < 1.05:
 			var direction := (actor.global_position - global_position).normalized()
-			actor.push_velocity += direction * 4.8
-			actor.add_imbalance(14.0, self)
+			actor.push_velocity += direction * 6.2
+			actor.add_imbalance(KID_IMPACT_IMBALANCE, self)
 			_impact_cd = 1.0
 			_charge_target = null
-			_mischief_timer = randf_range(7.0, 11.0)
+			_mischief_timer = randf_range(13.0, 19.0)
 			Main.float_text(actor, actor.global_position + Vector3.UP * 2.0,
-					"熊孩子创飞!", Color(1.0, 0.55, 0.08), 62)
+					"熊孩子创飞! +%d" % int(KID_IMPACT_IMBALANCE), Color(1.0, 0.55, 0.08), 62)
 			return
 	for node in get_tree().get_nodes_in_group("carts"):
 		if not is_instance_valid(node):
@@ -238,5 +285,5 @@ func _try_kid_impact() -> void:
 			cart.apply_central_impulse(direction * 92.0 + Vector3.UP * 18.0)
 			_impact_cd = 1.0
 			_charge_target = null
-			_mischief_timer = randf_range(7.0, 11.0)
+			_mischief_timer = randf_range(13.0, 19.0)
 			return

@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_v8il4"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/其他商品/牛奶001.fbx" id="2_dgxgd"]
+
+[node name="牛奶001" type="Node3D" unique_id=442406880]
+script = ExtResource("1_v8il4")
+metadata/source_size = Vector3(0.46185213, 1, 0.444214)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/牛奶001.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/牛奶001.fbx"
+metadata/art_prefab = true
+metadata/display_name = "牛奶001"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=63488089]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.22802785, -0.5, -2.9802322e-08)
+
+[node name="牛奶001" type="Node3D" parent="SourceOrientation" unique_id=921764098 instance=ExtResource("2_dgxgd")]

@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_5f2h0"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/玩具区/Pocketmon集换卡.fbx" id="2_b3dvw"]
+
+[node name="pocketmon_cards" type="Node3D" unique_id=1366904195]
+script = ExtResource("1_5f2h0")
+material_profile_key = "item:pocketmon_cards"
+metadata/source_size = Vector3(0.589471, 0.9999095, 0.13435821)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Pocketmon集换卡.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Pocketmon集换卡.fbx"
+metadata/art_prefab = true
+metadata/item_id = "pocketmon_cards"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=853189849]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.00052571297, 0.0001898408, -0.00041745603)
+
+[node name="Pocketmon集换卡" type="Node3D" parent="SourceOrientation" unique_id=1678182154 instance=ExtResource("2_b3dvw")]

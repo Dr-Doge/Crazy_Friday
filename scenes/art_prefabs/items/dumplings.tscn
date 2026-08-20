@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_re6cs"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/冷冻区/速冻炒肝水饺.fbx" id="2_ancuq"]
+
+[node name="dumplings" type="Node3D" unique_id=1406102885]
+script = ExtResource("1_re6cs")
+material_profile_key = "item:dumplings"
+metadata/source_size = Vector3(0.99951303, 0.58470005, 0.46210334)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/速冻炒肝水饺.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/速冻炒肝水饺.fbx"
+metadata/art_prefab = true
+metadata/item_id = "dumplings"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1417117773]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.00020685792, 9.715557e-06, 0.00014349818)
+
+[node name="速冻炒肝水饺" type="Node3D" parent="SourceOrientation" unique_id=1032259861 instance=ExtResource("2_ancuq")]

@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_tpf7t"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/饮料零食区/自由鹰超辣玉米片.fbx" id="2_xle62"]
+
+[node name="freedom_corn_chips" type="Node3D" unique_id=1805797884]
+script = ExtResource("1_tpf7t")
+material_profile_key = "item:freedom_corn_chips"
+metadata/source_size = Vector3(0.7450044, 0.9996516, 0.314817)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/自由鹰超辣玉米片.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/自由鹰超辣玉米片.fbx"
+metadata/art_prefab = true
+metadata/item_id = "freedom_corn_chips"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=130361253]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0002876222, 2.6524067e-05, 0.00028312206)
+
+[node name="自由鹰超辣玉米片" type="Node3D" parent="SourceOrientation" unique_id=1008538715 instance=ExtResource("2_xle62")]

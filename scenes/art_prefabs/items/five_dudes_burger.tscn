@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_0bwfh"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/冷冻区/五个老哥汉堡.fbx" id="2_c00te"]
+
+[node name="five_dudes_burger" type="Node3D" unique_id=1799816425]
+script = ExtResource("1_0bwfh")
+material_profile_key = "item:five_dudes_burger"
+metadata/source_size = Vector3(1.0007366, 0.8372537, 0.78877765)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/五个老哥汉堡.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/五个老哥汉堡.fbx"
+metadata/art_prefab = true
+metadata/item_id = "five_dudes_burger"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1682137312]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.00017952919, -0.0013107359, -0.0009534955)
+
+[node name="五个老哥汉堡" type="Node3D" parent="SourceOrientation" unique_id=906360446 instance=ExtResource("2_c00te")]

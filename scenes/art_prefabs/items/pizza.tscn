@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_phvvk"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/冷冻区/夏威夷披萨.fbx" id="2_gsccy"]
+
+[node name="pizza" type="Node3D" unique_id=887666664]
+script = ExtResource("1_phvvk")
+material_profile_key = "item:pizza"
+metadata/source_size = Vector3(1.0005435, 0.67949045, 0.6923473)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/夏威夷披萨.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/夏威夷披萨.fbx"
+metadata/art_prefab = true
+metadata/item_id = "pizza"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=357229200]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.00023502111, 0.00050497055, 0.00023975968)
+
+[node name="夏威夷披萨" type="Node3D" parent="SourceOrientation" unique_id=1146929828 instance=ExtResource("2_gsccy")]

@@ -31,10 +31,46 @@ static func build(m, idx: int) -> Array:
 			"header": true,
 			"text": "【%s】" % Catalog.ZONE_NAMES[zone],
 			"color": Catalog.ZONE_COLORS[zone],
+			"zone": zone,
+			"remaining": _remaining_for_group(group, actors),
 		})
 		for entry in group:
-			rows.append(_row(m, entry, p, actors))
+			var row := _row(m, entry, p, actors)
+			row["zone"] = zone
+			rows.append(row)
 	return rows
+
+## 默认只展开玩家脚下专区；其余专区压成“专区名＋还需件数”。按住Tab时
+## expand_all=true，原始明细全部恢复。无zone的优惠券等附加行始终保留。
+static func present(full_rows: Array, current_zone: String, expand_all: bool) -> Array:
+	var out: Array = []
+	var collapsed_zones := {}
+	for value in full_rows:
+		var row: Dictionary = value
+		var zone := str(row.get("zone", ""))
+		if zone == "":
+			out.append(row)
+			continue
+		var expanded := expand_all or zone == current_zone
+		if row.get("header", false):
+			var shown := row.duplicate()
+			if not expanded:
+				shown["text"] = "【%s】 · 仍需%d件" % [
+						Catalog.ZONE_NAMES.get(zone, zone), int(row.get("remaining", 0))]
+				shown["collapsed"] = true
+				collapsed_zones[zone] = true
+			out.append(shown)
+		elif not collapsed_zones.has(zone):
+			out.append(row)
+	return out
+
+static func _remaining_for_group(group: Array, actors: Array) -> int:
+	var remaining := 0
+	for entry in group:
+		var owned := _owned_counts(actors, entry)
+		remaining += maxi(OrderSystem.required(entry) - OrderSystem.delivered(entry)
+				- int(owned.get("cart", 0)), 0)
+	return remaining
 
 static func _row(m, entry: Dictionary, p: Player, actors: Array) -> Dictionary:
 	var done := OrderSystem.is_complete(entry)
@@ -65,9 +101,13 @@ static func _row(m, entry: Dictionary, p: Player, actors: Array) -> Dictionary:
 		label = entry["name"]
 	return {
 		"text": "  · %s [%s] — %s" % [label, cat_tag, status],
-		"green": done or OrderSystem.delivered(entry) + owned["hand"] + owned["cart"] \
-				>= OrderSystem.required(entry),
+		# 队内任意一辆购物车只要出现该需求商品，就立即打勾、划线并标绿。
+		"green": is_cart_secured(done, owned),
+		"checked": is_cart_secured(done, owned),
 	}
+
+static func is_cart_secured(done: bool, owned: Dictionary) -> bool:
+	return done or int(owned.get("cart", 0)) > 0
 
 static func _owned_counts(actors: Array, entry: Dictionary) -> Dictionary:
 	var hand := 0

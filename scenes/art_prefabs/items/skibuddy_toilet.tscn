@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_a74e5"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/玩具区/Skibuddy马桶盲盒.fbx" id="2_fehwu"]
+
+[node name="skibuddy_toilet" type="Node3D" unique_id=1786172168]
+script = ExtResource("1_a74e5")
+material_profile_key = "item:skibuddy_toilet"
+metadata/source_size = Vector3(0.72465324, 0.99936986, 0.5537791)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Skibuddy马桶盲盒.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Skibuddy马桶盲盒.fbx"
+metadata/art_prefab = true
+metadata/item_id = "skibuddy_toilet"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1485278512]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.6559525e-05, -1.692772e-05, -0.00028723478)
+
+[node name="Skibuddy马桶盲盒" type="Node3D" parent="SourceOrientation" unique_id=1189712148 instance=ExtResource("2_fehwu")]

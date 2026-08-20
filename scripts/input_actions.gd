@@ -20,6 +20,7 @@ const KEYS := {
 	"locate": [KEY_Q],
 	"brace": [KEY_CTRL],
 	"char_skill": [KEY_SPACE],
+	"show_orders": [KEY_TAB],
 	"debug_time": [KEY_T],
 	"dev_mode": [KEY_F1],
 	"tutorial_reset": [KEY_F2],

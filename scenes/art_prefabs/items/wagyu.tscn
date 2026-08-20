@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_smj1y"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/生鲜区/老吴和牛礼盒.fbx" id="2_n41nc"]
+
+[node name="wagyu" type="Node3D" unique_id=1259077614]
+script = ExtResource("1_smj1y")
+material_profile_key = "item:wagyu"
+metadata/source_size = Vector3(0.9992837, 0.71631366, 0.44165444)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/老吴和牛礼盒.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/老吴和牛礼盒.fbx"
+metadata/art_prefab = true
+metadata/item_id = "wagyu"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=588757157]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.507469e-05, 0.00063455105, -0.00036850572)
+
+[node name="老吴和牛礼盒" type="Node3D" parent="SourceOrientation" unique_id=342481579 instance=ExtResource("2_n41nc")]

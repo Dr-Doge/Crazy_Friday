@@ -1,0 +1,1106 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/fixtures/cold_case_1.tscn" id="1_sj4a0"]
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="2_ju07d"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/fixtures/cold_case_2.tscn" id="3_jf1hq"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/fixtures/led_tube.tscn" id="4_k2ka7"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/fixtures/upright_shelf.tscn" id="5_8n2kj"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/biba_doll.tscn" id="6_1jx18"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/candy.tscn" id="7_pp27s"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/chips.tscn" id="8_v11nm"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/cola.tscn" id="9_61wv3"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/costcow_eggs.tscn" id="10_k8ofy"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/dumplings.tscn" id="11_l74pw"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/five_dudes_burger.tscn" id="12_ynic7"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/freedom_corn_chips.tscn" id="13_wmnnb"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/frozen_pear.tscn" id="14_xh2mm"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/grandpa_coconut.tscn" id="15_h1tdv"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/gta7_disc.tscn" id="16_sgh68"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/ice_cream.tscn" id="17_s20vx"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/king_crab.tscn" id="18_l63vj"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/lego.tscn" id="19_x3mi2"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/moose_milk.tscn" id="20_abvak"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/ohio_final_boss.tscn" id="21_cnxxp"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/one_fifty_hotdog.tscn" id="22_ikuux"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/paper_towels.tscn" id="23_k45e3"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/pizza.tscn" id="24_43j04"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/pocketmon_cards.tscn" id="25_pn6uy"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/salmon.tscn" id="26_uwl4q"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/salted_sword.tscn" id="27_gj8hl"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/sidequest_energy.tscn" id="28_la06k"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/skibuddy_toilet.tscn" id="29_6nuul"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/sparkling_water.tscn" id="30_gey2e"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/tactical_spicy_strips.tscn" id="31_sh54m"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/teddy.tscn" id="32_x0mfn"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/tongtongsahu.tscn" id="33_r00ln"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/wagyu.tscn" id="34_ya2pr"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/whole_paycheck_avocado.tscn" id="35_tq646"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/xianyu_fish.tscn" id="36_ifekb"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/items/yogurt_pack.tscn" id="37_8338y"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_101763e5e663.tscn" id="38_rh53j"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_f655d157f9e7.tscn" id="39_v78lq"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_f3d20c7b4653.tscn" id="40_80dlo"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_a8a90fcc2be4.tscn" id="41_e57ie"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_e6fb9ba018ec.tscn" id="42_6w3h7"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_d644ad376e7a.tscn" id="43_8l84w"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_9bcd2f24dc59.tscn" id="44_0g42k"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_6bd689db7489.tscn" id="45_5lo82"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_f8ba993d0fef.tscn" id="46_t28lx"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_778c264ef8ed.tscn" id="47_km43q"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_c62c6c1bd39f.tscn" id="48_fpone"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_0a7b72596e6e.tscn" id="49_jcx17"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_34fa8e7240eb.tscn" id="50_3brj8"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_ea0653411ac0.tscn" id="51_0eeja"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_d251aaaa0e12.tscn" id="52_m5lbe"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_a482e179ce84.tscn" id="53_cuk80"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_d3d2f53c4556.tscn" id="54_ppk03"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_5e57770ee660.tscn" id="55_2paj4"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_1f13175eecbd.tscn" id="56_6lpju"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_e7027d67cc58.tscn" id="57_87ett"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_e6a9eb03af03.tscn" id="58_pybnx"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_cfc56982530a.tscn" id="59_n4p10"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_8b9f2445503f.tscn" id="60_fr86d"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_b48d073ca11e.tscn" id="61_58ud0"]
+[ext_resource type="PackedScene" path="res://scenes/art_prefabs/library/asset_40d041ba375a.tscn" id="62_rvu32"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xh2hy"]
+albedo_color = Color(0.12, 0.135, 0.16, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="BoxMesh_7n44e"]
+size = Vector3(28, 0.15, 48)
+
+[node name="ArtAssetLibrary" type="Node3D" unique_id=289537523]
+metadata/purpose = "已连接贴图、可直接拖入场景的美术资产总览"
+
+[node name="ReviewFloor" type="MeshInstance3D" parent="." unique_id=1474783909]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 15)
+material_override = SubResource("StandardMaterial3D_xh2hy")
+mesh = SubResource("BoxMesh_7n44e")
+
+[node name="ReviewSun" type="DirectionalLight3D" parent="." unique_id=958234250]
+transform = Transform3D(0.90630776, 0.34618863, -0.24240388, 0, 0.57357645, 0.81915206, 0.42261827, -0.74240386, 0.5198368, 0, 0, 0)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="ReviewCamera" type="Camera3D" parent="." unique_id=381498328]
+transform = Transform3D(1, 0, 0, 0, 0.809017, 0.58778524, 0, -0.58778524, 0.809017, 0, 31, 49)
+current = true
+
+[node name="Fixtures_DragPrefabsFromFileSystem" type="Node3D" parent="." unique_id=23616442]
+
+[node name="cold_case_1" type="Node3D" parent="Fixtures_DragPrefabsFromFileSystem" unique_id=1945889814 instance=ExtResource("1_sj4a0")]
+transform = Transform3D(0.5075976, 0, 0, 0, 0.5075976, 0, 0, 0, 0.5075976, -9, 1.35, -5.5)
+script = ExtResource("2_ju07d")
+material_profile_key = "cold_case_1"
+metadata/source_size = Vector3(8.86529, 4.9329934, 4.032935)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜001（带材质）1.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜001（带材质）1.fbx"
+metadata/art_prefab = true
+metadata/fixture_kind = "cold_case_1"
+metadata/asset_kind = "fixture"
+
+[node name="cold_case_1_Label" type="Label3D" parent="Fixtures_DragPrefabsFromFileSystem" unique_id=1447312091]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -9, 0.18, -3.625)
+text = "cold_case_1"
+font_size = 48
+outline_size = 8
+
+[node name="cold_case_2" type="Node3D" parent="Fixtures_DragPrefabsFromFileSystem" unique_id=2075290861 instance=ExtResource("3_jf1hq")]
+transform = Transform3D(4.458286, 0, 0, 0, 4.458286, 0, 0, 0, 4.458286, -3, 1.35, -5.5)
+script = ExtResource("2_ju07d")
+material_profile_key = "cold_case_2"
+metadata/source_size = Vector3(1, 0.60561395, 0.55626774)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜002（带材质）.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜002（带材质）.fbx"
+metadata/art_prefab = true
+metadata/fixture_kind = "cold_case_2"
+metadata/asset_kind = "fixture"
+
+[node name="cold_case_2_Label" type="Label3D" parent="Fixtures_DragPrefabsFromFileSystem" unique_id=107238829]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -3, 0.18, -3.625)
+text = "cold_case_2"
+font_size = 48
+outline_size = 8
+
+[node name="led_tube" type="Node3D" parent="Fixtures_DragPrefabsFromFileSystem" unique_id=1169138556 instance=ExtResource("4_k2ka7")]
+transform = Transform3D(4.501098, 0, 0, 0, 4.501098, 0, 0, 0, 4.501098, 3, 1.35, -5.5)
+script = ExtResource("2_ju07d")
+material_profile_key = "led_tube"
+metadata/source_size = Vector3(0.999756, 0.3199768, 0.17385875)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/LED灯管.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/LED灯管.fbx"
+metadata/art_prefab = true
+metadata/fixture_kind = "led_tube"
+metadata/asset_kind = "fixture"
+
+[node name="led_tube_Label" type="Label3D" parent="Fixtures_DragPrefabsFromFileSystem" unique_id=1942694226]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 3, 0.18, -3.625)
+text = "led_tube"
+font_size = 48
+outline_size = 8
+
+[node name="upright_shelf" type="Node3D" parent="Fixtures_DragPrefabsFromFileSystem" unique_id=150280036 instance=ExtResource("5_8n2kj")]
+transform = Transform3D(1.2860602, 0, 0, 0, 1.2860602, 0, 0, 0, 1.2860602, 9, 1.35, -5.5)
+script = ExtResource("2_ju07d")
+material_profile_key = "upright_shelf"
+metadata/source_size = Vector3(3.4990585, 1.9559011, 1.066855)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/普通货架001（白膜）.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/普通货架001（白膜）.fbx"
+metadata/art_prefab = true
+metadata/fixture_kind = "upright_shelf"
+metadata/asset_kind = "fixture"
+
+[node name="upright_shelf_Label" type="Label3D" parent="Fixtures_DragPrefabsFromFileSystem" unique_id=509235780]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 9, 0.18, -3.625)
+text = "upright_shelf"
+font_size = 48
+outline_size = 8
+
+[node name="Items_DragPrefabsFromFileSystem" type="Node3D" parent="." unique_id=1842120676]
+
+[node name="biba_doll" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=336858867 instance=ExtResource("6_1jx18")]
+transform = Transform3D(2.2023995, 0, 0, 0, 2.2023995, 0, 0, 0, 2.2023995, -10.5, 1.1, -1)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:biba_doll"
+metadata/source_size = Vector3(0.7069961, 0.99891055, 0.38412315)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/碧芭娃娃.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/碧芭娃娃.fbx"
+metadata/art_prefab = true
+metadata/item_id = "biba_doll"
+metadata/asset_kind = "item"
+
+[node name="biba_doll_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=379444337]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -10.5, 0.18, 0.2750001)
+text = "biba_doll"
+font_size = 48
+outline_size = 8
+
+[node name="candy" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1202043647 instance=ExtResource("7_pp27s")]
+transform = Transform3D(2.194426, 0, 0, 0, 2.194426, 0, 0, 0, 2.194426, -7.5, 1.1, -1)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:candy"
+metadata/source_size = Vector3(0.70717514, 1.0025401, 0.4725834)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/小小泡泡糖.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/小小泡泡糖.fbx"
+metadata/art_prefab = true
+metadata/item_id = "candy"
+metadata/asset_kind = "item"
+
+[node name="candy_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1485067428]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -7.5, 0.18, 0.2750001)
+text = "candy"
+font_size = 48
+outline_size = 8
+
+[node name="chips" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1417774381 instance=ExtResource("8_v11nm")]
+transform = Transform3D(1.7009101, 0, 0, 0, 1.7009101, 0, 0, 0, 1.7009101, -4.5, 1.1, -1)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:chips"
+metadata/source_size = Vector3(0.99341154, 0.8920803, 0.999465)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/喜事桶装薯片.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/喜事桶装薯片.fbx"
+metadata/art_prefab = true
+metadata/item_id = "chips"
+metadata/asset_kind = "item"
+
+[node name="chips_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=44146980]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -4.5, 0.18, 0.2750001)
+text = "chips"
+font_size = 48
+outline_size = 8
+
+[node name="cola" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1947452642 instance=ExtResource("9_61wv3")]
+transform = Transform3D(1.7035853, 0, 0, 0, 1.7035853, 0, 0, 0, 1.7035853, -1.5, 1.1, -1)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:cola"
+metadata/source_size = Vector3(0.9978955, 0.74129313, 0.8228555)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/口渴可乐整箱.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/口渴可乐整箱.fbx"
+metadata/art_prefab = true
+metadata/item_id = "cola"
+metadata/asset_kind = "item"
+
+[node name="cola_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=314738636]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -1.5, 0.18, 0.2750001)
+text = "cola"
+font_size = 48
+outline_size = 8
+
+[node name="costcow_eggs" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1828156345 instance=ExtResource("10_k8ofy")]
+transform = Transform3D(1.7020152, 0, 0, 0, 1.7020152, 0, 0, 0, 1.7020152, 1.5, 1.1, -1)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:costcow_eggs"
+metadata/source_size = Vector3(0.998816, 0.30372697, 0.52184254)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/Trader John牧场鸡蛋.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/Trader John牧场鸡蛋.fbx"
+metadata/art_prefab = true
+metadata/item_id = "costcow_eggs"
+metadata/asset_kind = "item"
+
+[node name="costcow_eggs_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1218800159]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 1.5, 0.18, 0.2750001)
+text = "costcow_eggs"
+font_size = 48
+outline_size = 8
+
+[node name="dumplings" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1406102885 instance=ExtResource("11_l74pw")]
+transform = Transform3D(1.7008283, 0, 0, 0, 1.7008283, 0, 0, 0, 1.7008283, 4.5, 1.1, -1)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:dumplings"
+metadata/source_size = Vector3(0.99951303, 0.58470005, 0.46210334)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/速冻炒肝水饺.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/速冻炒肝水饺.fbx"
+metadata/art_prefab = true
+metadata/item_id = "dumplings"
+metadata/asset_kind = "item"
+
+[node name="dumplings_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1658368214]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.5, 0.18, 0.2750001)
+text = "dumplings"
+font_size = 48
+outline_size = 8
+
+[node name="five_dudes_burger" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1799816425 instance=ExtResource("12_ynic7")]
+transform = Transform3D(1.6987487, 0, 0, 0, 1.6987487, 0, 0, 0, 1.6987487, 7.5, 1.1, -1)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:five_dudes_burger"
+metadata/source_size = Vector3(1.0007366, 0.8372537, 0.78877765)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/五个老哥汉堡.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/五个老哥汉堡.fbx"
+metadata/art_prefab = true
+metadata/item_id = "five_dudes_burger"
+metadata/asset_kind = "item"
+
+[node name="five_dudes_burger_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=756317683]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 7.5, 0.18, 0.2750001)
+text = "five_dudes_burger"
+font_size = 48
+outline_size = 8
+
+[node name="freedom_corn_chips" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1805797884 instance=ExtResource("13_wmnnb")]
+transform = Transform3D(2.2007668, 0, 0, 0, 2.2007668, 0, 0, 0, 2.2007668, 10.5, 1.1, -1)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:freedom_corn_chips"
+metadata/source_size = Vector3(0.7450044, 0.9996516, 0.314817)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/自由鹰超辣玉米片.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/自由鹰超辣玉米片.fbx"
+metadata/art_prefab = true
+metadata/item_id = "freedom_corn_chips"
+metadata/asset_kind = "item"
+
+[node name="freedom_corn_chips_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=948232910]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 10.5, 0.18, 0.2750001)
+text = "freedom_corn_chips"
+font_size = 48
+outline_size = 8
+
+[node name="frozen_pear" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1958967865 instance=ExtResource("14_xh2mm")]
+transform = Transform3D(1.6993032, 0, 0, 0, 1.6993032, 0, 0, 0, 1.6993032, -10.5, 1.1, 3.4)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:frozen_pear"
+metadata/source_size = Vector3(1.0004101, 0.5898873, 0.42947)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/东北黑金砖冻梨.glb"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/东北黑金砖冻梨.glb"
+metadata/art_prefab = true
+metadata/item_id = "frozen_pear"
+metadata/asset_kind = "item"
+
+[node name="frozen_pear_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=94034932]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -10.5, 0.18, 4.675)
+text = "frozen_pear"
+font_size = 48
+outline_size = 8
+
+[node name="grandpa_coconut" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1617140289 instance=ExtResource("15_h1tdv")]
+transform = Transform3D(2.2034438, 0, 0, 0, 2.2034438, 0, 0, 0, 2.2034438, -7.5, 1.1, 3.4)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:grandpa_coconut"
+metadata/source_size = Vector3(0.50180185, 0.9984371, 0.5759853)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/爷树牌椰汁.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/爷树牌椰汁.fbx"
+metadata/art_prefab = true
+metadata/item_id = "grandpa_coconut"
+metadata/asset_kind = "item"
+
+[node name="grandpa_coconut_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1122568806]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -7.5, 0.18, 4.675)
+text = "grandpa_coconut"
+font_size = 48
+outline_size = 8
+
+[node name="gta7_disc" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=89959985 instance=ExtResource("16_sgh68")]
+transform = Transform3D(1.7015032, 0, 0, 0, 1.7015032, 0, 0, 0, 1.7015032, -4.5, 1.1, 3.4)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:gta7_disc"
+metadata/source_size = Vector3(0.9991166, 0.5775987, 0.14034426)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/GTA7游戏实体光盘.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/GTA7游戏实体光盘.fbx"
+metadata/art_prefab = true
+metadata/item_id = "gta7_disc"
+metadata/asset_kind = "item"
+
+[node name="gta7_disc_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1518632392]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -4.5, 0.18, 4.675)
+text = "gta7_disc"
+font_size = 48
+outline_size = 8
+
+[node name="ice_cream" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=765264397 instance=ExtResource("17_s20vx")]
+transform = Transform3D(2.202803, 0, 0, 0, 2.202803, 0, 0, 0, 2.202803, -1.5, 1.1, 3.4)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:ice_cream"
+metadata/source_size = Vector3(0.38541472, 0.99872756, 0.16197836)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/八羊冰激凌.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/八羊冰激凌.fbx"
+metadata/art_prefab = true
+metadata/item_id = "ice_cream"
+metadata/asset_kind = "item"
+
+[node name="ice_cream_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1095681245]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -1.5, 0.18, 4.675)
+text = "ice_cream"
+font_size = 48
+outline_size = 8
+
+[node name="king_crab" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=51572394 instance=ExtResource("18_l63vj")]
+transform = Transform3D(1.7034514, 0, 0, 0, 1.7034514, 0, 0, 0, 1.7034514, 1.5, 1.1, 3.4)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:king_crab"
+metadata/source_size = Vector3(0.9979739, 0.34482747, 0.31445372)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾.glb"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾.glb"
+metadata/art_prefab = true
+metadata/item_id = "king_crab"
+metadata/asset_kind = "item"
+
+[node name="king_crab_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=17364735]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 1.5, 0.18, 4.675)
+text = "king_crab"
+font_size = 48
+outline_size = 8
+
+[node name="lego" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1312707484 instance=ExtResource("19_x3mi2")]
+transform = Transform3D(2.2020788, 0, 0, 0, 2.2020788, 0, 0, 0, 2.2020788, 4.5, 1.1, 3.4)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:lego"
+metadata/source_size = Vector3(0.7663914, 0.999056, 0.57252705)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/激动武士矮达.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/激动武士矮达.fbx"
+metadata/art_prefab = true
+metadata/item_id = "lego"
+metadata/asset_kind = "item"
+
+[node name="lego_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=2121799291]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.5, 0.18, 4.675)
+text = "lego"
+font_size = 48
+outline_size = 8
+
+[node name="moose_milk" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=807777765 instance=ExtResource("20_abvak")]
+transform = Transform3D(2.2016022, 0, 0, 0, 2.2016022, 0, 0, 0, 2.2016022, 7.5, 1.1, 3.4)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:moose_milk"
+metadata/source_size = Vector3(0.6540115, 0.9992723, 0.546582)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/枫叶麋鹿鲜奶.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/枫叶麋鹿鲜奶.fbx"
+metadata/art_prefab = true
+metadata/item_id = "moose_milk"
+metadata/asset_kind = "item"
+
+[node name="moose_milk_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=243907217]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 7.5, 0.18, 4.675)
+text = "moose_milk"
+font_size = 48
+outline_size = 8
+
+[node name="ohio_final_boss" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1809165768 instance=ExtResource("21_cnxxp")]
+transform = Transform3D(2.0373518, 0, 0, 0, 2.0373518, 0, 0, 0, 2.0373518, 10.5, 1.1, 3.4)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:ohio_final_boss"
+metadata/source_size = Vector3(0.8344165, 0.99977636, 0.7564167)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Ohio最终手办02.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Ohio最终手办02.fbx"
+metadata/art_prefab = true
+metadata/item_id = "ohio_final_boss"
+metadata/asset_kind = "item"
+
+[node name="ohio_final_boss_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1261339603]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 10.5, 0.18, 4.675)
+text = "ohio_final_boss"
+font_size = 48
+outline_size = 8
+
+[node name="one_fifty_hotdog" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=135176162 instance=ExtResource("22_ikuux")]
+transform = Transform3D(1.7005814, 0, 0, 0, 1.7005814, 0, 0, 0, 1.7005814, -10.5, 1.1, 7.8)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:one_fifty_hotdog"
+metadata/source_size = Vector3(0.9996581, 0.39815217, 0.36722153)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/CostCow热狗.glb"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/CostCow热狗.glb"
+metadata/art_prefab = true
+metadata/item_id = "one_fifty_hotdog"
+metadata/asset_kind = "item"
+
+[node name="one_fifty_hotdog_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1339632384]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -10.5, 0.18, 9.075001)
+text = "one_fifty_hotdog"
+font_size = 48
+outline_size = 8
+
+[node name="paper_towels" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=122796549 instance=ExtResource("23_k45e3")]
+transform = Transform3D(2.1978931, 0, 0, 0, 2.1978931, 0, 0, 0, 2.1978931, -7.5, 1.1, 7.8)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:paper_towels"
+metadata/source_size = Vector3(0.6467996, 1.0009586, 0.744498)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/阿诺牌蛋白粉.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/阿诺牌蛋白粉.fbx"
+metadata/art_prefab = true
+metadata/item_id = "paper_towels"
+metadata/asset_kind = "item"
+
+[node name="paper_towels_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=2029325266]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -7.5, 0.18, 9.075001)
+text = "paper_towels"
+font_size = 48
+outline_size = 8
+
+[node name="pizza" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=887666664 instance=ExtResource("24_43j04")]
+transform = Transform3D(1.6990767, 0, 0, 0, 1.6990767, 0, 0, 0, 1.6990767, -4.5, 1.1, 7.8)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:pizza"
+metadata/source_size = Vector3(1.0005435, 0.67949045, 0.6923473)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/夏威夷披萨.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/夏威夷披萨.fbx"
+metadata/art_prefab = true
+metadata/item_id = "pizza"
+metadata/asset_kind = "item"
+
+[node name="pizza_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1948470685]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -4.5, 0.18, 9.075001)
+text = "pizza"
+font_size = 48
+outline_size = 8
+
+[node name="pocketmon_cards" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1366904195 instance=ExtResource("25_pn6uy")]
+transform = Transform3D(2.2001991, 0, 0, 0, 2.2001991, 0, 0, 0, 2.2001991, -1.5, 1.1, 7.8)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:pocketmon_cards"
+metadata/source_size = Vector3(0.589471, 0.9999095, 0.13435821)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Pocketmon集换卡.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Pocketmon集换卡.fbx"
+metadata/art_prefab = true
+metadata/item_id = "pocketmon_cards"
+metadata/asset_kind = "item"
+
+[node name="pocketmon_cards_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=736754390]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -1.5, 0.18, 9.075001)
+text = "pocketmon_cards"
+font_size = 48
+outline_size = 8
+
+[node name="salmon" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=379366647 instance=ExtResource("26_uwl4q")]
+transform = Transform3D(1.6999998, 0, 0, 0, 1.6999998, 0, 0, 0, 1.6999998, 1.5, 1.1, 7.8)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:salmon"
+metadata/source_size = Vector3(1.0000001, 0.56048584, 0.37944037)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/哈兰德三文鱼/tripo_convert_21dcc346-9421-4a15-aa34-9a21cec279dd.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/哈兰德三文鱼/tripo_convert_21dcc346-9421-4a15-aa34-9a21cec279dd.fbx"
+metadata/art_prefab = true
+metadata/item_id = "salmon"
+metadata/asset_kind = "item"
+
+[node name="salmon_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1646857333]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 1.5, 0.18, 9.075001)
+text = "salmon"
+font_size = 48
+outline_size = 8
+
+[node name="salted_sword" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=985276107 instance=ExtResource("27_gj8hl")]
+transform = Transform3D(1.6993697, 0, 0, 0, 1.6993697, 0, 0, 0, 1.6993697, 4.5, 1.1, 7.8)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:salted_sword"
+metadata/source_size = Vector3(1.000371, 0.18916827, 0.08986916)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/尚方宝剑咸鱼.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/冷冻区/尚方宝剑咸鱼.fbx"
+metadata/art_prefab = true
+metadata/item_id = "salted_sword"
+metadata/asset_kind = "item"
+
+[node name="salted_sword_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1463907349]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.5, 0.18, 9.075001)
+text = "salted_sword"
+font_size = 48
+outline_size = 8
+
+[node name="sidequest_energy" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1452826666 instance=ExtResource("28_la06k")]
+transform = Transform3D(2.1970608, 0, 0, 0, 2.1970608, 0, 0, 0, 2.1970608, 7.5, 1.1, 7.8)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:sidequest_energy"
+metadata/source_size = Vector3(0.3634132, 1.0013378, 0.36749226)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/地球人电解质水.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/地球人电解质水.fbx"
+metadata/art_prefab = true
+metadata/item_id = "sidequest_energy"
+metadata/asset_kind = "item"
+
+[node name="sidequest_energy_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1404382558]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 7.5, 0.18, 9.075001)
+text = "sidequest_energy"
+font_size = 48
+outline_size = 8
+
+[node name="skibuddy_toilet" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1786172168 instance=ExtResource("29_6nuul")]
+transform = Transform3D(2.2013872, 0, 0, 0, 2.2013872, 0, 0, 0, 2.2013872, 10.5, 1.1, 7.8)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:skibuddy_toilet"
+metadata/source_size = Vector3(0.72465324, 0.99936986, 0.5537791)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Skibuddy马桶盲盒.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Skibuddy马桶盲盒.fbx"
+metadata/art_prefab = true
+metadata/item_id = "skibuddy_toilet"
+metadata/asset_kind = "item"
+
+[node name="skibuddy_toilet_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=359887112]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 10.5, 0.18, 9.075001)
+text = "skibuddy_toilet"
+font_size = 48
+outline_size = 8
+
+[node name="sparkling_water" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1868924747 instance=ExtResource("30_gey2e")]
+transform = Transform3D(2.1965144, 0, 0, 0, 2.1965144, 0, 0, 0, 2.1965144, -10.5, 1.1, 12.2)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:sparkling_water"
+metadata/source_size = Vector3(0.38919073, 1.0015869, 0.40853888)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/怨气森林气泡水.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/怨气森林气泡水.fbx"
+metadata/art_prefab = true
+metadata/item_id = "sparkling_water"
+metadata/asset_kind = "item"
+
+[node name="sparkling_water_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1686466426]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -10.5, 0.18, 13.475)
+text = "sparkling_water"
+font_size = 48
+outline_size = 8
+
+[node name="tactical_spicy_strips" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1129561964 instance=ExtResource("31_sh54m")]
+transform = Transform3D(2.1936538, 0, 0, 0, 2.1936538, 0, 0, 0, 2.1936538, -7.5, 1.1, 12.2)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:tactical_spicy_strips"
+metadata/source_size = Vector3(0.7322299, 1.002893, 0.39251345)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/威龙战术辣条.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/威龙战术辣条.fbx"
+metadata/art_prefab = true
+metadata/item_id = "tactical_spicy_strips"
+metadata/asset_kind = "item"
+
+[node name="tactical_spicy_strips_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=520263158]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -7.5, 0.18, 13.475)
+text = "tactical_spicy_strips"
+font_size = 48
+outline_size = 8
+
+[node name="teddy" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=565440440 instance=ExtResource("32_x0mfn")]
+transform = Transform3D(2.200147, 0, 0, 0, 2.200147, 0, 0, 0, 2.200147, -4.5, 1.1, 12.2)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:teddy"
+metadata/source_size = Vector3(0.7133175, 0.99993324, 0.6587571)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/拉肚肚.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/拉肚肚.fbx"
+metadata/art_prefab = true
+metadata/item_id = "teddy"
+metadata/asset_kind = "item"
+
+[node name="teddy_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=2041388675]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -4.5, 0.18, 13.475)
+text = "teddy"
+font_size = 48
+outline_size = 8
+
+[node name="tongtongsahu" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1247387654 instance=ExtResource("33_r00ln")]
+transform = Transform3D(2.2028942, 0, 0, 0, 2.2028942, 0, 0, 0, 2.2028942, -1.5, 1.1, 12.2)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:tongtongsahu"
+metadata/source_size = Vector3(0.40874526, 0.9986862, 0.3835832)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/TongTongSahu木偶摆件.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/TongTongSahu木偶摆件.fbx"
+metadata/art_prefab = true
+metadata/item_id = "tongtongsahu"
+metadata/asset_kind = "item"
+
+[node name="tongtongsahu_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=514776160]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -1.5, 0.18, 13.475)
+text = "tongtongsahu"
+font_size = 48
+outline_size = 8
+
+[node name="wagyu" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1259077614 instance=ExtResource("34_ya2pr")]
+transform = Transform3D(1.7012187, 0, 0, 0, 1.7012187, 0, 0, 0, 1.7012187, 1.5, 1.1, 12.2)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:wagyu"
+metadata/source_size = Vector3(0.9992837, 0.71631366, 0.44165444)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/老吴和牛礼盒.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/老吴和牛礼盒.fbx"
+metadata/art_prefab = true
+metadata/item_id = "wagyu"
+metadata/asset_kind = "item"
+
+[node name="wagyu_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=864736877]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 1.5, 0.18, 13.475)
+text = "wagyu"
+font_size = 48
+outline_size = 8
+
+[node name="whole_paycheck_avocado" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=286974984 instance=ExtResource("35_tq646")]
+transform = Transform3D(1.699738, 0, 0, 0, 1.699738, 0, 0, 0, 1.699738, 4.5, 1.1, 12.2)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:whole_paycheck_avocado"
+metadata/source_size = Vector3(1.0001541, 0.4270982, 0.458798)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/Half food牛油果.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/Half food牛油果.fbx"
+metadata/art_prefab = true
+metadata/item_id = "whole_paycheck_avocado"
+metadata/asset_kind = "item"
+
+[node name="whole_paycheck_avocado_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=2120140430]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.5, 0.18, 13.475)
+text = "whole_paycheck_avocado"
+font_size = 48
+outline_size = 8
+
+[node name="xianyu_fish" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1093387703 instance=ExtResource("36_ifekb")]
+transform = Transform3D(1.6981608, 0, 0, 0, 1.6981608, 0, 0, 0, 1.6981608, 7.5, 1.1, 12.2)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:xianyu_fish"
+metadata/source_size = Vector3(1.0010831, 0.7477124, 0.7476913)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/咸鱼黄胖鱼.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/咸鱼黄胖鱼.fbx"
+metadata/art_prefab = true
+metadata/item_id = "xianyu_fish"
+metadata/asset_kind = "item"
+
+[node name="xianyu_fish_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1555684053]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 7.5, 0.18, 13.475)
+text = "xianyu_fish"
+font_size = 48
+outline_size = 8
+
+[node name="yogurt_pack" type="Node3D" parent="Items_DragPrefabsFromFileSystem" unique_id=687756276 instance=ExtResource("37_8338y")]
+transform = Transform3D(1.7026776, 0, 0, 0, 1.7026776, 0, 0, 0, 1.7026776, 10.5, 1.1, 12.2)
+script = ExtResource("2_ju07d")
+material_profile_key = "item:yogurt_pack"
+metadata/source_size = Vector3(0.99842745, 0.74738836, 0.49365693)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/MC希腊酸奶.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/MC希腊酸奶.fbx"
+metadata/art_prefab = true
+metadata/item_id = "yogurt_pack"
+metadata/asset_kind = "item"
+
+[node name="yogurt_pack_Label" type="Label3D" parent="Items_DragPrefabsFromFileSystem" unique_id=1226645490]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 10.5, 0.18, 13.475)
+text = "yogurt_pack"
+font_size = 48
+outline_size = 8
+
+[node name="OtherSourceAssets_DragPrefabsFromFileSystem" type="Node3D" parent="." unique_id=1368637869]
+
+[node name="huojia0001all" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=148894210 instance=ExtResource("38_rh53j")]
+transform = Transform3D(0.08297584, 0, 0, 0, 0.08297584, 0, 0, 0, 0.08297584, -10.5, 1.1, 13)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(20.487892, 2.0244944, 11.287285)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/huojia0001all.blend"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/huojia0001all.blend"
+metadata/art_prefab = true
+metadata/display_name = "huojia0001all"
+metadata/asset_kind = "library"
+
+[node name="huojia0001all_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=889002950]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -10.5, 0.18, 14.275)
+text = "huojia0001all"
+font_size = 48
+outline_size = 8
+
+[node name="牛奶001" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=442406880 instance=ExtResource("39_v78lq")]
+transform = Transform3D(2.2, 0, 0, 0, 2.2, 0, 0, 0, 2.2, -7.5, 1.1, 13)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(0.46185213, 1, 0.444214)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/牛奶001.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/牛奶001.fbx"
+metadata/art_prefab = true
+metadata/display_name = "牛奶001"
+metadata/asset_kind = "library"
+
+[node name="牛奶001_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1648102819]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -7.5, 0.18, 14.275)
+text = "牛奶001"
+font_size = 48
+outline_size = 8
+
+[node name="牛奶组" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1441170234 instance=ExtResource("40_80dlo")]
+transform = Transform3D(1.7034782, 0, 0, 0, 1.7034782, 0, 0, 0, 1.7034782, -4.5, 1.1, 13)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(0.9979582, 0.68524593, 0.6987736)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/牛奶组.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/牛奶组.fbx"
+metadata/art_prefab = true
+metadata/display_name = "牛奶组"
+metadata/asset_kind = "library"
+
+[node name="牛奶组_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=992326137]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -4.5, 0.18, 14.275)
+text = "牛奶组"
+font_size = 48
+outline_size = 8
+
+[node name="瓶子001" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=610009444 instance=ExtResource("41_e57ie")]
+transform = Transform3D(2.2006717, 0, 0, 0, 2.2006717, 0, 0, 0, 2.2006717, -1.5, 1.1, 13)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(0.2831726, 0.9996948, 0.28422546)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/瓶子001.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/瓶子001.fbx"
+metadata/art_prefab = true
+metadata/display_name = "瓶子001"
+metadata/asset_kind = "library"
+
+[node name="瓶子001_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=137416056]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -1.5, 0.18, 14.275)
+text = "瓶子001"
+font_size = 48
+outline_size = 8
+
+[node name="罐装饮料001" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1027672734 instance=ExtResource("42_6w3h7")]
+transform = Transform3D(0.24301636, 0, 0, 0, 0.24301636, 0, 0, 0, 0.24301636, 1.5, 1.1, 13)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(6.995414, 3.9102902, 2.1975474)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/罐装饮料001.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/罐装饮料001.fbx"
+metadata/art_prefab = true
+metadata/display_name = "罐装饮料001"
+metadata/asset_kind = "library"
+
+[node name="罐装饮料001_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1980907009]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 1.5, 0.18, 14.275)
+text = "罐装饮料001"
+font_size = 48
+outline_size = 8
+
+[node name="罐装饮料002" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1647000255 instance=ExtResource("43_8l84w")]
+transform = Transform3D(2.19839, 0, 0, 0, 2.19839, 0, 0, 0, 2.19839, 4.5, 1.1, 13)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(0.70233154, 1.0007324, 0.70666504)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/罐装饮料002.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/罐装饮料002.fbx"
+metadata/art_prefab = true
+metadata/display_name = "罐装饮料002"
+metadata/asset_kind = "library"
+
+[node name="罐装饮料002_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1662120165]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.5, 0.18, 14.275)
+text = "罐装饮料002"
+font_size = 48
+outline_size = 8
+
+[node name="葡萄饮料组" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=2065418685 instance=ExtResource("44_0g42k")]
+transform = Transform3D(1.6993257, 0, 0, 0, 1.6993257, 0, 0, 0, 1.6993257, 7.5, 1.1, 13)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0003968, 0.69540405, 0.71694946)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/葡萄饮料组.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/葡萄饮料组.fbx"
+metadata/art_prefab = true
+metadata/display_name = "葡萄饮料组"
+metadata/asset_kind = "library"
+
+[node name="葡萄饮料组_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=186158413]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 7.5, 0.18, 14.275)
+text = "葡萄饮料组"
+font_size = 48
+outline_size = 8
+
+[node name="冰柜001（白膜）" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=829405045 instance=ExtResource("45_5lo82")]
+transform = Transform3D(1.6960671, 0, 0, 0, 1.6960671, 0, 0, 0, 1.6960671, 10.5, 1.1, 13)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0023189, 0.55773, 0.45596874)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜001（白膜）.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜001（白膜）.fbx"
+metadata/art_prefab = true
+metadata/display_name = "冰柜001（白膜）"
+metadata/asset_kind = "library"
+
+[node name="冰柜001（白膜）_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1338512236]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 10.5, 0.18, 14.275)
+text = "冰柜001（白膜）"
+font_size = 48
+outline_size = 8
+
+[node name="冰柜002（白膜）" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=264706651 instance=ExtResource("46_t28lx")]
+transform = Transform3D(0.111754484, 0, 0, 0, 0.111754484, 0, 0, 0, 0.111754484, -10.5, 1.1, 17.4)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(15.211918, 9.212548, 8.461901)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜002（白膜）.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜002（白膜）.fbx"
+metadata/art_prefab = true
+metadata/display_name = "冰柜002（白膜）"
+metadata/asset_kind = "library"
+
+[node name="冰柜002（白膜）_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=119103543]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -10.5, 0.18, 18.675)
+text = "冰柜002（白膜）"
+font_size = 48
+outline_size = 8
+
+[node name="地板01" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=507883706 instance=ExtResource("47_km43q")]
+transform = Transform3D(1.6999997, 0, 0, 0, 1.6999997, 0, 0, 0, 1.6999997, -7.5, 1.1, 17.4)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000002, 0.1330719, 1.0000002)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/地板01.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/地板01.fbx"
+metadata/art_prefab = true
+metadata/display_name = "地板01"
+metadata/asset_kind = "library"
+
+[node name="地板01_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=246749817]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -7.5, 0.18, 18.675)
+text = "地板01"
+font_size = 48
+outline_size = 8
+
+[node name="管道01" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=239747485 instance=ExtResource("48_fpone")]
+transform = Transform3D(1.6998442, 0, 0, 0, 1.6998442, 0, 0, 0, 1.6998442, -4.5, 1.1, 17.4)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000917, 0.33654785, 0.9767458)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/管道01.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/管道01.fbx"
+metadata/art_prefab = true
+metadata/display_name = "管道01"
+metadata/asset_kind = "library"
+
+[node name="管道01_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=215567216]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -4.5, 0.18, 18.675)
+text = "管道01"
+font_size = 48
+outline_size = 8
+
+[node name="管道02" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1407833654 instance=ExtResource("49_jcx17")]
+transform = Transform3D(1.699948, 0, 0, 0, 1.699948, 0, 0, 0, 1.699948, -1.5, 1.1, 17.4)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000306, 0.22693634, 0.22661594)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/管道02.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/管道02.fbx"
+metadata/art_prefab = true
+metadata/display_name = "管道02"
+metadata/asset_kind = "library"
+
+[node name="管道02_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=218116530]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -1.5, 0.18, 18.675)
+text = "管道02"
+font_size = 48
+outline_size = 8
+
+[node name="管道03" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1794157559 instance=ExtResource("50_3brj8")]
+transform = Transform3D(1.6999997, 0, 0, 0, 1.6999997, 0, 0, 0, 1.6999997, 1.5, 1.1, 17.4)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000002, 0.3874817, 0.6594848)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/管道03.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/管道03.fbx"
+metadata/art_prefab = true
+metadata/display_name = "管道03"
+metadata/asset_kind = "library"
+
+[node name="管道03_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1571285585]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 1.5, 0.18, 18.675)
+text = "管道03"
+font_size = 48
+outline_size = 8
+
+[node name="钢管01" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=2064725440 instance=ExtResource("51_0eeja")]
+transform = Transform3D(1.6999998, 0, 0, 0, 1.6999998, 0, 0, 0, 1.6999998, 4.5, 1.1, 17.4)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000001, 0.11195755, 0.07895282)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/钢管01.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/钢管01.fbx"
+metadata/art_prefab = true
+metadata/display_name = "钢管01"
+metadata/asset_kind = "library"
+
+[node name="钢管01_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=205965374]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.5, 0.18, 18.675)
+text = "钢管01"
+font_size = 48
+outline_size = 8
+
+[node name="Meshy_AI_冰柜001（白膜）_0813084829_texture" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1502416054 instance=ExtResource("52_m5lbe")]
+transform = Transform3D(2.5004268, 0, 0, 0, 2.5004268, 0, 0, 0, 2.5004268, 7.5, 1.1, 17.4)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(0.67988396, 0.378314, 0.309288)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/冰柜001（材质）.fbx/Meshy_AI_冰柜001（白膜）_0813084829_texture_fbx/Meshy_AI_冰柜001（白膜）_0813084829_texture.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/冰柜001（材质）.fbx/Meshy_AI_冰柜001（白膜）_0813084829_texture_fbx/Meshy_AI_冰柜001（白膜）_0813084829_texture.fbx"
+metadata/art_prefab = true
+metadata/display_name = "Meshy_AI_冰柜001（白膜）_0813084829_texture"
+metadata/asset_kind = "library"
+
+[node name="Meshy_AI_冰柜001（白膜）_0813084829_texture_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=429563321]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 7.5, 0.18, 18.675)
+text = "Meshy_AI_冰柜001（白膜）_0813084829_texture"
+font_size = 48
+outline_size = 8
+
+[node name="tripo_convert_0edb824d-f99d-4b80-bd9f-5600ad2fbcd2" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1705863599 instance=ExtResource("53_cuk80")]
+transform = Transform3D(1.6999997, 0, 0, 0, 1.6999997, 0, 0, 0, 1.6999997, 10.5, 1.1, 17.4)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000002, 0.1330719, 1.0000002)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/地板01/tripo_convert_0edb824d-f99d-4b80-bd9f-5600ad2fbcd2.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/地板01/tripo_convert_0edb824d-f99d-4b80-bd9f-5600ad2fbcd2.fbx"
+metadata/art_prefab = true
+metadata/display_name = "tripo_convert_0edb824d-f99d-4b80-bd9f-5600ad2fbcd2"
+metadata/asset_kind = "library"
+
+[node name="tripo_convert_0edb824d-f99d-4b80-bd9f-5600ad2fbcd2_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=27426180]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 10.5, 0.18, 18.675)
+text = "tripo_convert_0edb824d-f99d-4b80-bd9f-5600ad2fbcd2"
+font_size = 48
+outline_size = 8
+
+[node name="tripo_convert_b1c1b3ce-1a40-4687-b1e0-967eea3700a6" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1228501619 instance=ExtResource("54_ppk03")]
+transform = Transform3D(2.2, 0, 0, 0, 2.2, 0, 0, 0, 2.2, -10.5, 1.1, 21.8)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(0.46185213, 1, 0.444214)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/牛奶0001.glb/tripo_convert_b1c1b3ce-1a40-4687-b1e0-967eea3700a6.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/牛奶0001.glb/tripo_convert_b1c1b3ce-1a40-4687-b1e0-967eea3700a6.fbx"
+metadata/art_prefab = true
+metadata/display_name = "tripo_convert_b1c1b3ce-1a40-4687-b1e0-967eea3700a6"
+metadata/asset_kind = "library"
+
+[node name="tripo_convert_b1c1b3ce-1a40-4687-b1e0-967eea3700a6_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1275537169]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -10.5, 0.18, 23.074999)
+text = "tripo_convert_b1c1b3ce-1a40-4687-b1e0-967eea3700a6"
+font_size = 48
+outline_size = 8
+
+[node name="tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=400533201 instance=ExtResource("55_2paj4")]
+transform = Transform3D(1.6998442, 0, 0, 0, 1.6998442, 0, 0, 0, 1.6998442, -7.5, 1.1, 21.8)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000917, 0.33654785, 0.9767458)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/管道01.glb/tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/管道01.glb/tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e.fbx"
+metadata/art_prefab = true
+metadata/display_name = "tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e"
+metadata/asset_kind = "library"
+
+[node name="tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=888818643]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -7.5, 0.18, 23.074999)
+text = "tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e"
+font_size = 48
+outline_size = 8
+
+[node name="tripo_convert_8d4110eb-9963-41fa-9ce7-cb62a6c5b6bd" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1611269982 instance=ExtResource("56_6lpju")]
+transform = Transform3D(1.699948, 0, 0, 0, 1.699948, 0, 0, 0, 1.699948, -4.5, 1.1, 21.8)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000306, 0.22693634, 0.22661594)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/管道02/tripo_convert_8d4110eb-9963-41fa-9ce7-cb62a6c5b6bd.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/管道02/tripo_convert_8d4110eb-9963-41fa-9ce7-cb62a6c5b6bd.fbx"
+metadata/art_prefab = true
+metadata/display_name = "tripo_convert_8d4110eb-9963-41fa-9ce7-cb62a6c5b6bd"
+metadata/asset_kind = "library"
+
+[node name="tripo_convert_8d4110eb-9963-41fa-9ce7-cb62a6c5b6bd_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1106696832]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -4.5, 0.18, 23.074999)
+text = "tripo_convert_8d4110eb-9963-41fa-9ce7-cb62a6c5b6bd"
+font_size = 48
+outline_size = 8
+
+[node name="tripo_convert_9d39982d-bf6e-4550-b2be-ff8626b07454" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=562228830 instance=ExtResource("57_87ett")]
+transform = Transform3D(2.2025542, 0, 0, 0, 2.2025542, 0, 0, 0, 2.2025542, -1.5, 1.1, 21.8)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(0.64422613, 0.99884033, 0.6495667)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/罐装饮料0001.glb/tripo_convert_9d39982d-bf6e-4550-b2be-ff8626b07454.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/罐装饮料0001.glb/tripo_convert_9d39982d-bf6e-4550-b2be-ff8626b07454.fbx"
+metadata/art_prefab = true
+metadata/display_name = "tripo_convert_9d39982d-bf6e-4550-b2be-ff8626b07454"
+metadata/asset_kind = "library"
+
+[node name="tripo_convert_9d39982d-bf6e-4550-b2be-ff8626b07454_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=810191056]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -1.5, 0.18, 23.074999)
+text = "tripo_convert_9d39982d-bf6e-4550-b2be-ff8626b07454"
+font_size = 48
+outline_size = 8
+
+[node name="罐子02_glb" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1016908238 instance=ExtResource("58_pybnx")]
+transform = Transform3D(2.19839, 0, 0, 0, 2.19839, 0, 0, 0, 2.19839, 1.5, 1.1, 21.8)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(0.70233154, 1.0007324, 0.70666504)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/罐装饮料002/罐子02.glb.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/罐装饮料002/罐子02.glb.fbx"
+metadata/art_prefab = true
+metadata/display_name = "罐子02.glb"
+metadata/asset_kind = "library"
+
+[node name="罐子02_glb_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=225537483]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 1.5, 0.18, 23.074999)
+text = "罐子02.glb"
+font_size = 48
+outline_size = 8
+
+[node name="tripo_convert_fda4501a-86d1-448a-ae93-68704204a1dc" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=489696766 instance=ExtResource("59_n4p10")]
+transform = Transform3D(1.6993257, 0, 0, 0, 1.6993257, 0, 0, 0, 1.6993257, 4.5, 1.1, 21.8)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0003968, 0.69540405, 0.71694946)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/葡萄饮料组.glb/tripo_convert_fda4501a-86d1-448a-ae93-68704204a1dc.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/葡萄饮料组.glb/tripo_convert_fda4501a-86d1-448a-ae93-68704204a1dc.fbx"
+metadata/art_prefab = true
+metadata/display_name = "tripo_convert_fda4501a-86d1-448a-ae93-68704204a1dc"
+metadata/asset_kind = "library"
+
+[node name="tripo_convert_fda4501a-86d1-448a-ae93-68704204a1dc_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=2045777554]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 4.5, 0.18, 23.074999)
+text = "tripo_convert_fda4501a-86d1-448a-ae93-68704204a1dc"
+font_size = 48
+outline_size = 8
+
+[node name="tripo_convert_811469a5-456b-4bdd-a4ee-423c8d86f7f3" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=24059014 instance=ExtResource("60_fr86d")]
+transform = Transform3D(1.6999998, 0, 0, 0, 1.6999998, 0, 0, 0, 1.6999998, 7.5, 1.1, 21.8)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000001, 0.11195755, 0.07895282)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/钢管01/tripo_convert_811469a5-456b-4bdd-a4ee-423c8d86f7f3.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/钢管01/tripo_convert_811469a5-456b-4bdd-a4ee-423c8d86f7f3.fbx"
+metadata/art_prefab = true
+metadata/display_name = "tripo_convert_811469a5-456b-4bdd-a4ee-423c8d86f7f3"
+metadata/asset_kind = "library"
+
+[node name="tripo_convert_811469a5-456b-4bdd-a4ee-423c8d86f7f3_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1736659170]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 7.5, 0.18, 23.074999)
+text = "tripo_convert_811469a5-456b-4bdd-a4ee-423c8d86f7f3"
+font_size = 48
+outline_size = 8
+
+[node name="哈兰德三文鱼" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1689372541 instance=ExtResource("61_58ud0")]
+transform = Transform3D(1.6999998, 0, 0, 0, 1.6999998, 0, 0, 0, 1.6999998, 10.5, 1.1, 21.8)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(1.0000001, 0.56048584, 0.37944037)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/哈兰德三文鱼.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/哈兰德三文鱼.fbx"
+metadata/art_prefab = true
+metadata/display_name = "哈兰德三文鱼"
+metadata/asset_kind = "library"
+
+[node name="哈兰德三文鱼_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1372108800]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 10.5, 0.18, 23.074999)
+text = "哈兰德三文鱼"
+font_size = 48
+outline_size = 8
+
+[node name="皮皮虾02" type="Node3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1221189652 instance=ExtResource("62_rvu32")]
+transform = Transform3D(1.703684, 0, 0, 0, 1.703684, 0, 0, 0, 1.703684, -10.5, 1.1, 26.2)
+script = ExtResource("2_ju07d")
+metadata/source_size = Vector3(0.99783766, 0.5110203, 0.5398032)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾02.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/皮皮虾02.fbx"
+metadata/art_prefab = true
+metadata/display_name = "皮皮虾02"
+metadata/asset_kind = "library"
+
+[node name="皮皮虾02_Label" type="Label3D" parent="OtherSourceAssets_DragPrefabsFromFileSystem" unique_id=1813816159]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -10.5, 0.18, 27.475)
+text = "皮皮虾02"
+font_size = 48
+outline_size = 8

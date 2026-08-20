@@ -210,6 +210,7 @@ function Invoke-MpCase {
 		WHITEBOX_HOST                = "$ClientCount"
 		WHITEBOX_NPC                 = '4'
 		WHITEBOX_PORT                = $testPort
+		WHITEBOX_MP_DRIVE_TEST       = '1'
 		WHITEBOX_MP_INTERACTION_TEST = '1'
 	}
 	Start-Sleep -Seconds 2   # 等主机把房建起来再让客户端连
@@ -227,7 +228,7 @@ function Invoke-MpCase {
 
 	$results = @()
 	foreach ($i in $instances) {
-		$expect = @("联机开局")
+		$expect = @("联机开局", "LOCAL_ON_FOOT_CAMERA=PASS")
 		if ($i.Name -eq 'mp-host') {
 			$expect += "host=true"
 		}
@@ -327,7 +328,7 @@ if ($Mode -in @('prop', 'all')) {
 if ($Mode -in @('order', 'all')) {
 	$all += Invoke-SingleCase -Name 'order' -EnvVars @{ WHITEBOX_ORDERTEST = '1'; WHITEBOX_NPC = '0' } `
 		-FrameCount 4000 -Expect @('RESULT=PASS') -TimeoutSec 180 `
-		-Note '(混合订单结构/类别匹配/Q雷达/HUD/特价替代)'
+		-Note '(四队25件四专区订单/库存扣配/专区交集/折叠HUD/结算)'
 }
 if ($Mode -in @('level', 'all')) {
 	$all += Invoke-SingleCase -Name 'level' -EnvVars @{ WHITEBOX_LEVELTEST = '1'; WHITEBOX_NPC = '0' } `

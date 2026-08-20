@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_y4fqb"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/生鲜区/咸鱼黄胖鱼.fbx" id="2_njqxv"]
+
+[node name="xianyu_fish" type="Node3D" unique_id=1093387703]
+script = ExtResource("1_y4fqb")
+material_profile_key = "item:xianyu_fish"
+metadata/source_size = Vector3(1.0010831, 0.7477124, 0.7476913)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/咸鱼黄胖鱼.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/咸鱼黄胖鱼.fbx"
+metadata/art_prefab = true
+metadata/item_id = "xianyu_fish"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=795928229]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0007137656, 0.00010472536, 0.00044372678)
+
+[node name="咸鱼黄胖鱼" type="Node3D" parent="SourceOrientation" unique_id=1358722492 instance=ExtResource("2_njqxv")]

@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_y86f8"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜001（白膜）.fbx" id="2_yxnyp"]
+
+[node name="冰柜001（白膜）" type="Node3D" unique_id=829405045]
+script = ExtResource("1_y86f8")
+metadata/source_size = Vector3(1.0023189, 0.55773, 0.45596874)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜001（白膜）.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/冰柜001（白膜）.fbx"
+metadata/art_prefab = true
+metadata/display_name = "冰柜001（白膜）"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=220722123]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.4404922, -0.27886495, 1.4901161e-08)
+
+[node name="冰柜001（白膜）" type="Node3D" parent="SourceOrientation" unique_id=538581279 instance=ExtResource("2_yxnyp")]

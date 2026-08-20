@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_gqcil"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/玩具区/GTA7游戏实体光盘.fbx" id="2_fxnea"]
+
+[node name="gta7_disc" type="Node3D" unique_id=89959985]
+script = ExtResource("1_gqcil")
+material_profile_key = "item:gta7_disc"
+metadata/source_size = Vector3(0.9991166, 0.5775987, 0.14034426)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/GTA7游戏实体光盘.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/GTA7游戏实体光盘.fbx"
+metadata/art_prefab = true
+metadata/item_id = "gta7_disc"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1893122750]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.00020039082, 0.00018289685, 3.453344e-05)
+
+[node name="GTA7游戏实体光盘" type="Node3D" parent="SourceOrientation" unique_id=280673560 instance=ExtResource("2_fxnea")]

@@ -4,12 +4,14 @@ class_name Player extends Actor
 const WALK_SPEED := 4.2
 const SPRINT_MULT := 1.55
 const PUSH_FORCE := 620.0
-const DRIVE_STEER := 110.0    # 驾驶转向力(过高会原地打转)
+const DRIVE_STEER := 82.0     # 驾驶转向力降低约25%，高速时不再过度甩头
 const BRAKE_MULT := 1.5       # S刹车强度
 const REVERSE_MULT := 1.0     # 倒车推力比例(与前进一致)
 const SEARCH_TIME := 0.8   # 货架搜货
 const STEAL_TIME := 1.2    # 偷别人车里的货
 const ELBOW_STAMINA := 4.0 # 肘击耗体力:一管体力=25次肘击
+const SHELF_INTERACT_DISTANCE := 8.0
+const FREE_INTERACT_DISTANCE := 2.2
 
 var stamina := 100.0
 var settled_once := false   # 是否已结算
@@ -23,10 +25,14 @@ var prop_cd := 0.0          # 右键场内商品道具冷却
 var throw_selection := 0    # 手持/购物车商品轮盘当前索引（本地UI状态）
 var throw_aiming := false   # 按住右键放大瞄准，松开时才真正投掷
 var buddies: Array = []      # 马德胜常驻的两名物流随从
+var _freeze_struggle_last_dir := 0
+var _freeze_struggle_released := true
 
 # ---------- 角色(见 character_def.gd / char_skills.gd) ----------
 var char_id := CharacterDef.ORDER[0]
 var char_cd := 0.0          # 空格 角色技能冷却
+var skill_cd_boost_time := 0.0
+var sampled_stands := {}
 
 # 赵冬梅「贴地冲撞」状态
 var dash_windup := 0.0      #蓄力剩余(全场可见的前摇)
@@ -71,6 +77,7 @@ var _channel_need := 0.0
 func _ready() -> void:
 	char_id = CharacterDef.valid_id(char_id)
 	build_body(avatar_color, seat_label)
+	build_cart_pointer(avatar_color)
 	hold_capacity = 2
 
 func is_running() -> bool:
@@ -96,7 +103,9 @@ func _physics_process(delta: float) -> void:
 
 	locate_cd = maxf(0.0, locate_cd - delta)
 	prop_cd = maxf(0.0, prop_cd - delta)
-	char_cd = maxf(0.0, char_cd - delta)
+	var char_cd_rate := 1.5 if skill_cd_boost_time > 0.0 else 1.0
+	char_cd = maxf(0.0, char_cd - delta * char_cd_rate)
+	skill_cd_boost_time = maxf(0.0, skill_cd_boost_time - delta)
 	# 开发者模式:所有技能无冷却。统一在这里清零,覆盖全部赋值点。
 	# 注意只清 CD,不清 dash_windup/stun_time/stance_time——那些是技能的
 	# 表现与代价,清掉会让状态机可重入。
@@ -112,6 +121,8 @@ func _physics_process(delta: float) -> void:
 			or taser_time > 0.0 or frozen_time > 0.0:
 		_drive_char_state(delta)
 		_update_interactions()
+		if frozen_time > 0.0:
+			prompt_text = "冻僵! 反复交替敲击 A / D 挣扎脱离"
 		return
 
 	# 冲刺:按下Shift立即提速,耗体力
@@ -148,6 +159,10 @@ func _physics_process(delta: float) -> void:
 		if braced:
 			speed *= 0.45
 		apply_motion(delta, wish, speed)
+		# 徒步交互以人物面朝方向为基准：鼠标转动镜头时同步转身，
+		# 镜头俯仰则继续负责区分双层货架的上下层。
+		var facing_yaw := net_cam_yaw if remote else (main.cam_yaw if main != null else 0.0)
+		body_root.global_rotation.y = facing_yaw
 
 	# 手部姿态
 	if braced:
@@ -192,6 +207,7 @@ func _tick_char_skill(delta: float) -> void:
 ## 技能占用期间的移动:三种状态都不接受方向输入
 func _drive_char_state(delta: float) -> void:
 	if frozen_time > 0.0:
+		_tick_freeze_struggle()
 		hand_pose = "stunned"
 		_cancel_channel()
 		if attached and is_instance_valid(cart):
@@ -201,6 +217,9 @@ func _drive_char_state(delta: float) -> void:
 		else:
 			apply_motion(delta, Vector3.ZERO, 0.0)
 		return
+	else:
+		_freeze_struggle_last_dir = 0
+		_freeze_struggle_released = true
 	if taser_time > 0.0:
 		hand_pose = "stunned"
 		_cancel_channel()
@@ -211,6 +230,7 @@ func _drive_char_state(delta: float) -> void:
 		else:
 			apply_motion(delta, Vector3.ZERO, 0.0)
 		return
+
 	if stance_time > 0.0:
 		hand_pose = "brace"
 		if attached and is_instance_valid(cart):
@@ -235,6 +255,27 @@ func _drive_char_state(delta: float) -> void:
 		_hold_cart_handle()
 	else:
 		apply_motion(delta, Vector3.ZERO, 0.0)
+
+## 冻僵时必须松开再交替敲击A/D；每次有效换边都会明显削减剩余冻结时间。
+## 远程玩家使用主机收到的net_move，同一机制在房主与客户端上保持一致。
+func _tick_freeze_struggle() -> void:
+	var axis := net_move.x if remote else Input.get_axis("move_left", "move_right")
+	if absf(axis) < 0.35:
+		_freeze_struggle_released = true
+		return
+	var direction := -1 if axis < 0.0 else 1
+	if not _freeze_struggle_released:
+		return
+	_freeze_struggle_released = false
+	if _freeze_struggle_last_dir == 0:
+		_freeze_struggle_last_dir = direction
+		frozen_time = maxf(0.0, frozen_time - 0.25)
+	elif direction != _freeze_struggle_last_dir:
+		_freeze_struggle_last_dir = direction
+		frozen_time = maxf(0.0, frozen_time - 0.58)
+		if frozen_time <= 0.0:
+			cold_meter = minf(cold_meter, 0.35)
+			cold_adapt_time = 8.0
 
 ## 人挂在车把上(不施力)
 func _hold_cart_handle() -> void:
@@ -404,6 +445,8 @@ func _on_interact_pressed(aim_dir := Vector3.ZERO) -> void:
 			_start_channel("steal", pick["target"], CharSkills.steal_time_for(self))
 		"load":
 			_load_held_into_cart()
+		"sample":
+			_use_sample_stand(pick["target"])
 
 func _start_channel(kind: String, target: Node, need: float) -> void:
 	_channel_kind = kind
@@ -427,7 +470,9 @@ func _update_channel(delta: float, input: Vector2) -> void:
 	if input.length() > 0.1 or not is_instance_valid(_channel_target) or downed or attached:
 		_cancel_channel()
 		return
-	if _channel_target is Node3D and global_position.distance_to(_channel_target.global_position) > 2.8:
+	var channel_distance := SHELF_INTERACT_DISTANCE + 0.2 if _channel_kind == "search" else 2.8
+	if _channel_target is Node3D \
+			and global_position.distance_to(_channel_target.global_position) > channel_distance:
 		_cancel_channel()
 		return
 	# 搜货期间必须持续用屏幕中心准星锁住开始选择的那件商品。
@@ -493,16 +538,17 @@ func _drop_held() -> void:
 func _best_interaction() -> Dictionary:
 	var best := {}
 	var best_d := 999.0
-	# 地上的散货(不含别人车斗里的)
-	for node in get_tree().get_nodes_in_group("items"):
-		var it: Item = node
-		if not is_instance_valid(it):
-			continue
-		var d := global_position.distance_to(it.global_position)
-		if it.state == Item.ItemState.FREE and d < 1.8 and d < best_d and not _item_in_any_basket(it):
-			if can_hold(it):
-				best = {"kind": "pickup", "target": it, "label": "E 拾取 " + it.display_name}
-				best_d = d
+	# 地上散货必须落在人物面朝方向与镜头俯仰形成的选取线内。
+	var aimed_free: Item = _aimed_free_item()
+	var aimed_free_distance := INF
+	if is_instance_valid(aimed_free):
+		aimed_free_distance = Vector2(global_position.x, global_position.z).distance_to(
+				Vector2(aimed_free.global_position.x, aimed_free.global_position.z))
+	if is_instance_valid(aimed_free) and aimed_free_distance <= FREE_INTERACT_DISTANCE \
+			and not _item_in_any_basket(aimed_free) and can_hold(aimed_free):
+		best = {"kind": "pickup", "target": aimed_free,
+				"label": "E 拾取面朝商品:" + aimed_free.display_name}
+		best_d = aimed_free_distance
 	# 别人的车(无人推、有货)
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
@@ -520,16 +566,27 @@ func _best_interaction() -> Dictionary:
 		if d3 < 2.6 and d3 < best_d:
 			best = {"kind": "load", "target": cart, "label": "E 放入购物车"}
 			best_d = d3
-	# 货架货不再按“离谁最近”自动选择，只允许准星射线明确命中的那一件覆盖候选。
+	# 场边试吃摊：每名玩家每摊一次，提供12秒角色技能CD加速。
+	for node in get_tree().get_nodes_in_group("sample_stand"):
+		if not is_instance_valid(node) or not (node is Node3D):
+			continue
+		var stand := node as Node3D
+		var stand_distance := global_position.distance_to(stand.global_position)
+		if stand_distance < 2.6 and stand_distance < best_d:
+			var sampled := sampled_stands.has(stand.get_instance_id())
+			best = {"kind": "sample", "target": stand,
+					"label": "已领取本摊试吃" if sampled else "E 试吃：技能冷却速度+50%(12秒)"}
+			best_d = stand_distance
+	# 货架货按人物面朝方向与镜头俯仰选择，上下看可区分双层货位。
 	var aimed_item: Item = _aimed_shelf_item()
 	var aimed_horizontal_distance := INF
 	if is_instance_valid(aimed_item):
 		aimed_horizontal_distance = Vector2(global_position.x, global_position.z).distance_to(
 				Vector2(aimed_item.global_position.x, aimed_item.global_position.z))
-	if is_instance_valid(aimed_item) and aimed_horizontal_distance < 1.9:
+	if is_instance_valid(aimed_item) and aimed_horizontal_distance <= SHELF_INTERACT_DISTANCE:
 		if can_hold(aimed_item):
 			best = {"kind": "search", "target": aimed_item,
-					"label": "按住E 拿取准星商品:" + aimed_item.display_name}
+					"label": "按住E 拿取面朝商品:" + aimed_item.display_name}
 		else:
 			best = {"kind": "search_full", "target": aimed_item,
 					"label": "手上拿不下了(R先装车)"}
@@ -544,6 +601,37 @@ func _aimed_shelf_item() -> Item:
 		return main.aimed_shelf_item_from(self, net_aim_dir)
 	return main.cam_rig.aimed_shelf_item()
 
+func _aimed_free_item() -> Item:
+	if main == null:
+		return null
+	var exclusions: Array[RID] = [get_rid()]
+	if is_instance_valid(cart):
+		exclusions.append(cart.get_rid())
+	var direction := net_aim_dir if remote else main.cam_rig.aim_direction_from(
+			global_position + Vector3.UP * Main.THROW_ORIGIN_HEIGHT, exclusions)
+	return main.aimed_free_item_from(self, direction, FREE_INTERACT_DISTANCE)
+
+func _use_sample_stand(stand: Node3D) -> void:
+	if not is_instance_valid(stand):
+		return
+	var key := stand.get_instance_id()
+	if sampled_stands.has(key):
+		Main.float_text(self, global_position + Vector3.UP * 2.0,
+				"这摊已经试吃过啦", Color(0.82, 0.82, 0.82), 54)
+		return
+	sampled_stands[key] = true
+	skill_cd_boost_time = maxf(skill_cd_boost_time, 12.0)
+	Main.float_text(self, global_position + Vector3.UP * 2.0,
+			"免费试吃! 技能冷却加速50%", Color(1.0, 0.68, 0.22), 64)
+
+func aimed_pickup_item() -> Item:
+	if attached or downed or finished:
+		return null
+	var shelf := _aimed_shelf_item()
+	if is_instance_valid(shelf):
+		return shelf
+	return _aimed_free_item()
+
 func _item_in_any_basket(it: Item) -> bool:
 	for node in get_tree().get_nodes_in_group("carts"):
 		var c: Cart = node
@@ -555,9 +643,9 @@ func _update_interactions() -> void:
 	if channel_progress >= 0.0:
 		return
 	if attached:
-		prompt_text = "W前进 A/D转向 S刹车 · Shift冲刺 · F放开 · 左键肘击"
+		prompt_text = "W/S前进刹车 · A/D转向 · Shift冲刺 · F放车 · 左键肘击 · 滚轮选商品 · 右键瞄准/松开投掷 · Q雷达 · 空格技能 · Ctrl稳住"
 		return
-	var parts: Array = []
+	var parts: Array = ["WASD移动", "Shift冲刺", "左键肘击", "按住右键越肩瞄准/松开投掷", "Q雷达", "空格技能", "Ctrl稳住"]
 	var pick := _best_interaction()
 	if pick.has("label"):
 		parts.append(str(pick["label"]))

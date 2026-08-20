@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_pfo1s"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/生鲜区/Trader John牧场鸡蛋.fbx" id="2_dkql1"]
+
+[node name="costcow_eggs" type="Node3D" unique_id=1828156345]
+script = ExtResource("1_pfo1s")
+material_profile_key = "item:costcow_eggs"
+metadata/source_size = Vector3(0.998816, 0.30372697, 0.52184254)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/Trader John牧场鸡蛋.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/Trader John牧场鸡蛋.fbx"
+metadata/art_prefab = true
+metadata/item_id = "costcow_eggs"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=193563464]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.00034540892, 0.00064218044, 0.00082936883)
+
+[node name="Trader John牧场鸡蛋" type="Node3D" parent="SourceOrientation" unique_id=1572041531 instance=ExtResource("2_dkql1")]

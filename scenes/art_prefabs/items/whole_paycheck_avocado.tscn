@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_ax66q"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/生鲜区/Half food牛油果.fbx" id="2_rmvuv"]
+
+[node name="whole_paycheck_avocado" type="Node3D" unique_id=286974984]
+script = ExtResource("1_ax66q")
+material_profile_key = "item:whole_paycheck_avocado"
+metadata/source_size = Vector3(1.0001541, 0.4270982, 0.458798)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/Half food牛油果.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/生鲜区/Half food牛油果.fbx"
+metadata/art_prefab = true
+metadata/item_id = "whole_paycheck_avocado"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1043094534]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.00016129017, -6.997585e-05, 0.00012309849)
+
+[node name="Half food牛油果" type="Node3D" parent="SourceOrientation" unique_id=2061001127 instance=ExtResource("2_rmvuv")]

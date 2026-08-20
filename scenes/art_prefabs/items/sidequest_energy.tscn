@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_twvo7"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/饮料零食区/地球人电解质水.fbx" id="2_5tkbt"]
+
+[node name="sidequest_energy" type="Node3D" unique_id=1452826666]
+script = ExtResource("1_twvo7")
+material_profile_key = "item:sidequest_energy"
+metadata/source_size = Vector3(0.3634132, 1.0013378, 0.36749226)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/地球人电解质水.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/地球人电解质水.fbx"
+metadata/art_prefab = true
+metadata/item_id = "sidequest_energy"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=123607287]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.970763e-05, -0.00018942356, -0.00057694316)
+
+[node name="地球人电解质水" type="Node3D" parent="SourceOrientation" unique_id=2108152591 instance=ExtResource("2_5tkbt")]

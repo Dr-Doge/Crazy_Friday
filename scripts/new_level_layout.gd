@@ -2,11 +2,11 @@ class_name NewLevelLayout extends RefCounted
 ## 将手工搭建的 New_Level 场景翻译为 Main 所需的玩法数据。
 ## 只读取场景节点和元数据：不会生成墙体、货架或其他关卡几何。
 
-const GRID_MIN := Vector2i(-53, -39)
-const GRID_SIZE := Vector2i(106, 79)
-# 商品生成面严格贴合当前手工白盒：立式架为底板+中央板，矮冰柜按半高后的两层陈列。
+const GRID_MIN := Vector2i(-68, -51)
+const GRID_SIZE := Vector2i(136, 102)
+# 商品生成面严格贴合当前手工白盒：立式架使用双层，平面生鲜/冷冻货柜只使用最上层。
 const UPRIGHT_SHELF_LEVELS := [0.27, 1.25]
-const COLD_CASE_LEVELS := [0.28, 0.92]
+const COLD_CASE_LEVELS := [0.92]
 
 static func build(root: Node3D) -> Dictionary:
 	var solids: Array[Rect2] = []
@@ -41,6 +41,9 @@ static func build(root: Node3D) -> Dictionary:
 	var checkout_specs := _checkout_specs(root)
 	# 分类范围以设计师在场景中手调的彩色地板为唯一来源，避免维护第二套坐标。
 	var zone_bounds := _zone_floor_bounds(root)
+	# 四队出生直接读取等待室地板中心；两名队员以中心为中点轻微错开，
+	# 朝向由等待室中心指向卖场原点，因此手调等待室后无需同步隐藏Marker。
+	var team_spawn_specs := _waiting_room_spawn_specs(root)
 
 	var nav := AStarGrid2D.new()
 	nav.region = Rect2i(GRID_MIN, GRID_SIZE)
@@ -73,17 +76,40 @@ static func build(root: Node3D) -> Dictionary:
 			"belt_dx_by_lane": [-1.95, 1.95],
 		},
 		"zone_bounds": zone_bounds,
+		"team_spawn_specs": team_spawn_specs,
 		"layout": {
 			"respawn_pos": entrance,
-			"wander_x": Vector2(-32.0, 32.0),
-			"wander_z": Vector2(-19.0, 19.0),
-			"slippery_x": Vector2(-31.0, 31.0),
-			"slippery_z": Vector2(-18.0, 18.0),
+			"wander_x": Vector2(-40.0, 40.0),
+			"wander_z": Vector2(-23.75, 23.75),
+			"slippery_x": Vector2(-38.75, 38.75),
+			"slippery_z": Vector2(-22.5, 22.5),
 			"exit_x": checkout["exit_x"],
 			"exit_inner_z": checkout["gate_out_z"] + 0.8,
 			"exit_outer_z": checkout["gate_out_z"] + 2.6,
+			"team_spawn_specs": team_spawn_specs,
 		},
 	}
+
+static func _waiting_room_spawn_specs(root: Node3D) -> Array:
+	var out: Array = []
+	for suffix in ["A", "B", "C", "D"]:
+		var room := root.find_child("WaitingRoom_%s" % suffix, true, false) as Node3D
+		var floor := room.find_child("Floor", false, false) as CSGBox3D if room != null else null
+		if floor == null:
+			continue
+		var center := _scene_transform(floor).origin
+		center.y = 0.1
+		# 朝向对应准备室的大门，而不是泛化地朝向商场原点；设计师移动入口后自动跟随。
+		var entrance := root.find_child("TeamEntrance_%s" % suffix, true, false) as Node3D
+		var entrance_pos := _scene_transform(entrance).origin if entrance != null else Vector3.ZERO
+		var facing := entrance_pos - center
+		facing.y = 0.0
+		if facing.length_squared() < 0.01:
+			facing = Vector3(-center.x, 0.0, -center.z)
+		facing = facing.normalized()
+		var side := Vector3(facing.z, 0.0, -facing.x).normalized()
+		out.append({"center": center, "facing": facing, "side": side})
+	return out
 
 static func _zone_floor_bounds(root: Node3D) -> Dictionary:
 	var out := {}
@@ -253,7 +279,9 @@ static func _append_shelf_slots(shelf: CSGBox3D, out: Array) -> void:
 				out.append({
 					"pos": world,
 					"zone": zone,
-					"yaw": _scene_transform(shelf).basis.get_euler().y,
+					# 双面货架两侧商品分别朝向各自过道，绝不让正面朝向货架脊柱。
+					"yaw": _scene_transform(shelf).basis.get_euler().y \
+							+ (PI if side < 0.0 else 0.0),
 				})
 
 static func _append_premium_slots(stand: CSGBox3D, out: Array) -> void:

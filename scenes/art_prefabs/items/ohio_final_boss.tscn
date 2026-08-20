@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_mdfn0"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/玩具区/Ohio最终手办02.fbx" id="2_emy12"]
+
+[node name="ohio_final_boss" type="Node3D" unique_id=1809165768]
+script = ExtResource("1_mdfn0")
+material_profile_key = "item:ohio_final_boss"
+metadata/source_size = Vector3(0.8344165, 0.99977636, 0.7564167)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Ohio最终手办02.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/玩具区/Ohio最终手办02.fbx"
+metadata/art_prefab = true
+metadata/item_id = "ohio_final_boss"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=183436624]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0012918711, -0.00037521124, -0.0007221103)
+
+[node name="Ohio最终手办02" type="Node3D" parent="SourceOrientation" unique_id=535937497 instance=ExtResource("2_emy12")]

@@ -1,0 +1,19 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_42nvu"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/饮料零食区/小小泡泡糖.fbx" id="2_22vry"]
+
+[node name="candy" type="Node3D" unique_id=1202043647]
+script = ExtResource("1_42nvu")
+material_profile_key = "item:candy"
+metadata/source_size = Vector3(0.70717514, 1.0025401, 0.4725834)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/小小泡泡糖.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/饮料零食区/小小泡泡糖.fbx"
+metadata/art_prefab = true
+metadata/item_id = "candy"
+metadata/asset_kind = "item"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1759757229]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.00088632107, -0.00069981813, -0.0006007403)
+
+[node name="小小泡泡糖" type="Node3D" parent="SourceOrientation" unique_id=1101952150 instance=ExtResource("2_22vry")]

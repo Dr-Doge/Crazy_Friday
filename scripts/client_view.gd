@@ -192,7 +192,7 @@ func _items(k: float) -> void:
 			it.label.modulate = Color(0.1, 0.55, 0.2)
 
 ## 玩家包20Hz直接携带手持商品索引，避免等待轮转的世界商品分片。
-## 这既是第一人称手持显示的数据源，也让客户端容量/装车提示与主机一致。
+## 这是本机第三人称手持显示的数据源，也让客户端容量/装车提示与主机一致。
 func _sync_held(actor: Actor, indices: Array) -> void:
 	var rebuilt: Array[Item] = []
 	for raw_idx in indices:

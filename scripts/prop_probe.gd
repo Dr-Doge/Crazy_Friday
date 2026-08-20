@@ -13,7 +13,12 @@ var _zone_before := 0
 var _block_cart: Cart
 var _burst_cart: Cart
 var _shelf_target: Item
+var _ground_target: Item
+var _ground_blocked_shelves: Array[Item] = []
 var _track_shelf_target := false
+var _protected_cart_item: Item
+var _overstock_cart_item: Item
+var _wheel_extra_items: Array[Item] = []
 
 func _init(m: Main) -> void:
 	_m = m
@@ -32,18 +37,25 @@ func setup() -> void:
 	_m.add_child(_dummy)
 	_dummy.build_body(Color(0.75, 0.75, 0.75), "投掷靶子")
 	_dummy.global_position = _p.global_position + Vector3(5.0, 0, 0)
-	var near_label_item := Item.create("cola")
-	_m.add_child(near_label_item)
-	near_label_item.global_position = _p.global_position + Vector3(4.9, 0.0, 0.0)
-	near_label_item._physics_process(0.0)
-	var near_visible := near_label_item.label.visible
-	near_label_item.global_position = _p.global_position + Vector3(5.1, 0.0, 0.0)
-	near_label_item._physics_process(0.0)
-	_check(near_visible and near_label_item.label.visible \
-			and near_label_item.label.billboard == BaseMaterial3D.BILLBOARD_DISABLED \
-			and not near_label_item.label.no_depth_test,
-			"商品包装：名称固定贴附模型表面，不按距离显隐、不朝镜头转动或穿墙")
-	near_label_item.queue_free()
+	var no_label_item := Item.create("cola")
+	_m.add_child(no_label_item)
+	_check(no_label_item.label == null and no_label_item.surface_labels.is_empty(),
+			"商品标识：正式美术模型不叠加名称，仅保留玩家瞄准HUD注释卡")
+	no_label_item.queue_free()
+	var fallback_id := ""
+	for id in Catalog.ITEMS:
+		if ArtAssetCatalog.item_prefab_path(str(id)) == "":
+			fallback_id = str(id)
+			break
+	var fallback_item := Item.create(fallback_id)
+	_m.add_child(fallback_item)
+	_check(fallback_id != "" and fallback_item.label != null \
+			and fallback_item.surface_labels.size() == 2 \
+			and fallback_item.surface_labels.all(func(lb: Label3D):
+				return not lb.no_depth_test \
+						and lb.billboard == BaseMaterial3D.BILLBOARD_DISABLED),
+			"商品标识：未替换模型的白盒商品恢复双面贴附名称且受场景遮挡")
+	fallback_item.queue_free()
 	var display_scale_item := Item.create("cola")
 	_m.add_child(display_scale_item)
 	display_scale_item.set_shelved(_p.global_position + Vector3(0.0, 2.0, 0.0))
@@ -68,6 +80,8 @@ func tick(delta: float) -> void:
 		[0.3, _setup_wheel], [0.7, _check_wheel],
 		[0.78, _setup_shelf_target], [0.88, _check_shelf_target],
 		[0.98, _move_shelf_off_crosshair], [1.08, _check_shelf_miss],
+		[1.10, _setup_ground_target], [1.14, _check_ground_target],
+		[1.17, _move_ground_off_crosshair], [1.19, _check_ground_miss],
 		[1.2, _throw_detergent], [1.4, _hit_detergent], [1.7, _check_detergent],
 		[1.9, _throw_thermos], [2.1, _hit_thermos], [2.4, _check_thermos],
 		[2.6, _throw_candy], [2.8, _hit_candy], [3.2, _check_candy],
@@ -89,22 +103,34 @@ func _put(id: String) -> Item:
 func _count_zones(type_name: String) -> int:
 	var n := 0
 	for node in _m.get_children():
-		if (type_name == "slow" and node is SlowZone) \
+		if (type_name == "slow" and node is SlipperyZone) \
 				or (type_name == "scatter" and node is ObscureZone):
 			n += 1
 	return n
 
 func _setup_wheel() -> void:
-	_put("tissue")
-	_put("cola")
-	_put("treadmill")
+	var order: Array = _m._order_for_player(_p)
+	var first_entry: Dictionary = order[0]
+	_protected_cart_item = _put(str(first_entry["id"]))
+	# 车内同SKU数量比尚缺订单多1件；最低实例ID的需求件受保护，最后一件应成为弹药。
+	for i in OrderSystem.required(first_entry):
+		_overstock_cart_item = _put(str(first_entry["id"]))
+	var ordered_ids: Array = order.map(func(entry): return str(entry["id"]))
+	for id in Catalog.ITEMS:
+		if id == "sale_box" or ordered_ids.has(id):
+			continue
+		_wheel_extra_items.append(_put(str(id)))
+		if _wheel_extra_items.size() >= 3:
+			break
 
 func _check_wheel() -> void:
 	var items := _m.cart_throw_items(_p)
-	_check(items.size() >= 3, "轮盘：读取购物车内全部商品")
-	var before := _m.selected_cart_item_id(_p)
+	_check(items.size() == 4 and _wheel_extra_items.all(func(it: Item): return items.has(it)) \
+			and not items.has(_protected_cart_item) and items.has(_overstock_cart_item),
+			"驾车轮盘：保护队伍尚缺数量，同SKU超出订单的部分可作为道具")
+	var before := _p.throw_selection
 	_m.cycle_cart_item(_p, 1)
-	var after := _m.selected_cart_item_id(_p)
+	var after := _p.throw_selection
 	_check(before != after, "轮盘：滚轮循环切换选中商品")
 	var aim := _m.cam_rig.aim_direction()
 	_check(aim.is_finite() and absf(aim.length() - 1.0) < 0.02, "准星：屏幕中心生成单位三维投掷方向")
@@ -119,6 +145,8 @@ func _check_wheel() -> void:
 			and is_equal_approx(CameraRig.THROW_AIM_DIST, 2.0) \
 			and CameraRig.THROW_AIM_SHOULDER > CameraRig.SHOULDER_OFFSET,
 			"镜头：常态3米左下构图与2米右肩瞄准参数已启用")
+	_check(Player.DRIVE_STEER <= 82.0,
+			"驾驶手感：转向力由110降至82，高速转向不再过度甩头")
 	var sign_lod_nodes := _m.get_tree().get_nodes_in_group("third_person_sign_lod")
 	# New_Level只保留贴地分区字，不再有会遮挡镜头的悬浮牌；旧地图仍验证悬浮牌LOD。
 	var no_overhead_signs_needed := _m.embedded_level and sign_lod_nodes.is_empty()
@@ -132,11 +160,17 @@ func _check_wheel() -> void:
 			early_sign_lod = true
 	_check(early_sign_lod and sign_only_lod,
 			"镜头LOD：仅分区告示牌使用2米隐藏距离，货架与墙体不参与")
-	var cart_labels_attached := true
+	var cart_labels_match_asset_state := true
 	for it in items:
-		cart_labels_attached = cart_labels_attached and it.label.visible \
-				and it.label.billboard == BaseMaterial3D.BILLBOARD_DISABLED
-	_check(cart_labels_attached, "车内视野：商品名保留在包装表面，不再生成头顶悬浮文字")
+		var has_art := is_instance_valid(it.visual_root) \
+				and it.visual_root.has_meta("art_item_id")
+		cart_labels_match_asset_state = cart_labels_match_asset_state \
+				and ((has_art and it.label == null and it.surface_labels.is_empty()) \
+				or (not has_art and it.label != null and it.surface_labels.size() == 2))
+	_check(cart_labels_match_asset_state,
+			"商品标识：正式模型无叠加字，仍处于白盒阶段的商品保留表面名称")
+	# 后续逐类投掷效果测试不属于订单筛选测试，清空测试玩家的临时清单以免随机订单屏蔽指定道具。
+	_m.team_data[_p.team_id]["list"] = []
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_RIGHT
 	press.pressed = true
@@ -158,47 +192,23 @@ func _check_wheel() -> void:
 			"徒步轮盘：双手满载时读取全部手持商品并显示轮盘")
 	_m._unhandled_input(press)
 	_m._update_camera(0.2)
-	_check(_m.cam_rig.is_first_person() \
-			and is_equal_approx(_m.cam_rig.spring.spring_length, CameraRig.FIRST_PERSON_LENGTH) \
-			and _m.cam_rig.camera.fov < CameraRig.FIRST_PERSON_FOV \
-			and not _p.body_root.visible and _m.cam_rig.first_person_hands_visible(),
-			"脱车视角：进入75度第一人称并以镜头手臂替代隐藏的本机身体")
-	var first_person_signs_visible := true
-	for node in sign_lod_nodes:
-		first_person_signs_visible = first_person_signs_visible and node.visible
-	_check(first_person_signs_visible,
-			"第一人称LOD：恢复全部分区告示牌且不隐藏货架、墙体或教学实体")
-	Main.float_text(_p, _p.global_position + Vector3.UP * 2.2, "第一人称字幕测试", Color.WHITE)
-	var readable_float := false
-	for label in _m.get_tree().get_nodes_in_group("dynamic_float_text"):
-		if label is DynamicFloatText and bool(label.get_meta("first_person_safe_position", false)):
-			readable_float = true
-			break
-	_check(readable_float, "第一人称字幕：过近或镜头后的拟声字移入可读区域并启用距离缩放")
-	var outside_float := DynamicFloatText.new()
-	_m.add_child(outside_float)
-	outside_float.global_position = _m.cam_rig.camera.global_position \
-			+ _m.cam_rig.camera.global_transform.basis.z * 2.0
-	outside_float._update_first_person_visibility(_m.cam_rig.camera)
-	_check(not outside_float.visible and CameraRig.SENS <= 0.0025,
-			"第一人称字幕：视野外反馈不吸入HUD；镜头灵敏度已适度降低")
-	outside_float.queue_free()
-	_check(not held_view_test.visible and bool(held_view_test.get_meta("first_person_view_hidden", false)) \
-			and _m.cam_rig.first_person_held_item_count() == 2,
-			"第一人称手持：隐藏真实世界模型，以绑定双手的低姿态镜头模型稳定展示")
-	_check(CameraRig.FIRST_PERSON_ELBOW_FIST_SCALE >= 2.0 \
-			and _m.cam_rig._fp_arm_l.position.x < -0.25 \
-			and _m.cam_rig._fp_arm_r.position.x > 0.25 \
-			and absf(_m.cam_rig._fp_held_root.position.y - _m.cam_rig._fp_arm_l.position.y) < 0.18,
-			"第一人称动作：双臂下移分列中央UI两侧，商品与圆球拳头同高且出拳放大超过2倍")
+	_check(not _m.cam_rig.is_first_person() and _p.body_root.visible \
+			and not _m.cam_rig.first_person_hands_visible() \
+			and _m.cam_rig.spring.spring_length < CameraRig.DIST \
+			and _m.cam_rig.spring.position.x > CameraRig.SHOULDER_OFFSET \
+			and _m.cam_rig.camera.fov < CameraRig.FOV,
+			"脱车视角：常态保持第三人称，按住右键平滑切入2米右肩越肩镜头")
+	_check(held_view_test.visible and held_view_test_2.visible \
+			and _m.cam_rig.first_person_held_item_count() == 0,
+			"第三人称手持：保留角色双手间的真实商品模型，不生成第一人称重复模型")
 	_check(_p.throw_aiming and not _m.cam_rig.throw_preview_visible() \
-			and _m.hud.item_wheel.visible and _m.cam_rig.is_first_person(),
-			"徒步右键：保持第一人称放大和手持轮盘，不显示第三人称抛物线")
+			and _m.hud.item_wheel.visible and not _m.cam_rig.is_first_person(),
+			"徒步右键：使用第三人称越肩瞄准和手持轮盘，不显示驾车抛物线")
 	_m._unhandled_input(release)
 	_m._update_camera(0.1)
-	_check(_m.cam_rig.is_first_person() and not _p.throw_aiming and _p.prop_cd > 0.0 \
+	_check(not _m.cam_rig.is_first_person() and not _p.throw_aiming and _p.prop_cd > 0.0 \
 			and _p.held.size() == 1,
-			"徒步投掷：松开右键投出轮盘选中手持商品，消耗一件且不切换视角")
+			"徒步投掷：松开右键投出轮盘选中手持商品，保持第三人称视角")
 	var pedestrian_throw_active := false
 	for it in [held_view_test, held_view_test_2]:
 		pedestrian_throw_active = pedestrian_throw_active \
@@ -262,12 +272,18 @@ func _check_wheel() -> void:
 	_check(bool(guard_item.get_meta("throw_active", false)),
 			"投掷落点：离手瞬间的脚边世界碰撞不会提前触发效果")
 	guard_item.set_meta("throw_active", false)
-	_check(Hud.OBSCURE_SCREEN_ALPHA >= 0.35 and Hud.OBSCURE_BLOB_ALPHA >= 0.65,
-			"散落遮挡：屏幕暗幕与碎屑块达到强遮蔽基线")
+	_check(not _m.hud.crosshair.visible and not _m.hud.controls_hint.visible \
+			and _m.hud.minimap.visible and _m.hud.cd_wheel.size.x >= 140.0,
+			"HUD重排：白点与右上键位表删除，小地图和状态条右侧技能冷却槽启用")
+	_check(is_equal_approx(Player.SHELF_INTERACT_DISTANCE, 8.0) \
+			and is_equal_approx(Player.FREE_INTERACT_DISTANCE, 2.2),
+			"拿取范围：商品视觉标注与E键互动共用同一套货架/散货距离")
 
 func _setup_shelf_target() -> void:
 	if _p.attached:
 		_p.detach_cart()
+	# 第三人称上下车保持平滑跟随；测试先让镜头收敛到徒步目标，再沿真实准星放置货物。
+	_m._update_camera(1.0)
 	_shelf_target = Item.create("thermos")
 	_m.add_child(_shelf_target)
 	_m.all_items.append(_shelf_target)
@@ -275,14 +291,14 @@ func _setup_shelf_target() -> void:
 	_place_shelf_on_crosshair()
 
 func _place_shelf_on_crosshair() -> void:
-	var camera := _m.cam_rig.camera
-	var center := _m.get_viewport().get_visible_rect().size * 0.5
-	var ray_origin := camera.project_ray_origin(center)
-	var ray_dir := camera.project_ray_normal(center).normalized()
-	var flat_dir := Vector2(ray_dir.x, ray_dir.z)
-	var flat_to_player := Vector2(_p.global_position.x - ray_origin.x,
-			_p.global_position.z - ray_origin.z)
-	var t := clampf(flat_to_player.dot(flat_dir) / maxf(flat_dir.length_squared(), 0.001), 0.5, 7.5)
+	var ray_origin := _p.global_position + Vector3.UP * Main.THROW_ORIGIN_HEIGHT
+	var exclusions: Array[RID] = [_p.get_rid()]
+	if is_instance_valid(_p.cart):
+		exclusions.append(_p.cart.get_rid())
+	# 实际选货判定从角色头部沿相机准星会聚方向发射，不是从第三人称相机本体发射。
+	var ray_dir := _m.cam_rig.aim_direction_from(ray_origin, exclusions)
+	var flat_length := maxf(Vector2(ray_dir.x, ray_dir.z).length(), 0.01)
+	var t := 1.35 / flat_length
 	_shelf_target.set_shelved(ray_origin + ray_dir * t)
 
 func _check_shelf_target() -> void:
@@ -302,9 +318,55 @@ func _check_shelf_miss() -> void:
 	_p.cart.global_position = _p.global_position + Vector3(0, 0.2, -1.2)
 	_p.attach_cart()
 
+func _setup_ground_target() -> void:
+	if _p.attached:
+		_p.detach_cart()
+	# 把自己的车移出准星射线，验证的目标必须是真正落在地面的自由商品。
+	_p.cart.global_position = _p.global_position + Vector3.RIGHT * 3.0 + Vector3.UP * 0.2
+	_m._update_camera(1.0)
+	# 不同队伍等待室的准星远端可能恰好对着真实货架；散货专项只验证近处FREE
+	# 候选，因此临时锁住原本可选的货架商品，结束后完整恢复。
+	_ground_blocked_shelves.clear()
+	for it in _m.all_items:
+		if is_instance_valid(it) and it.state == Item.ItemState.SHELVED and not it.event_locked:
+			_ground_blocked_shelves.append(it)
+			it.set_event_locked(true)
+	_ground_target = Item.create("cola")
+	_m.add_child(_ground_target)
+	_m.all_items.append(_ground_target)
+	var ray_origin := _p.global_position + Vector3.UP * Main.THROW_ORIGIN_HEIGHT
+	var exclusions: Array[RID] = [_p.get_rid(), _p.cart.get_rid()]
+	var ray_dir := _m.cam_rig.aim_direction_from(ray_origin, exclusions)
+	_ground_target.set_free_at(ray_origin + ray_dir * 1.45)
+	_ground_target.freeze = true
+
+func _check_ground_target() -> void:
+	var pick := _p._best_interaction()
+	_check(pick.get("kind", "") == "pickup" and pick.get("target") == _ground_target,
+			"徒步散货：只有屏幕中央准星瞄准时才出现拾取判定（当前%s/%s）" % [
+					str(pick.get("kind", "none")),
+					str((pick.get("target") as Item).item_id) if pick.get("target") is Item else "none"])
+
+func _move_ground_off_crosshair() -> void:
+	_ground_target.global_position += _m.cam_rig.camera.global_basis.x * 1.0
+
+func _check_ground_miss() -> void:
+	var pick := _p._best_interaction()
+	_check(pick.get("target") != _ground_target,
+			"徒步散货：商品仍在脚边但离开准星后不能自动拾取")
+	_ground_target.queue_free()
+	for it in _ground_blocked_shelves:
+		if is_instance_valid(it):
+			it.set_event_locked(false)
+	_ground_blocked_shelves.clear()
+	_p.cart.global_position = _p.global_position + Vector3(0, 0.2, -1.2)
+	_p.attach_cart()
+
 func _clear_cart() -> void:
-	for it in _m.cart_throw_items(_p):
-		it.queue_free()
+	for it in _p.cart.items_in_basket():
+		# 专项探针必须在同一物理帧内清空旧弹药；queue_free 会让旧货继续占据
+		# 一帧的轮盘候选，导致后续效果测试错误选中上一个商品。
+		it.free()
 
 func _throw_detergent() -> void:
 	_clear_cart()
@@ -326,15 +388,18 @@ func _check_detergent() -> void:
 	_check(effect_pos.distance_to(Vector3(_dummy.global_position.x, 0.0, _dummy.global_position.z)) < 0.25 \
 			and effect_pos.distance_to(Vector3(_p.global_position.x, 0.0, _p.global_position.z)) > 2.0,
 			"投掷落点：效果中心锁定首次有效落点，不生成在投掷者脚下")
-	_check(_count_zones("slow") == _zone_before + 1, "湿滑类：落点生成统一8秒减速地面")
-	_check(_dummy.movement_factor() <= Catalog.WET_MOVE_FACTOR + 0.01,
-			"湿滑类：区域内统一保留65%移动能力")
-	_check(_dummy.traction_factor() <= Catalog.WET_TRACTION_FACTOR + 0.01,
-			"湿滑类：推车抓地统一下降，经过时更容易漂移")
+	_check(_count_zones("slow") == _zone_before + 1, "湿滑类：落点生成高亮湿滑地面")
+	var zones := _m.get_children().filter(func(node): return node is SlipperyZone)
+	if not zones.is_empty() and not _dummy.downed:
+		(zones.back() as SlipperyZone)._on_body_entered(_dummy)
+	_check(_dummy.downed and _dummy.imbalance >= _dummy.max_imbalance_value(),
+			"湿滑类：首次踏入直接满失衡滑倒，不再逐步累计失衡")
 
 func _throw_thermos() -> void:
 	_clear_cart()
 	_item = _put("thermos")
+	if _dummy.downed:
+		_dummy._recover()
 	_dummy.imbalance = 0.0
 	_dummy.push_velocity = Vector3.ZERO
 	_burst_cart = Cart.create(Color(0.55, 0.55, 0.6), "爆裂推离测试车")
@@ -388,6 +453,10 @@ func _hit_candy() -> void:
 
 func _check_candy() -> void:
 	_check(_count_zones("scatter") == _zone_before + 1, "散落类：落点生成统一4秒遮挡区")
+	var scatter_fog := _m.find_child("ScatterBeautyFog", true, false) as FogVolume
+	var scatter_mat := scatter_fog.material as FogMaterial if scatter_fog != null else null
+	_check(scatter_mat != null and scatter_mat.albedo.r >= 0.99 and scatter_mat.albedo.g >= 0.8,
+			"散落类：外观与个护区统一为高明度淡粉体积雾")
 	_check(_dummy.perception_factor() <= Catalog.SCATTER_PERCEPTION_FACTOR + 0.01,
 			"散落类：区域内NPC感知距离统一降至35%")
 
@@ -440,6 +509,27 @@ func _check_cart_recovery() -> void:
 	_block_cart._refresh_cart_ccd()
 	_check(_p.cart.continuous_cd and _block_cart.continuous_cd,
 			"购物车防穿模：邻车进入风险范围后提前开启连续碰撞检测")
+	var leaked_item := Item.create("cola")
+	_m.add_child(leaked_item)
+	leaked_item.set_free_at(_p.cart.to_global(Vector3(0.0, Cart.FLOOR_TOP + 0.25, 0.0)))
+	_p.cart._on_basket_body_entered(leaked_item)
+	leaked_item.global_position = _p.cart.to_global(Vector3(0.0, Cart.FLOOR_TOP - 0.35, 0.0))
+	_p.cart._rescue_items_below_basket()
+	var rescued_local := _p.cart.to_local(leaked_item.global_position)
+	_check(rescued_local.y > Cart.FLOOR_TOP and _p.cart._basket_known.has(leaked_item.get_instance_id()),
+			"购物车防漏货：曾进入车斗且向下穿底的商品会被送回内底面")
+	leaked_item.queue_free()
+	_p.detach_cart()
+	var carried_item := Item.create("thermos")
+	_m.add_child(carried_item)
+	_p.take_item(carried_item)
+	_p.attach_cart()
+	var loaded_local := _p.cart.to_local(carried_item.global_position)
+	_check(_p.held.is_empty() and carried_item.state == Item.ItemState.FREE \
+			and absf(loaded_local.x) < Cart.INNER_HALF_X \
+			and absf(loaded_local.z) < Cart.INNER_HALF_Z,
+			"上车装货：手持商品会自动落入车斗，不再保持手持状态")
+	carried_item.queue_free()
 	_dummy.downed = false
 	_dummy.global_position = _p.cart.to_global(Vector3(0, Cart.FLOOR_TOP + 0.05, 0))
 	_dummy.escape_from_cart(_p.cart)

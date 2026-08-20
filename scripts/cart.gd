@@ -23,7 +23,8 @@ const CART_CCD_RANGE := 4.5
 ## 必然穿透。车内货物本就该"跟着车走",给相对速度设上限不影响手感,
 ## 反而强化"大重力粘在车里"的设计意图。
 ## 注意:被甩出/肘飞的商品处于豁免期(Item.fling_grace),不受此限制。
-const ITEM_REL_SPEED_CAP := 7.0
+const ITEM_REL_SPEED_CAP := 3.2
+const ITEM_VELOCITY_FOLLOW := 0.18
 
 ## 车斗板厚。原为底板0.06/侧壁 0.05,薄到无法拦住高速小物件;
 ## 加厚后即使偶发高速也有足够的穿透余量。
@@ -32,7 +33,7 @@ const WALL_T := 0.12
 
 ## 车斗内腔(加厚只向外扩,这些值保持不变→装货容积与手感不变)
 const FLOOR_TOP := 0.58      # 内底面高度,装货的基准面
-const WALL_H := 0.62         # 侧壁高
+const WALL_H := 0.90         # 高车斗侧壁，避免正常推行时商品沿壁爬升越过上沿
 const INNER_HALF_X := 0.49   # 内半宽
 const INNER_HALF_Z := 0.715  # 内半长
 
@@ -59,6 +60,7 @@ var _mass_timer := 0.0
 var _alert_timer := 0.0
 var _grav_timer := 0.0
 var _grav_items: Array[Item] = []
+var _basket_known := {}              # 进入过本车斗的商品；用于修复偶发向下穿透
 var _actor_rescue_timer := 0.0
 var _ccd_scan_timer := 0.0
 
@@ -152,7 +154,8 @@ static func create(color: Color, title: String) -> Cart:
 	lb.font_size = 52
 	lb.pixel_size = 0.004
 	lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lb.no_depth_test = true
+	# 车名包含玩家身份，同角色姓名一样必须被货架和墙体遮挡。
+	lb.no_depth_test = false
 	lb.outline_size = 10
 	lb.outline_modulate = Color(0, 0, 0, 0.8)
 	lb.modulate = color.lightened(0.3)
@@ -166,7 +169,7 @@ static func create(color: Color, title: String) -> Cart:
 	al.font_size = 110
 	al.pixel_size = 0.006
 	al.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	al.no_depth_test = true
+	al.no_depth_test = false
 	al.modulate = Color(1, 0.25, 0.2)
 	al.outline_size = 14
 	al.position = Vector3(0, 2.25, 0)
@@ -181,7 +184,7 @@ static func create(color: Color, title: String) -> Cart:
 	hb_lb.font_size = 58
 	hb_lb.pixel_size = 0.005
 	hb_lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	hb_lb.no_depth_test = true
+	hb_lb.no_depth_test = false
 	hb_lb.modulate = Color(1, 0.45, 0.62)
 	hb_lb.outline_size = 16
 	hb_lb.outline_modulate = Color(0.1, 0, 0.05, 0.9)
@@ -198,9 +201,9 @@ static func create(color: Color, title: String) -> Cart:
 	area.collision_mask = Catalog.L_ITEM | Catalog.L_CHAR
 	var acs := CollisionShape3D.new()
 	var abs_shape := BoxShape3D.new()
-	abs_shape.size = Vector3(1.0, 1.0, 1.45)
+	abs_shape.size = Vector3(1.0, 1.30, 1.45)
 	acs.shape = abs_shape
-	acs.position = Vector3(0, 1.12, 0)
+	acs.position = Vector3(0, 1.27, 0)
 	area.add_child(acs)
 	c.add_child(area)
 	c.basket_area = area
@@ -256,11 +259,14 @@ func items_in_basket() -> Array[Item]:
 
 func _on_basket_body_entered(body: Node3D) -> void:
 	if body is Item and body.state == Item.ItemState.FREE:
+		_basket_known[body.get_instance_id()] = true
 		body.set_cart_label_hidden(self, true)
 
 func _on_basket_body_exited(body: Node3D) -> void:
 	if body is Item:
 		body.set_cart_label_hidden(self, false)
+		# 不在exit信号里立刻遗忘：高速物体可能恰好从底板下穿离开感应区，
+		# 后续物理帧还需要借这条记录把它送回车斗。
 
 func _physics_process(delta: float) -> void:
 	_mass_timer -= delta
@@ -297,11 +303,16 @@ func _physics_process(delta: float) -> void:
 		if it.fling_grace > 0.0:
 			continue
 		it.gravity_scale = gscale
+		# 车斗不是静止容器：推车加速和转弯时，货物需要继承一部分车体速度。
+		# 只做碰撞与速度上限会让货物持续滞后，最终沿后壁爬升并从上沿弹出。
+		# 主动甩货均有 fling_grace，因此不会被这层随动重新吸回车中。
+		it.linear_velocity = it.linear_velocity.lerp(linear_velocity, ITEM_VELOCITY_FOLLOW)
 		# 限制相对车斗的速度。挤压弹射能把扁平商品加速到 20+ m/s,
 		# 那样单帧位移会远超板厚而直接穿模飞出地图(v0.14实测缺陷)。
 		var rel := it.linear_velocity - linear_velocity
 		if rel.length() > ITEM_REL_SPEED_CAP:
 			it.linear_velocity = linear_velocity + rel.normalized() * ITEM_REL_SPEED_CAP
+	_rescue_items_below_basket()
 
 	# 驾驶中给侧向抓地,让推车有"车"的循迹感而不是溜冰
 	# grip_mult:赵冬梅「压弯」被动 ×1.2(抗漂),由player.gd 每帧设置
@@ -351,6 +362,44 @@ func _physics_process(delta: float) -> void:
 		linear_velocity = Vector3.ZERO
 		angular_velocity = Vector3.ZERO
 		reset_physics_interpolation()
+
+## 对已经进入车斗、却因刚体堆叠或车体加速穿出底板/侧壁的商品做局部回收。
+## 正常的投掷、肘飞和失衡甩货都有 fling_grace，不会被吸回。
+func _rescue_items_below_basket() -> void:
+	for key in _basket_known.keys():
+		var instance_id := int(key)
+		if not is_instance_id_valid(instance_id):
+			_basket_known.erase(key)
+			continue
+		var item := instance_from_id(instance_id) as Item
+		if not is_instance_valid(item) or item.state != Item.ItemState.FREE:
+			_basket_known.erase(key)
+			continue
+		var local := to_local(item.global_position)
+		var within_footprint := absf(local.x) <= INNER_HALF_X + 0.16 \
+				and absf(local.z) <= INNER_HALF_Z + 0.16
+		var near_basket_height := local.y >= FLOOR_TOP - 0.50 \
+				and local.y <= FLOOR_TOP + WALL_H + 1.50
+		var escaped_side := not within_footprint and near_basket_height \
+				and absf(local.x) <= INNER_HALF_X + 1.25 \
+				and absf(local.z) <= INNER_HALF_Z + 1.25
+		var escaped_bottom := within_footprint and local.y < FLOOR_TOP - 0.10
+		if item.fling_grace <= 0.0 and (escaped_bottom or escaped_side):
+			local.x = clampf(local.x, -INNER_HALF_X + 0.08, INNER_HALF_X - 0.08)
+			local.z = clampf(local.z, -INNER_HALF_Z + 0.08, INNER_HALF_Z - 0.08)
+			if escaped_bottom:
+				local.y = FLOOR_TOP + item.collider_half_height() + 0.05
+			item.global_position = to_global(local)
+			item.linear_velocity = linear_velocity
+			item.angular_velocity *= 0.2
+			item.sleeping = false
+			item.reset_physics_interpolation()
+			item.set_cart_label_hidden(self, true)
+			continue
+		# 已明确远离车斗的旧记录可以释放，避免字典无限增长。
+		if absf(local.x) > INNER_HALF_X + 1.0 or absf(local.z) > INNER_HALF_Z + 1.0 \
+				or local.y > FLOOR_TOP + WALL_H + 1.5:
+			_basket_known.erase(key)
 
 ## 载重越大越难加速/转向的系数(1=空车)
 func load_factor() -> float:

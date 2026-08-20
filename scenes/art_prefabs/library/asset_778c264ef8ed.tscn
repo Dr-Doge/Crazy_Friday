@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_mhlwt"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/场景3d资产/地板01.fbx" id="2_s71tu"]
+
+[node name="地板01" type="Node3D" unique_id=507883706]
+script = ExtResource("1_mhlwt")
+metadata/source_size = Vector3(1.0000002, 0.1330719, 1.0000002)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/地板01.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/场景3d资产/地板01.fbx"
+metadata/art_prefab = true
+metadata/display_name = "地板01"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=2015220341]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.06653595, 0)
+
+[node name="地板01" type="Node3D" parent="SourceOrientation" unique_id=828885548 instance=ExtResource("2_s71tu")]

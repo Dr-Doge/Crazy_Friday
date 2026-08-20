@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_d3wh3"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/材质贴图/管道01.glb/tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e.fbx" id="2_6nfvb"]
+
+[node name="tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e" type="Node3D" unique_id=400533201]
+script = ExtResource("1_d3wh3")
+metadata/source_size = Vector3(1.0000917, 0.33654785, 0.9767458)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/管道01.glb/tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/材质贴图/管道01.glb/tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e.fbx"
+metadata/art_prefab = true
+metadata/display_name = "tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=1681216555]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0002593994, -0.16827393, 6.1035156e-05)
+
+[node name="tripo_convert_7d2581ba-965b-427e-b2a6-0cddd7ea0a4e" type="Node3D" parent="SourceOrientation" unique_id=1417075075 instance=ExtResource("2_6nfvb")]

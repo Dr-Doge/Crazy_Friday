@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/art_prefab_material_binder.gd" id="1_ol3jp"]
+[ext_resource type="PackedScene" path="res://《疯狂星期五》3d资产（可用）/其他商品/葡萄饮料组.fbx" id="2_0kjlr"]
+
+[node name="葡萄饮料组" type="Node3D" unique_id=2065418685]
+script = ExtResource("1_ol3jp")
+metadata/source_size = Vector3(1.0003968, 0.69540405, 0.71694946)
+metadata/art_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/葡萄饮料组.fbx"
+metadata/source_asset_path = "res://《疯狂星期五》3d资产（可用）/其他商品/葡萄饮料组.fbx"
+metadata/art_prefab = true
+metadata/display_name = "葡萄饮料组"
+metadata/asset_kind = "library"
+
+[node name="SourceOrientation" type="Node3D" parent="." unique_id=710398310]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000289917, -0.34770203, -0.000869751)
+
+[node name="葡萄饮料组" type="Node3D" parent="SourceOrientation" unique_id=1065446070 instance=ExtResource("2_0kjlr")]
